@@ -11,7 +11,8 @@
     "release": "wix release",
     "generate": "wix generate",
     "env": "wix env",
-    "skills": "wix skills"
+    "skills": "wix skills",
+    "test": "vitest run"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",
@@ -28,19 +29,25 @@
     "@wix/seo": "^1.0.44",
     "@wix/stores": "^1.0.697",
     "astro": "5.8.0",
+    "phaser": "^4.1.0",
     "react": "^18",
     "react-dom": "^18",
     "tailwindcss": "^4.1.7",
+    "trystero": "^0.25.1",
     "typescript": "^5.8.3"
   },
   "engines": {
     "node": "24.x"
+  },
+  "overrides": {
+    "vite": "6.4.3"
   },
   "devDependencies": {
     "@astrojs/cloudflare": "^12.5.3",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@wix/cli": "^1.1.92",
-    "@wix/cloud-provider-fetch-adapter": "^1.0.0"
+    "@wix/cloud-provider-fetch-adapter": "^1.0.0",
+    "vitest": "^4.1.8"
   }
 }
