@@ -8,12 +8,8 @@
 
 import type { PlayerId, PlayerState, Vec2 } from "./types";
 import { aimVector } from "./logic";
-import {
-  ATTACK_CONE_HALF_ANGLE,
-  ATTACK_COOLDOWN_S,
-  FIGURE_RADIUS_M,
-  SWORD_REACH_M,
-} from "../constants";
+import { WEAPONS } from "./weapons";
+import { ATTACK_COOLDOWN_S, FIGURE_RADIUS_M } from "../constants";
 
 export interface DamageEvent {
   fromId: PlayerId;
@@ -49,25 +45,44 @@ export function inAttackCone(
 }
 
 /**
- * Resolve one attacker's swing against candidate players, emitting a damage event per
- * alive, non-self target inside the cone. Pass the full player list; self is skipped.
+ * True when `target` lies in a straight forward BAND along `aim` (a thrust, e.g. the spear):
+ * within `reach` ahead of `origin` and no more than `halfWidth` to either side of the aim ray.
+ * Unlike a cone, the band does not widen with distance.
  */
-export function resolveAttack(
-  attacker: PlayerState,
-  candidates: PlayerState[],
-  reach = SWORD_REACH_M,
-  halfAngle = ATTACK_CONE_HALF_ANGLE,
-): DamageEvent[] {
-  // The whole body is hittable: the sword reaches `reach`, and a target is hit once its
-  // body (radius FIGURE_RADIUS_M) overlaps that reach — not only when its center is in range.
-  const bodyReach = reach + FIGURE_RADIUS_M;
+export function inAttackLine(
+  origin: Vec2,
+  aim: number,
+  target: Vec2,
+  reach: number,
+  halfWidth: number,
+): boolean {
+  const dx = target.x - origin.x;
+  const dy = target.y - origin.y;
+  const f = aimVector(aim);
+  const along = dx * f.x + dy * f.y; // forward projection onto the aim ray
+  if (along < 0 || along > reach) return false;
+  const perp = Math.abs(dx * -f.y + dy * f.x); // distance to the aim ray
+  return perp <= halfWidth + 1e-9;
+}
+
+/**
+ * Resolve one attacker's melee swing against candidate players, emitting a damage event per
+ * alive, non-self target hit. The hit shape comes from the attacker's weapon: a widening cone
+ * (sword/knife) or a straight forward band (thrust weapons, e.g. spear). Self is skipped.
+ */
+export function resolveAttack(attacker: PlayerState, candidates: PlayerState[]): DamageEvent[] {
+  const stats = WEAPONS[attacker.weapon];
+  // The whole body is hittable: a target is hit once its body (radius FIGURE_RADIUS_M) overlaps
+  // the weapon's reach — not only when its center is in range.
+  const bodyReach = stats.reach + FIGURE_RADIUS_M;
   const events: DamageEvent[] = [];
   for (const t of candidates) {
     if (t.id === attacker.id) continue;
     if (t.status !== "alive") continue;
-    if (inAttackCone(attacker.pos, attacker.aim, t.pos, bodyReach, halfAngle)) {
-      events.push({ fromId: attacker.id, targetId: t.id });
-    }
+    const hit = stats.thrust
+      ? inAttackLine(attacker.pos, attacker.aim, t.pos, bodyReach, stats.thrust.halfWidth + FIGURE_RADIUS_M)
+      : inAttackCone(attacker.pos, attacker.aim, t.pos, bodyReach, stats.coneHalfAngle);
+    if (hit) events.push({ fromId: attacker.id, targetId: t.id });
   }
   return events;
 }

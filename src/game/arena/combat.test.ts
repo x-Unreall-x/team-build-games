@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { inAttackCone, resolveAttack } from "./combat";
+import { inAttackCone, inAttackLine, resolveAttack } from "./combat";
 import { initialDash } from "./dash";
 import { directionAngle } from "./logic";
+import type { Weapon } from "./weapons";
 import { SWORD_REACH_M, ATTACK_CONE_HALF_ANGLE, KNOCKBACK_M } from "../constants";
 import type { Direction, PlayerState, Vec2 } from "./types";
 
-function player(id: string, pos: Vec2, facing: Direction = "right", status: PlayerState["status"] = "alive"): PlayerState {
-  return { id, pos, facing, aim: directionAngle(facing), weapon: "sword", health: 3, status, dash: initialDash(), attack: null, attackCooldownRemaining: 0 };
+function player(
+  id: string,
+  pos: Vec2,
+  facing: Direction = "right",
+  status: PlayerState["status"] = "alive",
+  weapon: Weapon = "sword",
+): PlayerState {
+  return { id, pos, facing, aim: directionAngle(facing), weapon, health: 3, status, dash: initialDash(), attack: null, attackCooldownRemaining: 0 };
 }
 
 // Combat is now driven by a free aim ANGLE (radians), not a 4-way facing.
@@ -50,6 +57,45 @@ describe("inAttackCone", () => {
     expect(inAttackCone({ x: 0, y: 0 }, Math.PI / 4, { x: 1, y: 1 }, SWORD_REACH_M, half)).toBe(true);
     // same aim, but an up-right target is 90° off the aim → outside the cone → miss
     expect(inAttackCone({ x: 0, y: 0 }, Math.PI / 4, { x: 1, y: -1 }, SWORD_REACH_M, half)).toBe(false);
+  });
+});
+
+describe("inAttackLine (straight thrust — e.g. spear)", () => {
+  const line = (origin: Vec2, target: Vec2, reach = 3, halfWidth = 0.5) =>
+    inAttackLine(origin, 0, target, reach, halfWidth); // aim = 0 (straight right)
+
+  it("hits a target straight ahead within reach", () => {
+    expect(line({ x: 0, y: 0 }, { x: 2, y: 0 })).toBe(true);
+  });
+
+  it("misses a target beyond reach", () => {
+    expect(line({ x: 0, y: 0 }, { x: 4, y: 0 })).toBe(false);
+  });
+
+  it("misses a target off to the side (unlike a cone, the band does not widen with distance)", () => {
+    expect(line({ x: 0, y: 0 }, { x: 2, y: 1 })).toBe(false); // 1 m off the line > halfWidth
+    expect(line({ x: 0, y: 0 }, { x: 2, y: 0.4 })).toBe(true); // within the narrow band
+  });
+
+  it("misses a target behind", () => {
+    expect(line({ x: 0, y: 0 }, { x: -2, y: 0 })).toBe(false);
+  });
+});
+
+describe("weapon hit shapes", () => {
+  it("a spear thrusts in a straight line — misses a 45° target that a sword's cone would hit", () => {
+    const at = { x: 0, y: 0 };
+    const off = player("T", { x: 1, y: 1 }); // 45° off the aim, ~1.41 m away
+    const sword = player("S", at, "right", "alive", "sword");
+    const spear = player("P", at, "right", "alive", "spear");
+    expect(resolveAttack(sword, [sword, off]).length).toBe(1); // cone catches the 45° target
+    expect(resolveAttack(spear, [spear, off]).length).toBe(0); // straight thrust does not
+  });
+
+  it("a spear still hits a target directly ahead at its longer reach", () => {
+    const spear = player("P", { x: 0, y: 0 }, "right", "alive", "spear");
+    const ahead = player("T", { x: 3, y: 0 }); // 3 m ahead — inside the spear's reach
+    expect(resolveAttack(spear, [spear, ahead]).length).toBe(1);
   });
 });
 

@@ -100,7 +100,7 @@ export function stepWorld(
     const attacker = players[attackerId]!;
     const stats = WEAPONS[attacker.weapon];
     const push = aimVector(attacker.aim);
-    for (const ev of resolveAttack(attacker, candidates, stats.reach, stats.coneHalfAngle)) {
+    for (const ev of resolveAttack(attacker, candidates)) {
       damageByTarget[ev.targetId] = (damageByTarget[ev.targetId] ?? 0) + 1;
       const k = knockByTarget[ev.targetId] ?? { x: 0, y: 0 };
       knockByTarget[ev.targetId] = { x: k.x + push.x * stats.knockback, y: k.y + push.y * stats.knockback };

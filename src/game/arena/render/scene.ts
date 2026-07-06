@@ -145,22 +145,32 @@ export class ArenaScene extends Phaser.Scene {
       const fv = directionVector(p.facing);
       v.face.setPosition(fv.x * 4, fv.y * 3 - 4);
 
+      // Weapon visibility: bright + animated while striking, dimmed "ready" pose along the aim
+      // when the cooldown is up, hidden while recharging (so readiness is readable at a glance).
+      const stats = WEAPONS[p.weapon];
+      let bladeAngle: number | null = null;
+      let bladeAlpha = 1;
       if (p.attack) {
-        // sweep the blade through the weapon's cone around the locked aim over the swing's lifetime
-        const stats = WEAPONS[p.weapon];
         const half = stats.coneHalfAngle;
         const progress = Math.max(0, Math.min(1, 1 - p.attack.ttl / ATTACK_TTL_S));
-        const ang = p.attack.aim - half + progress * 2 * half;
+        // Thrust weapons (spear) stab straight along the aim; others sweep the cone.
+        bladeAngle = stats.thrust ? p.attack.aim : p.attack.aim - half + progress * 2 * half;
+      } else if (p.attackCooldownRemaining <= 0) {
+        bladeAngle = p.aim;
+        bladeAlpha = 0.5;
+      }
+      if (bladeAngle === null) {
+        v.sword.setVisible(false);
+      } else {
         // Project the world-space reach onto the foreshortened ground plane (y * Y_SCALE)
         // so the blade's on-screen reach matches the real hit reach in every direction.
-        const tipX = Math.cos(ang) * stats.reach * PX_PER_M;
-        const tipY = Math.sin(ang) * stats.reach * PX_PER_M * Y_SCALE;
+        const tipX = Math.cos(bladeAngle) * stats.reach * PX_PER_M;
+        const tipY = Math.sin(bladeAngle) * stats.reach * PX_PER_M * Y_SCALE;
         v.sword.setVisible(true);
+        v.sword.setAlpha(bladeAlpha);
         v.sword.setPosition(0, -2);
         v.sword.setRotation(Math.atan2(tipY, tipX));
         v.sword.setDisplaySize(Math.hypot(tipX, tipY), 5);
-      } else {
-        v.sword.setVisible(false);
       }
 
       v.pips.forEach((pip, i) => pip.setFillStyle(i < p.health ? 0xff5570 : 0x3a3a44));
