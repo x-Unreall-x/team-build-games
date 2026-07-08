@@ -210,25 +210,16 @@ render it. **Cosmetic only — never enters the sim core** (determinism preserve
   `session.ts` (`profile`/`meta`/roster) and `lobby.ts`. Add a shape picker beside the color swatches in
   `WarmupRoom.tsx` (e.g. circle / square / triangle / diamond / hex). `render/scene.ts` draws the chosen
   shape as the body, reusing the per-color tint pipeline (procedural, no assets).
-- **F4 — custom image avatar (decided: Wix Media CDN + login).** **Requires sign-in** — adds **Google
-  (Gmail) login** as the identity so avatars *and future player data* (stats, currency, unlocks) link to a
-  durable account, not an ephemeral peer id. This pulls **Track B W0 (auth) forward** as F4's dependency.
-  Flow: file input in `WarmupRoom.tsx` (jpg/png) → client-side **resize + center-crop to a square** (~256×256)
-  via an offscreen `<canvas>` → **upload to Wix Media** (server route with elevated app creds, since P2P
-  clients can't be trusted writers) → store the **CDN URL** on the member profile. Only the **URL** goes on
-  the wire (in `hello`/`StartPlayer`); `render/scene.ts` loads it as a Phaser texture keyed by player id and
-  maps it onto the body, falling back to shape/tint when absent or still loading. (Small payload on the wire,
-  no relay-budget risk; avatars persist across sessions because they're tied to the account.)
+- **F4 — custom image avatar → MOVED to Track B (2026-07-08).** Uploaded member photos are now part of the
+  **members area**: Wix Members auth (**B0**) + avatar upload/store + render (**B1**). Shape (F3) remains the
+  anonymous/free cosmetic; the member photo layers on top for signed-in players. See Track B.
 
 Tracking:
 - [x] new pure `arena/cosmetic.ts` (`Shape`, `SHAPES`, `DEFAULT_SHAPE`, `coerceShape` wire-boundary) — unit-tested; leaf module, no inward-dep violation
 - [x] `PlayerMeta` + protocol (`hello`/`start`/`roster`) carry `shape`; `lobby.ts`/`session.ts`/`soloDriver.ts` thread it (bots default; `coerceShape` on receive)
 - [x] shape picker in `WarmupRoom` (4 shapes: circle/square/triangle/diamond) + per-shape procedural body textures in `render/scene.ts`
 - [ ] **live playtest** shapes render + sync across peers
-- [ ] _(F4, deferred)_ **Google (Gmail) login** wired (via Track B W0); identity persists across sessions
-- [ ] avatar upload → canvas resize + center-crop to a square (~256×256)
-- [ ] server route uploads to **Wix Media**; **CDN URL** stored on the member profile (server-only writer)
-- [ ] avatar **URL** carried on the wire (`hello`/`start`); `render/scene.ts` applies texture per id; falls back to shape/tint; **cosmetic-only** (no sim-core change)
+- **F4 (avatars) → moved to Track B (B0 auth + B1 avatar upload)** and expanded into the members area (2026-07-08). Shapes (F3) stay here as the anonymous/free cosmetic; the uploaded member photo layers on top per Track B.
 
 ### P8 — Rounds & podium scoreboard · `dependsOn: P3`
 Goal: best-of-N matches with a between-rounds reset and a final 1-2-3 podium.
@@ -469,31 +460,70 @@ Goal: mode picker, mode-aware shell/HUD, revive UX, and the real sprite-sheet en
 
 ---
 
-## Track B — Wix Headless backend (persistence, accounts, economy) · `dependsOn: A/P3+`
+## Track B — Members area & backend (auth · avatars · progress · freemium) · `dependsOn: A/P3+`
 
-Goal: persist identity, stats, and currency, and feed the shop-keeper real inventory — using
-**trusted Astro server API routes** (run on Wix infra with elevated app creds), since the P2P clients
-can't be trusted writers.
+Goal: a **Wix Members** area that gives players a durable identity to which their **avatar, saved progress,
+and (later) a paid membership** attach — all written through **trusted Astro server API routes** (run on Wix
+infra with elevated app creds), since P2P clients can't be trusted writers. **Sign-in is OPTIONAL** (anonymous
+P2P play with shape/color is preserved); member-only features are always **shown but LOCKED with an unlock
+hint** (decided 2026-07-08). This track supersedes the old W0/W1/W2 stub and **absorbs F4 (avatars)**.
 
-- **W0 — Auth & profile:** **Google (Gmail) sign-in** via Wix Members social login (decided 2026-06-22 —
-  see F4); player name/musa color **and avatar CDN URL** stored on the member/profile; lobby reads identity
-  from the logged-in member. This is the account that **F4 avatars and all future player data** attach to,
-  so it is now a **dependency of F4 (P7)**, not only Track B.
-- **W1 — Data model & write path:** Wix Data collections `Players`, `Matches`, `Items`, `Shops`,
-  `Transactions` with **PRIVILEGED**-write permissions; an API route `POST /api/match-result` where the
-  **host reports the result**, the server validates (sanity bounds) and writes stats/currency — the
-  only writer of balances (clients can't write directly).
-- **W2 — Economy & shop-keeper:** shop-keeper inventory from `@wix/stores`/`Items`; spend in-game
-  currency (server-validated); optional real-money currency top-ups via existing `@wix/ecom` checkout
-  path; Wix dashboard CMS as the free backoffice.
+**Capability model (drives every "locked" hint):**
+- **Anonymous** — plays any mode (shape + color), joins via link. Avatar → *"Sign in to use a photo"*; progress → *"Sign in to save"*; (later) sees ads.
+- **Signed-in (free)** — custom avatar + saved progress. Premium perks → *"Upgrade to unlock"*; (later) still sees ads.
+- **Paid member** — ads off + premium perks.
 
-Tracking:
-- [ ] members log in; identity flows into the lobby
-- [ ] collections created with PRIVILEGED write permissions
-- [ ] `POST /api/match-result` validates + persists stats/currency (server-only writer)
-- [ ] shop-keeper reads live items; spending currency is server-validated
-- [ ] (optional) real-money top-ups via `@wix/ecom`
-- **Open risk:** a cheating host can still mis-report results — acceptable for casual play; add server sanity checks.
+Two lock kinds — **sign-in-to-unlock** (avatar, progress) and **upgrade-to-unlock** (ads-off, premium) — both
+rendered by a reusable `<LockedFeature hint=…>` badge/overlay.
+
+### B0 — Auth foundation (Wix Members) · `dependsOn: none`
+Goal: optional Wix-managed login (email + Google + social) on the headless Astro app, current-member available
+client + server, a members-area shell, and the locked-feature primitive. Anonymous play untouched.
+
+- [ ] Install `@wix/members` (+ identity); wire Wix **managed login** (email/password + Google + social) into the headless app; session + `currentMember` on client and in server routes
+- [ ] "Sign in" entry in the site chrome + a **members-area shell** (profile: display name, avatar slot, sign out)
+- [ ] Reusable `<LockedFeature hint>` overlay/badge + a `useCapability()` (anonymous | member | paid) hook
+- [ ] Anonymous P2P play verified unchanged (no login required to join/play)
+- [ ] **Wix-dashboard config** (needs the owner): enable Members + login, social providers (Google), OAuth/app setup — document steps
+
+### B1 — Avatar upload (first member feature; Arena) · `dependsOn: B0` — **absorbs F4**
+Goal: a signed-in member uploads one character photo; it's resized, stored, and shown on their character to
+every peer.
+
+- [ ] Avatar control (members area + Arena lobby): file input **jpg/jpeg/png** → client-side **resize + center-crop to a square** (256×256) via an offscreen `<canvas>`
+- [ ] **Trusted `/api/avatar` server route** uploads the image to **Wix Media** (elevated app creds; clients never write directly); store the **CDN URL** on the member (one avatar for now)
+- [ ] Arena attaches the logged-in member's avatar **URL** to their roster entry → carried on the wire (`hello`/`start`) → `render/scene.ts` maps it onto the body (Phaser texture per player id), **falling back to shape/color** when absent/loading
+- [ ] Anonymous users see the avatar picker **locked** (`<LockedFeature hint="Sign in to use a photo">`)
+- [ ] **cosmetic-only** (never enters the sim); payload capped; type/size validated server-side
+
+### B2 — Progress & stats persistence · `dependsOn: B0`
+Goal: per-member game data, written only by a trusted server route.
+
+- [ ] Wix Data collections (`Players`, `Matches`/stats) with **PRIVILEGED** write permissions
+- [ ] `POST /api/match-result` — the **host reports the result**, server validates (sanity bounds) and writes per-member stats (wins, matches played, best survival level, favorite weapon…) — the only writer
+- [ ] Members area shows a player's stats; anonymous runs aren't saved (locked hint *"Sign in to save your progress"*)
+- **Open risk:** a cheating host can mis-report — acceptable for casual play; add server sanity checks.
+
+### B3 — Freemium / payments (later) · `dependsOn: B0`
+Goal: a paid membership tier.
+
+- [ ] `@wix/pricing-plans` subscription plan(s); checkout via the existing `@wix/ecom` path; billing state in the members area
+- [ ] `useCapability()` returns `paid` for an active plan; premium perks gated behind it
+- [ ] Decide the premium perk list (ads-off + e.g. cosmetic unlocks / extra loadout slots)
+
+### B4 — Ads + ads-disablement (later) · `dependsOn: B3`
+Goal: unobtrusive ads for free users, hidden for paid members. (There are NO ads today — this adds them.)
+
+- [ ] House-banner placeholder in **non-gameplay** surfaces only (menu / between-match / results — never in-match)
+- [ ] Hidden when `useCapability() === 'paid'`
+- [ ] Real ad-network integration is a later decision (network, CSP/allowed-host, placement)
+
+**Open decisions (Track B)**
+- Wix-dashboard config steps for headless Members auth + social providers + Pricing Plans — **owner action, potential blocker for B0/B3**.
+- Avatar store location: member **custom profile field** vs a `Players` collection row keyed by `memberId` (recommend the `Players` row so it co-locates with progress).
+- Avatar size/format: **256×256 square, jpg/jpeg/png, one per member** (recommended); re-crop on re-upload.
+- Ad network + premium-perk list — deferred to B3/B4.
+- Mapping member identity → the in-game P2P peer id (the member's avatar/stats attach to their current session's roster entry).
 
 ---
 
@@ -682,7 +712,7 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 - **Survival (Track A):** pure core — `src/game/arena/survival/{rng,enemy,enemyKinds,steering,waves,behaviors,step}.ts` (+ `mode` on `types.ts`, `resolveEnd`/`centerSpawns`/`createSurvivalWorld` in `match.ts`, entity caps in `constants.ts`); net — quantized/delta snapshots in `protocol.ts`/`sync.ts`; UI — mode toggle in `WarmupRoom.tsx`, `SurvivalHud`.
 - **Overrun shooter (Track D):** new game module `src/game/overrun/{types,rng,weapons,intent,projectile,enemies,waves,drops,firing,sim,shooterSession}.ts`; render — `src/game/overrun/render/scene.ts`; page `src/pages/games/overrun.astro`; UI `src/components/game/overrun/Overrun.tsx` (+ its lobby/HUD).
 - **Art pipeline (Track E):** shared `src/game/*/render/{assets,anim}.ts`, atlases under `public/game/atlases/`, `docs/ART-PIPELINE.md` + `LICENSES.md`.
-- **Server (Track B):** `src/pages/api/match-result.ts` etc.
+- **Members area (Track B):** `@wix/members` auth wiring; server routes `src/pages/api/{avatar,match-result}.ts` (Wix Media upload + Wix Data writes, elevated creds); `src/components/members/{MembersArea,LockedFeature}.tsx` + a `useCapability()` hook; `@wix/pricing-plans` for B3.
 - **Assets:** one base musa sprite under `public/` (runtime-tinted to 8 colors) for versus; sprite-sheet atlases (Track E) for the horde games.
 - **Keep untouched:** Astro site chrome (`layout/`, `footer`, `navbar`), the vite 6.4.3 override.
 
@@ -697,7 +727,7 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 7. Maze algorithm (F6): **recursive backtracker (randomized DFS)**, seed broadcast in `start` / randomized Prim's / Eller's; add loops by knocking out a few extra walls.
 8. Haste-powerup buff model (F7): **DECIDED (2026-06-22) — timed (~8 s, cooldowns ×0.5)** (not permanent/stacking).
 9. Rounds default (F5): **DECIDED (2026-06-22) — best-of-3; a tie for a podium place → sudden-death extra round(s)** until decided.
-10. Identity/auth provider (F4 + Track B W0): **DECIDED (2026-06-22) — Google (Gmail) sign-in** (via Wix Members social login) as the account players' avatars + data attach to.
+10. Identity/auth provider (Track B B0): **DECIDED (2026-07-08) — Wix Members managed login, email + Google + social**; sign-in is OPTIONAL (anonymous play preserved), member features shown locked with hints. (Supersedes the earlier Google-only note.)
 11. No-mouse / touch fallback for free-aim (F8/P11): **DECIDED (2026-07-06) — aim falls back to the movement-facing angle** when no pointer aim is present (keyboard-only plays as before). Richer twin-stick/drag-to-aim deferred.
 12. Weapon balance (F9/P12): start at sword 2 m·90°·1 s / spear ~3.5 m·narrow·slower / knife ~1 m·fast / **bow** ranged (arrow ~12 m/s, ~15 m range, slow draw, little/no knockback) — **tune in playtest**.
 13. Co-op difficulty (F10/P13): **fixed bot count** / escalating waves (pairs with rounds) / scales with player count — **decide at P13**.
@@ -718,6 +748,15 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 
 ## Progress log
 
+- **2026-07-08** — **P12 bow shipped + Track B (members area) designed.** Finished P12: new pure
+  `arena/projectile.ts` + `World.projectiles`; ranged weapons loose host-simulated arrows (deterministic
+  `owner#tick` id) stepped/expired/hit in `sim.ts`, carried in the snapshot; bow in the picker; arrow/held-bow
+  sprites + `"shoot"` SFX. 132 tests, tsc clean, built, committed (`5e81f25`), deployed. Then brainstormed +
+  rewrote **Track B** into a **members area** (Wix Members email+Google+social, OPTIONAL login with
+  locked-feature hints): B0 auth foundation → B1 avatar upload (absorbs F4: jpg/png → resize/crop → `/api/avatar`
+  → Wix Media URL on the member) → B2 progress/stats → B3 freemium (Pricing Plans) → B4 ads/ads-off (later).
+  Capability model (anonymous / signed-in / paid) drives a reusable `<LockedFeature>`. Design only — first build
+  step is B0 (needs Wix-dashboard login config).
 - **2026-07-08** — **Roadmap expanded: Survival mode + Overrun shooter + Art pipeline (design only).** Brainstormed
   (skill) + ran an 8-agent design workflow (5 area designs → adversarial critics → synthesis) grounded in the codebase.
   Added **Track A · Survival** (co-op PvE, P-A0…P-A5: bandwidth/determinism substrate → mode plumbing + `versus`
