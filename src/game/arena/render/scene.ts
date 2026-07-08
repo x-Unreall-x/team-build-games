@@ -4,9 +4,8 @@ import {
   FIELD_M,
   FIGURE_RADIUS_M,
   PX_PER_M,
-  SWORD_REACH_M,
 } from "../../constants";
-import { WEAPONS } from "../weapons";
+import { WEAPONS, WEAPON_LIST, type Weapon } from "../weapons";
 import type { PlayerId, World } from "../types";
 import { dashCooldownFraction } from "../dash";
 import { attackCooldownFraction } from "../combat";
@@ -19,16 +18,22 @@ import type { ArenaEvent, HudState, MatchDriver } from "./contract";
 export type { ArenaEvent, HudState, PlayerMeta, MatchDriver } from "./contract";
 
 const bodyTexture = (shape: Shape) => `musa-body-${shape}`;
+const weaponTexture = (weapon: Weapon) => `weapon-${weapon}`;
+/** Canonical weapon-sprite texture size (drawn pointing +x; stretched to reach at render). */
+const WEP_W = 64;
+const WEP_H = 16;
 
 // ---- 2.5D render constants (the sim stays flat top-down in meters) -----------
-const MARGIN_X = 40;
-const OFFSET_Y = 78;
+// Margins/paddings scale with the same +40% as PX_PER_M so the whole canvas grows uniformly.
+const MARGIN_X = 56;
+const OFFSET_Y = 109;
+const BOTTOM_PAD = 98;
 const Y_SCALE = 0.62;
 const VIS_R = FIGURE_RADIUS_M * PX_PER_M; // drawn body == physical body
 const FIELD_PX = FIELD_M * PX_PER_M;
 
 export const ARENA_WIDTH = MARGIN_X * 2 + FIELD_PX;
-export const ARENA_HEIGHT = OFFSET_Y + FIELD_PX * Y_SCALE + 70;
+export const ARENA_HEIGHT = OFFSET_Y + FIELD_PX * Y_SCALE + BOTTOM_PAD;
 
 /** 8-color player palette (musa tints). */
 export const PALETTE = [
@@ -46,7 +51,8 @@ interface PlayerView {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Image;
   face: Phaser.GameObjects.Image;
-  sword: Phaser.GameObjects.Rectangle;
+  /** Weapon sprite (detailed per-weapon texture), drawn above the body so it's always visible. */
+  sword: Phaser.GameObjects.Image;
   pips: Phaser.GameObjects.Rectangle[];
   deadAnimated: boolean;
 }
@@ -148,29 +154,45 @@ export class ArenaScene extends Phaser.Scene {
       // Weapon visibility: bright + animated while striking, dimmed "ready" pose along the aim
       // when the cooldown is up, hidden while recharging (so readiness is readable at a glance).
       const stats = WEAPONS[p.weapon];
-      let bladeAngle: number | null = null;
-      let bladeAlpha = 1;
-      if (p.attack) {
-        const half = stats.coneHalfAngle;
-        const progress = Math.max(0, Math.min(1, 1 - p.attack.ttl / ATTACK_TTL_S));
-        // Thrust weapons (spear) stab straight along the aim; others sweep the cone.
-        bladeAngle = stats.thrust ? p.attack.aim : p.attack.aim - half + progress * 2 * half;
-      } else if (p.attackCooldownRemaining <= 0) {
-        bladeAngle = p.aim;
-        bladeAlpha = 0.5;
-      }
-      if (bladeAngle === null) {
+      const atk = p.attack;
+      const ready = p.attackCooldownRemaining <= 0;
+      if (!atk && !ready) {
         v.sword.setVisible(false);
       } else {
-        // Project the world-space reach onto the foreshortened ground plane (y * Y_SCALE)
-        // so the blade's on-screen reach matches the real hit reach in every direction.
-        const tipX = Math.cos(bladeAngle) * stats.reach * PX_PER_M;
-        const tipY = Math.sin(bladeAngle) * stats.reach * PX_PER_M * Y_SCALE;
+        const aim = atk ? atk.aim : p.aim;
+        const alpha = atk ? 1 : 0.5;
+        // swing progress 0→1 over the swing's lifetime
+        const progress = atk ? Math.max(0, Math.min(1, 1 - atk.ttl / ATTACK_TTL_S)) : 0;
         v.sword.setVisible(true);
-        v.sword.setAlpha(bladeAlpha);
-        v.sword.setPosition(0, -2);
-        v.sword.setRotation(Math.atan2(tipY, tipX));
-        v.sword.setDisplaySize(Math.hypot(tipX, tipY), 5);
+        v.sword.setAlpha(alpha);
+        v.sword.setTexture(weaponTexture(p.weapon));
+        if (stats.thrust) {
+          // Spear held mid-shaft: at rest 40% of its length sits BEHIND the player; a strike
+          // jabs it forward (out-and-back) so the tip reaches full reach at the peak.
+          const jab = Math.sin(progress * Math.PI); // 0 → 1 → 0
+          const shift = jab * 0.4 * stats.reach;
+          const backM = -0.4 * stats.reach + shift; // tail (behind the player at rest)
+          const frontM = 0.6 * stats.reach + shift; // tip
+          const c = Math.cos(aim);
+          const s = Math.sin(aim);
+          const baseX = c * backM * PX_PER_M;
+          const baseY = s * backM * PX_PER_M * Y_SCALE;
+          const tipX = c * frontM * PX_PER_M;
+          const tipY = s * frontM * PX_PER_M * Y_SCALE;
+          v.sword.setPosition(baseX, baseY - 2);
+          v.sword.setRotation(Math.atan2(tipY - baseY, tipX - baseX));
+          v.sword.setDisplaySize(Math.hypot(tipX - baseX, tipY - baseY), WEP_H);
+        } else {
+          // Sword/knife: sweep the cone from the player center (rest pose points along the aim).
+          const half = stats.coneHalfAngle;
+          const ang = atk ? aim - half + progress * 2 * half : aim;
+          // Project onto the foreshortened ground plane (y * Y_SCALE) so on-screen reach matches.
+          const tipX = Math.cos(ang) * stats.reach * PX_PER_M;
+          const tipY = Math.sin(ang) * stats.reach * PX_PER_M * Y_SCALE;
+          v.sword.setPosition(0, -2);
+          v.sword.setRotation(Math.atan2(tipY, tipX));
+          v.sword.setDisplaySize(Math.hypot(tipX, tipY), WEP_H);
+        }
       }
 
       v.pips.forEach((pip, i) => pip.setFillStyle(i < p.health ? 0xff5570 : 0x3a3a44));
@@ -248,7 +270,56 @@ export class ArenaScene extends Phaser.Scene {
     g.fillCircle(VIS_R - 5, VIS_R, 2.6);
     g.fillCircle(VIS_R + 5, VIS_R, 2.6);
     g.generateTexture("musa-face", d, d);
+
+    for (const w of WEAPON_LIST) {
+      g.clear();
+      this.drawWeapon(g, w);
+      g.generateTexture(weaponTexture(w), WEP_W, WEP_H);
+    }
     g.destroy();
+  }
+
+  /** Draw a weapon pointing +x into `g` (handle/butt at the left, tip at the right). */
+  private drawWeapon(g: Phaser.GameObjects.Graphics, weapon: Weapon): void {
+    const SILVER = 0xd7dbe0, SHEEN = 0xeef2f6, GOLD = 0xf6c453, WOOD = 0x8a5a2b, GRIP = 0x3f3a44, STEEL = 0x9ca3af;
+    switch (weapon) {
+      case "sword":
+        g.fillStyle(STEEL, 1).fillCircle(4, 8, 2.5); // pommel
+        g.fillStyle(GRIP, 1).fillRect(5, 6, 12, 4); // handle
+        g.fillStyle(GOLD, 1).fillRect(16, 1, 4, 14); // crossguard
+        g.fillStyle(SILVER, 1).fillRect(20, 6, 40, 4); // blade
+        g.fillStyle(SHEEN, 1).fillRect(20, 6, 38, 1.5); // edge highlight
+        g.fillStyle(SILVER, 1).fillTriangle(60, 6, 64, 8, 60, 10); // point
+        break;
+      case "spear":
+        g.fillStyle(WOOD, 1).fillRect(2, 6.8, 44, 2.4); // shaft
+        g.fillStyle(GRIP, 1).fillRect(42, 6, 5, 4); // binding at the head
+        g.fillStyle(SILVER, 1).fillTriangle(46, 2.5, 64, 8, 46, 13.5); // leaf head
+        g.fillStyle(SHEEN, 1).fillTriangle(50, 6.5, 62, 8, 50, 9.5); // head sheen
+        break;
+      case "knife":
+        g.fillStyle(GRIP, 1).fillRect(6, 6, 14, 4); // handle
+        g.fillStyle(STEEL, 1).fillRect(19, 5, 2, 6); // guard
+        g.fillStyle(SILVER, 1).fillRect(21, 6.5, 29, 3); // blade
+        g.fillStyle(SILVER, 1).fillTriangle(50, 6.5, 58, 8, 50, 9.5); // point
+        g.fillStyle(SHEEN, 1).fillRect(21, 6.5, 27, 1); // edge highlight
+        break;
+      case "bow": {
+        // Simple recurved bow + nocked arrow (placeholder until the bow projectile slice).
+        g.lineStyle(2, WOOD, 1);
+        g.beginPath();
+        g.arc(14, 8, 7, -1.1, 1.1);
+        g.strokePath();
+        g.lineStyle(1, STEEL, 0.9);
+        g.beginPath();
+        g.moveTo(14, 1.5);
+        g.lineTo(14, 14.5);
+        g.strokePath();
+        g.fillStyle(WOOD, 1).fillRect(14, 7.4, 40, 1.2); // arrow shaft
+        g.fillStyle(SILVER, 1).fillTriangle(54, 6.5, 60, 8, 54, 9.5); // arrowhead
+        break;
+      }
+    }
   }
 
   private makeView(id: PlayerId): PlayerView {
@@ -257,10 +328,10 @@ export class ArenaScene extends Phaser.Scene {
     const shadow = this.add.ellipse(0, VIS_R - 1, VIS_R * 2.1, VIS_R * 0.8, 0x000000, 0.28);
     const body = this.add.image(0, 0, bodyTexture(meta.shape)).setTint(color);
     const face = this.add.image(0, -4, "musa-face");
-    // Sword pivots at the player center and is SWORD_REACH_M long (tip == hit range);
-    // it sweeps the 90° cone during a swing.
+    // Weapon: a detailed sprite whose handle pivots at the player center; stretched to reach and
+    // rotated to the aim each frame. Its texture is set per-weapon in render().
     const sword = this.add
-      .rectangle(0, 0, SWORD_REACH_M * PX_PER_M, 5, 0xf8fafc)
+      .image(0, 0, weaponTexture("sword"))
       .setOrigin(0, 0.5)
       .setVisible(false);
     const name = this.add
@@ -269,7 +340,9 @@ export class ArenaScene extends Phaser.Scene {
     const pips = [0, 1, 2].map((i) =>
       this.add.rectangle(-8 + i * 8, -VIS_R - 6, 6, 4, 0xff5570).setOrigin(0.5),
     );
-    const container = this.add.container(0, 0, [shadow, sword, body, face, name, ...pips]);
+    // Draw order (back→front): shadow, body, face, WEAPON (above body so it's always visible),
+    // then the name + health pips floating on top.
+    const container = this.add.container(0, 0, [shadow, body, face, sword, name, ...pips]);
     return { container, body, face, sword, pips, deadAnimated: false };
   }
 

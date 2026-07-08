@@ -6,8 +6,8 @@
  * ("30 m field", "0.5 m figure", "~4 m/s run") and decouples it from canvas size.
  */
 
-/** Pixels drawn per world meter. 20 → a 30 m field is 600 px. */
-export const PX_PER_M = 20;
+/** Pixels drawn per world meter. 28 → a 30 m field is 840 px (render scale; +40% over the original 20). */
+export const PX_PER_M = 28;
 
 /** The arena is a square field, FIELD_M meters on each side. */
 export const FIELD_M = 30;
