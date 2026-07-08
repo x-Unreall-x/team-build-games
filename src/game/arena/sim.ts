@@ -8,7 +8,7 @@
  * Composes movement + dash + combat + death + win.
  */
 
-import type { Intent, PlayerState, Vec2, World } from "./types";
+import type { Intent, PlayerState, Projectile, Vec2, World } from "./types";
 import { aimVector, clampToField, directionAngle, directionFromInput, directionVector } from "./logic";
 import {
   consumeDashDistance,
@@ -17,6 +17,7 @@ import {
   tryStartDash,
 } from "./dash";
 import { resolveAttack } from "./combat";
+import { advanceProjectile, projectileTarget, spawnArrow } from "./projectile";
 import { soleSurvivor } from "./match";
 import { WEAPONS } from "./weapons";
 import {
@@ -39,6 +40,7 @@ export function stepWorld(
   // 1) Per-player movement, dash, facing, and attack-state update.
   const players: Record<string, PlayerState> = {};
   const attackedThisTick: string[] = [];
+  const newProjectiles: Projectile[] = [];
 
   for (const p of Object.values(world.players)) {
     if (p.status !== "alive") {
@@ -80,9 +82,26 @@ export function stepWorld(
     let attackCooldownRemaining = Math.max(0, p.attackCooldownRemaining - dt);
     let attack = p.attack;
     if (intent.attack && attackCooldownRemaining <= 0) {
+      const stats = WEAPONS[p.weapon];
       attack = { aim, ttl: ATTACK_TTL_S };
-      attackCooldownRemaining = WEAPONS[p.weapon].cooldown;
-      attackedThisTick.push(p.id);
+      attackCooldownRemaining = stats.cooldown;
+      if (stats.ranged) {
+        // Ranged weapon (bow): loose an arrow along the aim instead of a melee hit.
+        newProjectiles.push(
+          spawnArrow({
+            ownerId: p.id,
+            pos,
+            aim,
+            tick: world.tick,
+            speed: stats.ranged.speed,
+            range: stats.ranged.range,
+            damage: 1,
+            knockback: stats.knockback,
+          }),
+        );
+      } else {
+        attackedThisTick.push(p.id);
+      }
     } else if (attack) {
       const ttl = attack.ttl - dt;
       attack = ttl > 0 ? { ...attack, ttl } : null;
@@ -107,6 +126,27 @@ export function stepWorld(
     }
   }
 
+  // 2.5) Advance projectiles: move, resolve the first body hit (→ damage + knockback along its
+  //      heading), else expire on spent range or a field wall. Deterministic (no clock/RNG).
+  const projectiles: Projectile[] = [];
+  for (const proj of [...world.projectiles, ...newProjectiles]) {
+    const moved = advanceProjectile(proj, dt);
+    const hitId = projectileTarget(moved, candidates);
+    if (hitId) {
+      damageByTarget[hitId] = (damageByTarget[hitId] ?? 0) + moved.damage;
+      const spd = Math.hypot(moved.vel.x, moved.vel.y) || 1;
+      const k = knockByTarget[hitId] ?? { x: 0, y: 0 };
+      knockByTarget[hitId] = {
+        x: k.x + (moved.vel.x / spd) * moved.knockback,
+        y: k.y + (moved.vel.y / spd) * moved.knockback,
+      };
+      continue; // consumed on hit
+    }
+    if (moved.distRemaining <= 0) continue; // spent its range
+    if (moved.pos.x < 0 || moved.pos.x > FIELD_M || moved.pos.y < 0 || moved.pos.y > FIELD_M) continue; // hit a wall
+    projectiles.push(moved);
+  }
+
   // 3) Apply damage, knockback, and deaths.
   for (const [id, dmg] of Object.entries(damageByTarget)) {
     const p = players[id]!;
@@ -120,7 +160,7 @@ export function stepWorld(
   }
 
   // 4) Win condition: one (or zero) left → match ends.
-  const next: World = { ...world, players, tick: world.tick + 1 };
+  const next: World = { ...world, players, projectiles, tick: world.tick + 1 };
   const aliveIds = Object.values(players).filter((p) => p.status === "alive");
   if (aliveIds.length <= 1) {
     next.phase = "ended";

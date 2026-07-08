@@ -64,6 +64,7 @@ export class ArenaScene extends Phaser.Scene {
   private cfg!: ArenaConfig;
   private keyboard!: KeyboardReader;
   private views: Record<PlayerId, PlayerView> = {};
+  private projViews: Record<string, Phaser.GameObjects.Image> = {};
   private prev: World | null = null;
   private lastCountdown = 99;
   private ended = false;
@@ -122,7 +123,7 @@ export class ArenaScene extends Phaser.Scene {
       const isLocal = p.id === localId;
       if (isLocal && !before.dash.dashing && p.dash.dashing) this.cfg.onEvent({ type: "dash" });
       if (isLocal && p.attackCooldownRemaining > before.attackCooldownRemaining) {
-        this.cfg.onEvent({ type: "attack" });
+        this.cfg.onEvent(WEAPONS[p.weapon].ranged ? { type: "shoot" } : { type: "attack" });
       }
       if (p.health < before.health) this.cfg.onEvent({ type: "hit", local: isLocal });
       if (before.status === "alive" && p.status === "dead") {
@@ -166,7 +167,15 @@ export class ArenaScene extends Phaser.Scene {
         v.sword.setVisible(true);
         v.sword.setAlpha(alpha);
         v.sword.setTexture(weaponTexture(p.weapon));
-        if (stats.thrust) {
+        if (stats.ranged) {
+          // Bow: a fixed-length held sprite pointing along the aim (arrows fly as separate sprites).
+          const L = 1.1; // meters — drawn bow length (reach is 0; damage is carried by the arrow)
+          const tipX = Math.cos(aim) * L * PX_PER_M;
+          const tipY = Math.sin(aim) * L * PX_PER_M * Y_SCALE;
+          v.sword.setPosition(0, -2);
+          v.sword.setRotation(Math.atan2(tipY, tipX));
+          v.sword.setDisplaySize(Math.hypot(tipX, tipY), WEP_H);
+        } else if (stats.thrust) {
           // Spear held mid-shaft: at rest 40% of its length sits BEHIND the player; a strike
           // jabs it forward (out-and-back) so the tip reaches full reach at the peak.
           const jab = Math.sin(progress * Math.PI); // 0 → 1 → 0
@@ -196,6 +205,31 @@ export class ArenaScene extends Phaser.Scene {
       }
 
       v.pips.forEach((pip, i) => pip.setFillStyle(i < p.health ? 0xff5570 : 0x3a3a44));
+    }
+
+    this.renderProjectiles(world);
+  }
+
+  /** In-flight arrows: one pooled sprite per projectile id, oriented along its (Y-projected) heading. */
+  private renderProjectiles(world: World): void {
+    const live = new Set<string>();
+    for (const proj of world.projectiles) {
+      live.add(proj.id);
+      let img = this.projViews[proj.id];
+      if (!img) {
+        img = this.add.image(0, 0, "arrow").setOrigin(0.5, 0.5);
+        img.setDisplaySize(0.9 * PX_PER_M, 0.3 * PX_PER_M);
+        this.projViews[proj.id] = img;
+      }
+      img.setPosition(sx(proj.pos.x), sy(proj.pos.y));
+      img.setDepth(proj.pos.y);
+      img.setRotation(Math.atan2(proj.vel.y * Y_SCALE, proj.vel.x));
+    }
+    for (const id of Object.keys(this.projViews)) {
+      if (!live.has(id)) {
+        this.projViews[id]!.destroy();
+        delete this.projViews[id];
+      }
     }
   }
 
@@ -276,6 +310,13 @@ export class ArenaScene extends Phaser.Scene {
       this.drawWeapon(g, w);
       g.generateTexture(weaponTexture(w), WEP_W, WEP_H);
     }
+
+    // In-flight arrow (points +x): shaft + fletching + steel head.
+    g.clear();
+    g.fillStyle(0x6b4a2f, 1).fillRect(2, 3.1, 15, 1.8); // shaft
+    g.fillStyle(0xf3f4f6, 1).fillTriangle(2, 2, 6, 4, 2, 6); // fletching
+    g.fillStyle(0xd7dbe0, 1).fillTriangle(16, 1.5, 24, 4, 16, 6.5); // head
+    g.generateTexture("arrow", 24, 8);
     g.destroy();
   }
 

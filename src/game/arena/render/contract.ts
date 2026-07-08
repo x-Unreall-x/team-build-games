@@ -35,5 +35,6 @@ export type ArenaEvent =
   | { type: "go" }
   | { type: "dash" }
   | { type: "attack" }
+  | { type: "shoot" }
   | { type: "hit"; local: boolean }
   | { type: "death"; local: boolean };

@@ -94,8 +94,26 @@ export interface InputMemory {
 
 export type MatchPhase = "lobby" | "countdown" | "playing" | "ended";
 
+/** An in-flight ranged projectile (e.g. a bow arrow). Host-simulated, carried in the World + snapshots. */
+export interface Projectile {
+  /** Deterministic id `${ownerId}#${tick}` — fire rate is cooldown-gated, so it is unique per shot. */
+  id: string;
+  ownerId: PlayerId;
+  pos: Vec2;
+  /** Velocity in meters/second. */
+  vel: Vec2;
+  /** Meters of travel left before it expires. */
+  distRemaining: number;
+  /** Hearts removed on hit. */
+  damage: number;
+  /** Meters the victim is knocked back, along the projectile's heading. */
+  knockback: number;
+}
+
 export interface World {
   players: Record<PlayerId, PlayerState>;
+  /** In-flight ranged projectiles (host-owned). */
+  projectiles: Projectile[];
   phase: MatchPhase;
   /** Monotonic tick counter (host-owned). */
   tick: number;

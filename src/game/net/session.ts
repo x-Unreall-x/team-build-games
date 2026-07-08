@@ -36,7 +36,7 @@ export interface SessionOptions {
   onChange: () => void;
 }
 
-const EMPTY_WORLD: World = { players: {}, phase: "lobby", tick: 0, winnerId: null };
+const EMPTY_WORLD: World = { players: {}, projectiles: [], phase: "lobby", tick: 0, winnerId: null };
 const NO_INPUT: RawInput = { up: false, down: false, left: false, right: false, dash: false, attack: false };
 
 export class Session implements MatchDriver {

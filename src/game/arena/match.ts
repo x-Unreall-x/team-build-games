@@ -36,7 +36,7 @@ export function createPlayer(id: PlayerId, pos: Vec2, facing: Direction = "down"
 export function createWorld(spawns: SpawnSpec[], phase: MatchPhase = "playing"): World {
   const players: Record<PlayerId, PlayerState> = {};
   for (const s of spawns) players[s.id] = createPlayer(s.id, s.pos, s.facing, s.weapon);
-  return { players, phase, tick: 0, winnerId: null };
+  return { players, projectiles: [], phase, tick: 0, winnerId: null };
 }
 
 export function alivePlayers(world: World): PlayerState[] {

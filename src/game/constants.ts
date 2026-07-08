@@ -50,6 +50,9 @@ export const DASH_DIST_M = 2;
 /** Dash cooldown in seconds (icon greys out then brightens over this window). */
 export const DASH_COOLDOWN_S = 3;
 
+/** Radius (meters) of a ranged projectile, for its body-overlap hit test. */
+export const PROJECTILE_RADIUS_M = 0.15;
+
 // --- Match rules (Arena) ---
 
 /** Hearts each player starts with. */

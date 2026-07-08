@@ -101,6 +101,7 @@ export default function Arena() {
     else if (e.type === "go") s.play("go");
     else if (e.type === "dash") s.play("dash");
     else if (e.type === "attack") s.play("attack");
+    else if (e.type === "shoot") s.play("shoot");
     else if (e.type === "hit") s.play("hit");
     else if (e.type === "death" && e.local) s.play("gameover");
   }, []);

@@ -14,8 +14,9 @@ persistence, then the turn-based game #2.
 - **Networking:** **Trystero** (zero-backend signaling: Nostr default + BitTorrent fallback) in a
   **host-authoritative star on a WebRTC mesh**; clients send inputs only, the host runs the sim.
 - **Audio:** raw **Web Audio** oscillator SFX (no binary assets).
-- **Scope:** Arena (Track A) + Wix backend (Track B) + turn-based game #2 (Track C).
-- **Musa art:** tint **one base musa sprite** into 8 player colors.
+- **Scope:** Arena incl. **versus + Survival** modes (Track A) + Wix backend (Track B) + turn-based #2 deferred (Track C) + **Overrun** co-op horde shooter (Track D) + **sprite-sheet art pipeline** (Track E).
+- **Musa art:** tint **one base musa sprite** into 8 player colors (versus). The horde games (Survival/Overrun) move to **sprite-sheet assets** (Track E) with a procedural fallback.
+- **Horde determinism/netcode (locked 2026-07-08):** enemies/projectiles/pickups/waves are **host-owned**, seeded from `start`, drawn via a **coordinate-hash RNG** `hash(seed,tick,entityId,salt)` (not a shared cursor); snapshots carry **all** host state and are **capped + quantized/delta-encoded @10 Hz** with client interpolation. No `Math.random`/clock in any sim core.
 
 ---
 
@@ -347,9 +348,9 @@ Tracking:
 - [x] new pure `arena/weapons.ts` (`Weapon`, `WEAPONS` stats, `coerceWeapon`); sword references legacy constants so it's byte-identical to today — unit-tested
 - [x] `PlayerState.weapon` (sim-relevant) + `SpawnSpec`/`createPlayer`; threaded through `lobby`/protocol (`hello`/`start`/`roster`)/`session` (incl. `beginMatch` zips weapon into spawns); picker in `WarmupRoom` (melee)
 - [x] `sim.ts` uses the attacker's weapon stats (reach/cone/cooldown/knockback) — unit-tested (spear reaches 3 m, knife can't); `render/scene.ts` blade length/arc per weapon
-- [ ] _(bow slice)_ **`World.projectiles` + `sim.ts` step/expire/hit for the bow arrow (deterministic, team-aware)** — unit-tested; add bow to picker; snapshot carries projectiles
-- [ ] _(bow slice)_ in-flight arrow sprites + bow draw/release/impact SFX
-- [ ] **live playtest** + balance pass (sword/spear/knife feel; then bow)
+- [x] new pure `arena/projectile.ts` (`spawnArrow`/`advanceProjectile`/`projectileTarget`) + `World.projectiles` (types); `sim.ts` spawns arrows for ranged weapons and steps/expires/hits them (deterministic id `owner#tick`, no RNG) — unit-tested (6 projectile + 3 sim); snapshot carries `projectiles` (`protocol`/`sync`/`worldFromSnapshot`)
+- [x] bow added to the `WarmupRoom` picker; held-bow sprite + in-flight arrow sprites in `render/scene.ts`; bow-release `"shoot"` SFX; impact reuses `"hit"`
+- [ ] **live playtest** + balance pass (sword/spear/knife feel; then bow). _Team-aware friendly-fire lands with co-op (P13); versus is FFA today._
 
 ### P13 — Co-op mode: players vs bots · `dependsOn: P3 (+ rounds P8 optional)`
 Goal: a cooperative mode — all humans are **allies** versus a **team of bots** that fight together;
@@ -370,6 +371,101 @@ Tracking:
 - [ ] mode-aware win/lose in `match.ts` (players-vs-bots) — unit-tested (FFA path unchanged)
 - [ ] center-cluster player spawns + edge bot spawns (new spawn spec)
 - [ ] `bot.ts` enemy-targeting + team coordination; difficulty scaling decided
+
+---
+
+## Track A — Arena · Survival mode (co-op PvE) · `dependsOn: A/P12 (projectiles), A/P3 (net)`
+
+Goal: a second Arena **mode** alongside the renamed **versus** (FFA): 1–8 allies spawn in the CENTER and
+defend against escalating creature waves that spawn OUTSIDE the field and crawl inward. A **finite
+campaign of escalating levels** with a **downed/revive** model (revive at wave/level clear; full-party
+wipe ends the run) and an **endless** mode after the campaign clears. Reuses the deterministic sim core,
+free-aim/melee combat, and host-authoritative netcode; the enemy engine is **independent** per locked
+decision #1. **Invariant:** all wave/spawn/drop randomness is host-seeded from `start` and injected —
+never a clock/`Math.random()` in the core.
+
+### P-A0 — Snapshot bandwidth + determinism substrate (cross-cutting foundation) · `dependsOn: A/P12`
+Goal: make the netcode survive hordes BEFORE any enemy ships — entity caps, compact/delta snapshots, and
+the coordinate-hash RNG. A **launch blocker, not a later optimization** (per critique); shared by Survival
+and Overrun (Track D).
+
+- [ ] Hard **concurrent-entity caps** in `constants.ts`: `MAX_LIVE_ENEMIES` (~40–60 total, scale spawn RATE not standing population), `MAX_PROJECTILES`; prune `status:'dead'` entities same-tick
+- [ ] **Quantized entity encoding** in `protocol.ts`: Int16 positions (cm), Uint8 kind/status/health, Uint8 brad angle — Trystero data channels are binary-capable; keep JSON for lobby/control msgs
+- [ ] **Delta snapshots**: full keyframe on join + every N ticks; per-tick diffs otherwise; `sync.ts` sends a keyframe to a newly-joined/promoted peer
+- [ ] **Entity snapshot rate = 10 Hz** with client-side position interpolation; inputs stay 20 Hz — measured, tunable
+- [ ] **Coordinate-hash RNG** `src/game/arena/survival/rng.ts`: `hash(seed, tick, entityId, salt)` (mulberry32/splitmix32) — replaces any shared advancing cursor so draw-order can't fork; colocated `rng.test.ts` (same input → same output, distribution sanity)
+- [ ] `worldFromSnapshot` extended to reconstruct EVERYTHING host-mutated (see P-A3); **guard test**: hydrate a fresh engine from ONE snapshot on a different localId, step both, assert byte-identical for many ticks
+- [ ] **RISK gate**: measure real snapshot bytes at 8 players + full horde; assert under the data-channel budget before P-A5
+
+### P-A1 — Mode plumbing + `versus` rename (zero behavior change) · `dependsOn: P-A0`
+Goal: introduce `mode:'versus'|'survival'` end-to-end and rename shipped FFA to **versus** with ZERO logic
+change, so later phases have a discriminator to branch on. Versus tests stay green untouched.
+
+- [ ] `mode: MatchMode` on `World` (types.ts); `createWorld` defaults `'versus'`; `stepWorld` guards existing logic behind `world.mode==='versus'` — existing `sim.test.ts` passes unchanged
+- [ ] `protocol.ts`: add `mode` + `seed:number` to `start`; **additive/back-compat decode** (old versus clients ignore new optional fields) to avoid stranding open tabs on deploy; if a hard version bump is unavoidable, surface a "refresh to update" via the `hello` version rather than a silent drop
+- [ ] `session.ts start()`: host generates `seed` ONCE (`Math.random` outside the core), broadcasts in `start`, threads into `beginMatch`
+- [ ] Rename user-facing "FFA / last man standing" → **Versus** in `WarmupRoom.tsx`, `Arena.tsx` result overlay, `index.astro`
+- [ ] `match.ts`: extract `resolveEnd(world)` (versus path = current `soleSurvivor`); `sim.ts` calls it instead of the inline check — versus tests unchanged
+
+### P-A2 — Enemy model + wave plan + one archetype end-to-end (pure, TDD) · `dependsOn: P-A1`
+Goal: prove the whole pipeline (data-on-World → host sim → snapshot → client render) with ONE kind
+(giant ant / swarmer) before adding variety.
+
+- [ ] `src/game/arena/survival/enemy.ts`: `EnemyState{id,kind,pos,facing,aim,health,maxHealth,status,speed,contactDamage,hitCooldownRemaining,target,spawnTick}` + `coerceEnemy` wire-trust boundary; `enemies` on World with **deterministic ids** `e{level}-{seq}` (seq lives IN world, never a host-local counter)
+- [ ] `enemyKinds.ts`: per-kind stat table (pure data) `ant|zombie|bat|dino|clawed`
+- [ ] `steering.ts`: `nearestPlayer` (generalize `bot.ts nearestEnemy`), `stepToward`, separation + one-way boundary clamp (enemies exempt until they enter the field); colocated tests
+- [ ] `waves.ts`: pure `wavePlan(seed,level,wave)` + `spawnsDueAt(level,tick,seed,partySize)` (kind/angle/count from coordinate-hash); colocated tests (determinism + monotonic escalation)
+- [ ] `centerSpawns(ids)` in `match.ts` (cluster near center) + `createSurvivalWorld(spawns,seed,{endless})`; colocated tests
+- [ ] **Sorted-id iteration** mandated for every per-enemy loop; tie-breaks by lowest EnemyId; test two insertion orders → identical stepped output
+- [ ] Enemy contact damage reuses the −1-health + knockback model, gated by per-kind `hitCooldown`; render enemy as a procedural placeholder (real art = Track E), y-sorted, death tween
+
+### P-A3 — Survival step reducer + net wiring (host-authoritative) · `dependsOn: P-A2`
+Goal: the survival branch of `stepWorld`, the level/wave/revive state machine, and full snapshot
+replication of all host-owned state.
+
+- [ ] `survival/step.ts` `stepSurvival(world,intentsById,dt)`: reuse the shared per-player movement/dash/attack block (factored out of `sim.ts`, pure move, existing tests first), then players-vs-enemies (generalize `combat.ts` to a structural `Hittable{id,pos,status}`), then enemy step, then damage/downed/revive, then the wave/level machine
+- [ ] `sim.ts`: `if world.mode==='survival' return stepSurvival(...)` else existing path; **no friendly fire** structurally (player-vs-player hit test simply not run)
+- [ ] **worldFromSnapshot rebuilds ALL host-mutated state**: `enemies`, `projectiles`, `pickups`, the full `survival` block INCLUDING `spawnSeq` and any pity counter, plus `seed`; forbid host-local mutable counters
+- [ ] **playerCount frozen per wave**: `survival.partySizeThisWave` computed once at wave-start (recommend alive-at-wave-start), carried in world so it rides snapshots + migration; test 1 and 8 with a mid-wave leave → spawns don't jump
+- [ ] `session.ts`: `createSurvivalWorld` in `beginMatch` when survival; `hostExtraIntents` returns `{}` (enemies are host-simulated in the reducer, not via intents)
+- [ ] **Migration determinism test** (phase gate): step host to tick T across a wave boundary + a drop roll, hydrate a fresh engine from that snapshot on a different id, assert byte-identical for many ticks
+- [ ] **Spatial grid** broad-phase baked into enemy contact/separation from the first slice (retrofit risks changing iteration order/determinism); steering strictly O(1)/enemy
+
+### P-A4 — Behavior archetypes + creature roster + run lifecycle · `dependsOn: P-A3`
+Goal: five archetypes mapped to creatures, and the full campaign→endless run with downed/revive.
+
+- [ ] `behaviors.ts` (pure): swarmer=ant, chaser=zombie (slow relentless), flyer=bat (seeded weave/dip-in via coordinate-hash, altitude cosmetic), bruiser=clawed (lunge reusing `dash.ts`), heavy/boss=dinosaur (telegraphed `inAttackCone` slam); each unit-tested for signature motion
+- [ ] `PlayerStatus` gains `'downed'`: health≤0 in survival → downed (rendered, no effective input), not dead
+- [ ] **Revive-vs-wipe ordering (tested)**: resolve enemy deaths → wave-clear → revive downed BEFORE evaluating party-wipe, so the last player downed on the same tick the last enemy dies survives
+- [ ] Level clear (budget exhausted AND all enemies dead) → revive all downed to partial HP + intermission breather → next level; final campaign level cleared → win (winnerId `'party'` sentinel); full-party-down → lose
+- [ ] **Endless**: `endlessLevel(index)` continues the difficulty formula past the campaign until wipe
+- [ ] `election.ts`: **`'downed'` counts as a valid host candidate** (still connected/simulating) so host doesn't thrash on alive↔downed flips
+- [ ] Enemy-death seeded drops → `World.powerups` (reuse P10 model); drop rate/table scale gently with level
+
+### P-A5 — Survival UX: WarmupRoom, HUD, revive/pause, art + SFX, playtest · `dependsOn: P-A4, E/AP3`
+Goal: mode picker, mode-aware shell/HUD, revive UX, and the real sprite-sheet enemies wired in.
+
+- [ ] `WarmupRoom.tsx`: Mode toggle (Versus | Survival); survival hides bots, shows Campaign|Endless + player-count note; `canStart` in survival = ≥1 player; `onStart` carries mode+endless
+- [ ] `Arena.tsx` + HudState: mode-aware result copy ("Campaign cleared!" / "Wiped out — reached Level X"); new `SurvivalHud` (level/wave, enemies remaining, per-ally downed + revive indicator); "Spectating…" → "Downed — revive at wave clear"
+- [ ] Enemy rendering via Track E atlases (per-kind idle/walk/attack/die), y-sorted; boss HP bar + screen-shake on slam; procedural fallback still active
+- [ ] `audio/sfx.ts`: enemy spawn/hit/death (oscillator, asset-free); boss slam sting
+- [ ] Live cross-browser playtest: determinism across 2+ browsers (identical waves), revive-on-clear, wipe→lose, campaign→win, endless rollover; balance pass on wave curve + enemy stats
+
+**Open decisions (Survival)**
+- Flyer (bat) altitude: **cosmetic render-lift** (recommended) vs a sim rule where bats are only hittable while dipping in.
+- Revive model: **revive-only-at-clear** (locked baseline) vs a mid-level stand-near-ally rescue / bleed-out timer; partial-HP amount on revive — settle in playtest.
+- playerCount scaling input: **alive-at-wave-start, frozen per wave** (recommended); linear (×N) vs **sub-linear (×N^0.8)** count scaling so 8-player coop isn't a wall.
+- Campaign length: TOTAL_LEVELS / WAVES_PER_LEVEL and where dinosaur mini-bosses sit — tune in playtest.
+- Ship Survival against **melee-only** if the P12 bow slips (recommended: yes — melee is sufficient for the loop).
+- Endless score / highest-level persistence — ties to Track B; out of core scope.
+
+**Risks (Survival)**
+- Snapshot size / host CPU with hundreds of bodies at 8 players — mitigated by P-A0 caps + quantized/delta snapshots + spatial grid; primary lever is the concurrent-enemy cap.
+- Determinism drift on host migration — closed by snapshot-carries-everything + coordinate-hash RNG + no host-local counters + the P-A3 migration test.
+- Enemy iteration order over a `Record` — mandated sorted-id iteration + lowest-id tie-breaks.
+- Revive-vs-wipe same-tick edge — resolve deaths/revive before wipe check (tested).
+- Enemies-outside-bounds vs the field clamp — explicit inside/outside state + one-way clamp, tested.
+- Art pipeline is net-new (Track E) — procedural fallback keeps P-A2…P-A4 unblocked.
 
 ---
 
@@ -401,21 +497,171 @@ Tracking:
 
 ---
 
-## Track C — Turn-based game #2 · `dependsOn: A/P0 (reuses core patterns)`
+## Track C — Turn-based game #2 (Tactics) · `dependsOn: A/P0` — **DEFERRED / reframed**
 
-Goal: the pack's second game, reusing the architecture spine (pure core + Transport + Phaser render +
-React shell). Turn-based suits P2P far better (no tick-rate/latency pressure; tolerates the
-flaky-relay window).
+Status: **superseded as the pack's second playable game by Track D (Overrun).** The "Tactics — Coming soon"
+card on `index.astro` is reclaimed by Overrun; Tactics remains a *future* turn-based title with its own slug
+and is not removed — it simply no longer owns the index card slot. Revisit after Overrun ships. The original
+turn-based rationale (no tick-rate/latency pressure; tolerant of the flaky-relay window) still stands.
 
-- **T0 — Concept lock:** pick the turn-based game (brainstorm) and define its pure rules core.
-- **T1 — Build:** pure rules + `LocalTransport` tests → Phaser/React render → Trystero turn exchange
-  (reuse the lobby/room/join-link/kick infra from Track A, generalized) → ship; replace the
-  "Tactics — Coming soon" card on `index.astro`.
+- **T0 — Concept lock (later):** pick the turn-based game (brainstorm) and define its pure rules core.
+- **T1 — Build (later):** pure rules + `LocalTransport` tests → Phaser/React render → Trystero turn exchange
+  (reuse the lobby/room/join-link/kick infra from Track A, generalized) → ship on its own slug.
 
 Tracking:
-- [ ] game chosen + rules core unit-tested
-- [ ] networked turns over Trystero (reusing lobby infra)
-- [ ] live on the start page (replaces "Coming soon")
+- [ ] (deferred) game chosen + rules core unit-tested
+- [ ] (deferred) networked turns over Trystero (reusing lobby infra)
+- [ ] (deferred) live on the start page under its own card
+
+---
+
+## Track D — Overrun (twin-stick co-op horde shooter, Crimsonland-style) · `dependsOn: A/P12 (projectiles), A/P-A0` — **supersedes the Track C "Tactics" placeholder**
+
+Goal: a SEPARATE game (`src/game/overrun/`) reusing the whole spine (pure `stepWorld`, host-authoritative
+SyncEngine, Trystero mesh cap 8, fake-2.5D renderer, free-aim input). 1–8 humans (a tactical-camo figure)
+spawn together; WASD moves the body, mouse aims, hold-to-fire spawns synced projectiles. Enemies pour from
+the edges in escalating waves; kills drop weapons. **No friendly fire.** Enemy count scales proportionally
+with **live** player count. Run structure mirrors Survival (finite campaign + downed/revive + wipe=over,
+then endless) so the horde modes are siblings — but its enemy/wave engine is **independent** (decision #1).
+Replaces the Track C turn-based card on `index.astro` (Tactics can return later as a distinct game).
+
+### P-D0 — Overrun sim core (pure, deterministic, TDD) · `dependsOn: A/P12, A/P-A0`
+Goal: stand up `src/game/overrun/` with its own world + reducer: players (WASD + free-aim), the
+World-carried seeded RNG, projectiles, and firing (auto/semi via edge-detect). No enemies yet — prove
+movement, cadence, bullet flight, no-friendly-fire, determinism.
+
+- [ ] `types.ts`: `ShooterWorld{players,projectiles,enemies,pickups,wave,level,phase,score,seed}`, `ShooterPlayer{pos,aim,health,status:'alive'|'downed'|'dead',weapon,ammo:{mag,reserve,reloadRemaining,heat,fireCooldownRemaining},reviveProgress,team}`
+- [ ] `rng.ts`: coordinate-hash `hash(seed,tick,ownerId,shotIndex,salt)` (NOT a shared advancing cursor) so spread/pellet/crit/drop draws can't fork under migration; colocated test
+- [ ] `weapons.ts`: `WEAPONS` table pistol/shotgun/rifle/autoRifle/smg/gauss/rocket/flamethrower/mg (fireRate/pellets/spread/damage/pierce/aoe/ammo/auto/knockback/heat) + `coerceWeapon`; all 9 tuned (start table in Open decisions)
+- [ ] `intent.ts`: reuse rising-edge pattern — semi = edge, auto = held; `reload`; `coerceIntent` shooter variant sanitizes `{move,aim,fire,reload}` only (never positions/health/enemies); **aim is host-consumed-only, never a determinism input**
+- [ ] `projectile.ts`: `Projectile{id,ownerId,team,kind,pos,vel,damage,rangeRemaining,pierceRemaining,aoeRadius,ttl,hitscan,spawnTick}`; **hitscan guns resolve on the spawn tick and never serialize as travelling state** (only rocket/flame travel on the wire); ordering test
+- [ ] `sim.ts`: move → fire(spread from coordinate-hash) → projectile flight → (enemy collisions in P-D2); **bullet-vs-player never tested** (no friendly fire, structural); infinite-pistol fallback when both mag+reserve empty; MG heat ramps spread on sustained fire
+- [ ] Tests: fire cadence, semi-vs-auto, pellet-spread determinism, ammo depletion, pistol fallback, seed reproducibility, RPM>tick-rate accumulator (multi-shot/tick or documented ceiling)
+
+### P-D1 — Enemy + wave engine (INDEPENDENT of Survival, pure) · `dependsOn: P-D0`
+Goal: the horde — enemy kinds with distinct AI, edge-spawn crawl-in, wave/level escalation, proportional
+budgeting, contact damage, and weapon-drop rolls.
+
+- [ ] `enemies.ts`: `Enemy{id,kind,pos,vel,health,behavior}`; kinds (crawler/rusher/swarm-flyer/tank/spitter) chase-nearest-alive; **sorted-id iteration + lowest-id tie-breaks** (own copy, not shared with Survival)
+- [ ] `waves.ts`: pure `budget(level,wave) × playerScale(aliveCount)`; spawn positions on the perimeter from coordinate-hash; concurrent-enemy cap; **playerCount frozen per wave** in the world; test at 1 and 8 players + mid-wave churn
+- [ ] `drops.ts`: tier-weighted weapon-drop table + pity/anti-flood counter (in world, not host-local); `WeaponPickup{id,gun,pos,ammoBonus,ttl}`; reproducibility test
+- [ ] `sim.ts`: enemy AI step, enemy-vs-player contact damage, projectile-vs-enemy (pierce/AoE for rocket/flame — **AoE queries enemies only**, players excluded by construction, enemy knockback clamped to field), on-death drop roll, pickup→replace-weapon (fresh full mag)
+- [ ] Downed/revive: 0 HP → downed; teammate-proximity revive OR wave-clear auto-revive; full-party-down → ended (lose); **revive-before-wipe ordering tested**
+- [ ] Level clear → next level or Endless unlock; score accrual (kills × wave); spatial-grid broad-phase from the first slice
+- [ ] Tests: budget scales with alive count, wipe=game over, wave-clear revive, drop determinism, AoE multi-hit, per-kind behaviors
+
+### P-D2 — Net wiring: SyncEngine + Overrun session · `dependsOn: P-D1`
+Goal: run the shooter world over the existing host-authoritative stack; host simulates enemies/waves;
+clients send inputs-only; migration reproduces via snapshot-carried seed + all entity state.
+
+- [ ] `protocol.ts`: shooter snapshot carries `{players,projectiles,enemies,pickups,wave,level,score,seed,spawnSeq,pity}` using the P-A0 quantized/delta encoding; **worldFromSnapshot rebuilds all of it**
+- [ ] Reuse `SyncEngine`: host steps the shooter `stepWorld`; enemies host-owned (no per-peer intent); **clients render ONLY host-authored entities — never locally spawn, roll drops, or advance wave RNG**; test a client fed only snapshots produces zero enemies/drops of its own
+- [ ] `shooterSession.ts` (or light generic parameterization of `session.ts` by World type): roster/host-election/start-with-seed/countdown, MatchDriver for the shooter renderer
+- [ ] LocalHub tests: 8-peer start, snapshot convergence, **host-migration mid-wave keeps enemies+seed+spawnSeq+pity consistent** (byte-identical), downed/revive syncs, proportional budget with joins/leaves, no-friendly-fire end-to-end
+
+### P-D3 — Gun + weapon-drop economy polish · `dependsOn: P-D2, P-D1`
+Goal: finalize the 9-gun arsenal mechanics, ammo/reload/heat, and the drop economy as data-driven, host-authoritative.
+
+- [ ] `firing.ts`: pure `fireGun(gun,ammoState,aim,rng)->{projectiles,ammoState}`; per-weapon tests (pellet count, spread bounds, mag decrement, RPM gating); shotgun=N pellets, gauss=one-tick piercing line, rocket=travelling AoE, flamethrower=short-ttl cone particles (capped), MG=heat-ramp
+- [ ] `tryReload`/`tickReload` state machine (blocks firing, not movement); empty-both → infinite pistol (tested)
+- [ ] Drop table + weights colocated with `WEAPONS` (rare gauss/rocket low weight); ttl expiry culls stale pickups; concurrent-pickup cap + pity suppression; auto-pickup with a brief re-swap guard
+- [ ] **RNG draw independence**: every draw is a coordinate-hash of stable coords (spread=hash(seed,tick,playerId,shotIndex); drop=hash(seed,tick,enemyId)); test an extra/missing upstream draw cannot shift downstream values
+
+### P-D4 — Renderer (fake-2.5D, rotate-to-aim) + twin-stick input · `dependsOn: P-D2, E/AP4`
+Goal: render the shooter with Arena's 2.5D conventions and real camo-soldier + monster atlases; reuse free-aim.
+
+- [ ] `render/scene.ts`: y-sorted soldier body + layered aim-rotated weapon sprite + enemies + projectiles + pickups; muzzle flash + tracers; per-weapon projectile visuals (bullet tracer, rocket+explosion, flame cone, gauss beam)
+- [ ] Reuse `input/mouse.ts screenDeltaToWorldAngle` verbatim for aim; hold-LMB fire, R reload, WASD move; **no client-side projectile prediction** (render snapshot positions; rockets get light extrapolation)
+- [ ] Enemy hurt/death anims + edge-spawn crawl-in visual; downed-player + revive-ring visual; object pooling for bullets/enemies under the cap
+- [ ] `audio/sfx.ts`: per-weapon oscillator gunshots/reload/explosions (asset-free); flame particle count capped
+
+### P-D5 — React island, page, lobby/loadout, HUD, index card · `dependsOn: P-D4, P-D3`
+Goal: wire it into the site.
+
+- [ ] `src/pages/games/overrun.astro` mounts the React island (mirror `arena.astro`)
+- [ ] `src/components/game/overrun/Overrun.tsx` phase shell (lobby→countdown→playing→ended, mirror `Arena.tsx`)
+- [ ] Overrun `WarmupRoom` variant: name/color, party list + kick, room link, Campaign|Endless pick, Start (coop up to 8); **NO weapon pick in lobby** (pistol start, scavenge in-run)
+- [ ] shooter HUD: HealthBar, WeaponAmmo (mag/reserve + reload progress + MG heat bar), WaveLevel, Score, DownedPrompt, TeammateStrip
+- [ ] Win screen (campaign cleared → Endless unlock) + lose screen (party wipe) + score summary; rematch/back-to-room
+- [ ] `index.astro`: **replace the Tactics "Coming soon" card with Overrun** (Realtime co-op horde shooter, status: play, href `/games/overrun`)
+
+### P-D6 — Balance, perf, cross-browser playtest · `dependsOn: P-D5`
+Goal: tune numbers, validate the entity cap holds framerate with 8 players + heavy hordes, verify determinism over long runs + migration.
+
+- [ ] Balance: weapon damage/fireRate/ammo, drop weights, enemy hp/speed/damage, wave budget curve + playerScale
+- [ ] Perf: real snapshot bytes with many enemies/bullets at 8 players; enforce caps; delta/quantized encoding verified
+- [ ] Long-run determinism + host-migration drift check (host/client worlds converge byte-identical)
+- [ ] TURN reachability for strict-NAT (reuse Arena requirement); Chrome/Firefox/Safari-iOS; touch/no-mouse aim fallback (reuse Arena decision #11)
+- [ ] Update `docs/ROADMAP.md` progress log + decisions
+
+**Open decisions (Overrun)**
+- Game slug + name: **DECIDED (2026-07-08) — `overrun` / "Overrun"** (module `src/game/overrun/`, page `src/pages/games/overrun.astro`).
+- Weapon inventory: **single active weapon + infinite-ammo pistol fallback** (recommended) vs primary+secondary slots vs a full Crimsonland perk system.
+- Per-gun tuning (proposed START table — damage/RPM/mag/reserve/reloadS/spread°/pellets/projSpeed/range/pierce/aoe/kind): PISTOL 12/300/12/∞/1.2/2/1/-/20/0/0 hitscan; SHOTGUN 8·pellet/70/6/36/1.0/9/8/-/12/0/0 hitscan; RIFLE 34/220/10/60/1.6/1/1/-/40/1/0 hitscan; AUTO-RIFLE 22/600/30/180/2.2/3/1/-/32/0/0 hitscan; SMG 14/900/30/240/1.4/5/1/-/22/0/0 hitscan; GAUSS 90/40/4/16/1.8/line/1/-/50/∞/0 pierce-line; ROCKET 120/50/1/6/2.0/0/1/18/45/0/aoe3.5 travel; FLAMETHROWER 6·particle/fuel100/-/1.5/cone/8/6/pierce travel; MG 20/1000/100/300/heat/1/-/38/0/0 hitscan+heat — **all tune in playtest**.
+- Drop rate/weights: start ~15% base × tier multiplier, rare weight 1 / common weight 5, pity threshold — tune vs enemy density.
+- Campaign length + Endless: recommend a **short 5-level campaign** first, Endless local-score only initially (persistence → Track B).
+- Generalize `session.ts`/`SyncEngine` to game-agnostic (World-parameterized) vs fork `shooterSession.ts` — **recommend light generic parameterization**; decide before P-D2.
+- Multi-shot-per-tick vs a 20-shots/s ceiling for the highest-RPM guns.
+
+**Risks (Overrun)**
+- Snapshot blowup (biggest) — mitigated by hitscan-on-spawn-tick, short flame ttl, entity caps, quantized/delta encoding (P-A0).
+- Determinism leak (re-armed hard) — single coordinate-hash RNG whose seed rides every snapshot; no Math.random/clock in core, enforced by test.
+- Host CPU bottleneck — spatial partitioning + entity caps.
+- Proportional-scaling × revive churn — budget recomputed only at wave boundaries from a frozen, snapshot-carried partySize.
+- Scope is the largest in the pack — ship a thin vertical slice (pistol+shotgun+rifle, 2 enemy kinds, 1 level) first, then widen.
+- No-friendly-fire + AoE ambiguity — AoE queries enemies only by construction; enemy knockback clamped to field.
+- Sprite-asset pipeline (Track E) is unproven — procedural placeholders keep P-D0…P-D3 shipping independent of art.
+
+---
+
+## Track E — Sprite-sheet art & asset pipeline (cross-cutting) · `dependsOn: none (parallel with projectiles)`
+
+Goal: introduce the FIRST binary-asset pipeline (the renderer is 100% procedural today) per locked decision
+#4 — a tactical-camo human + varied monsters (giant ants/zombies/bats/dinosaurs/clawed) + the gun family —
+with a **render-only hard boundary** (art NEVER enters the deterministic sim), a shared loader/animation
+registry used by both horde games, a static-hosting story, and a **procedural fallback** so gameplay TDD
+never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roster + CC0 placeholder packs.**
+
+### AP0 — Conventions, licensing manifest, layout · `dependsOn: none`
+- [ ] Atlas grouping (`player`/`enemies`/`weapons`/`projectiles`) + frame naming `entity_state_dir_NN`; animation-state vocabulary (enemies idle/walk/attack/die; player idle/run/shoot)
+- [ ] Directionality per kind: **rotate-sprite** for the near-top-down shooter + radially-symmetric enemies (ants/bats); **4-facing** for humanoid/dino under the Arena 2.5D `Y_SCALE` foreshorten
+- [ ] `public/game/atlases/` layout + `docs/ART-PIPELINE.md`; `LICENSES.md` manifest schema (frame → source → license → attribution)
+- [ ] Confirm CSP/`image.domains`: **bundled same-origin under `public/`** for the core roster; Wix Media CDN reserved for optional/user-content art via the P7 URL-on-the-wire pattern
+
+### AP1 — Shared render loader + animation registry (procedural fallback first) · `dependsOn: AP0`
+- [ ] `render/assets.ts`: Phaser `preload` of packed atlases per group with a load-error handler
+- [ ] `render/anim.ts`: data-driven registry `entityKind → state → {frames, frameRate, loop}` (adding a monster = data, not code)
+- [ ] **Fallback**: on a missing/failed atlas, synthesize a procedural texture per kind (extend today's `makeTextures`) — every enemy/weapon playable the moment its enum exists
+- [ ] **Guard test**: core sim dirs (`src/game/arena`, `src/game/overrun`) import NOTHING from `render/assets|anim`; animation stepping uses RENDER dt (wall clock), never sim dt
+
+### AP2 — Sourcing: CC0 placeholders + AI-generated bespoke roster · `dependsOn: AP0`
+- [ ] Import CC0 packs (Kenney top-down/dungeon; filtered OpenGameArt CC0/CC-BY only — no CC-BY-SA/GPL) for every kind + gun icon; record each in `LICENSES.md`
+- [ ] Generate bespoke frames (tactical-camo human + named monsters) via the authorized AI image tool + `UploadImageToWixSite`; pack into atlases (free-tex-packer/TexturePacker CLI) at ≤1024–2048px
+- [ ] Completeness check: every `(kind,state,dir)` referenced by `anim.ts` resolves to a real frame; measure atlas bytes vs budget
+
+### AP3 — Wire real atlases into Arena Survival renderer · `dependsOn: AP1, AP2, A/P-A4`
+- [ ] Map sim `enemyKind` enum → atlas animation set; player body + layered rotated weapon; 4-facing for humanoid/dino, rotate for ants/bats; death/attack anims driven by snapshot status transitions; fallback verified by removing an atlas
+
+### AP4 — Overrun renderer reuse (twin-stick, rotate-sprite) · `dependsOn: AP1, AP2, D/P-D0`
+- [ ] Overrun scene reuses `render/assets.ts` + `anim.ts` (shared infra, independent enemy logic); rotate-to-aim body; full gun family as swappable layered weapon sprites; projectile frames; lazy-load the enemy atlas during lobby/countdown
+
+### AP5 — Budget/load gate + optional CDN offload · `dependsOn: AP3, AP4`
+- [ ] Measure the built bundle: per-atlas bytes, total added weight, preload time on throttled network; target **≤1.5 MB gzipped soft / 3 MB hard**, PNGs ≤2048² (1024² preferred)
+- [ ] Confirm block-on-core-atlas + lazy-load-enemy-atlas hides behind the 3 s countdown; if an atlas exceeds budget, move to Wix Media CDN (P7 URL pattern + allowed-host); CI size-check guarding the atlas dir; document final numbers in `docs/ART-PIPELINE.md`
+
+**Open decisions (Art)**
+- Which AI image tool is authorized for production art + its output-ownership/license terms (sourcing *approach* is locked: AI + CC0).
+- Shared render infra promoted to `src/game/shared/render/` vs the shooter importing from `src/game/arena/render/`.
+- Whether Overrun and Survival share one enemies atlas or ship separate rosters (they share the loader; art sets may differ) — impacts bundle budget.
+- 4- vs 8-facing granularity for humanoid/dino in the Arena — look/asset-cost tradeoff, settle in AP0 with a visual test.
+- Final numeric budget (1.5 MB soft / 3 MB hard is a proposed start) pending AP5 measurement.
+
+**Risks (Art)**
+- Determinism leak if art metadata (frame sizes, sprite-derived hitboxes) creeps into the sim — mitigated by the guard test + keeping all sizes/hitboxes as sim constants in meters.
+- Licensing contamination — CC0/CC-BY whitelist + `LICENSES.md` per frame; verify AI-tool output-ownership.
+- CSP/allowed-host friction — default bundled same-origin; only offload to CDN with the host explicitly allowed + tested.
+- Bundle bloat vs static-hosting limits — hard 3 MB cap, per-mode lazy-load, AP5 size gate.
+- Facing/foreshorten mismatch — rotate only radially-symmetric enemies; 4/8-facing for humanoid/dino.
 
 ---
 
@@ -433,8 +679,11 @@ Tracking:
   `src/components/game/scoreboard/Podium.tsx`; extended — `WarmupRoom.tsx`
   (shape/arena/rounds/mutator/weapon/mode/upload controls), `render/scene.ts`, `protocol.ts`, `sfx.ts`,
   `bot.ts` (maze + enemy targeting). Auth/avatar (F4): Wix Members Google login + a server route to Wix Media.
+- **Survival (Track A):** pure core — `src/game/arena/survival/{rng,enemy,enemyKinds,steering,waves,behaviors,step}.ts` (+ `mode` on `types.ts`, `resolveEnd`/`centerSpawns`/`createSurvivalWorld` in `match.ts`, entity caps in `constants.ts`); net — quantized/delta snapshots in `protocol.ts`/`sync.ts`; UI — mode toggle in `WarmupRoom.tsx`, `SurvivalHud`.
+- **Overrun shooter (Track D):** new game module `src/game/overrun/{types,rng,weapons,intent,projectile,enemies,waves,drops,firing,sim,shooterSession}.ts`; render — `src/game/overrun/render/scene.ts`; page `src/pages/games/overrun.astro`; UI `src/components/game/overrun/Overrun.tsx` (+ its lobby/HUD).
+- **Art pipeline (Track E):** shared `src/game/*/render/{assets,anim}.ts`, atlases under `public/game/atlases/`, `docs/ART-PIPELINE.md` + `LICENSES.md`.
 - **Server (Track B):** `src/pages/api/match-result.ts` etc.
-- **Assets:** one base musa sprite under `public/` (runtime-tinted to 8 colors).
+- **Assets:** one base musa sprite under `public/` (runtime-tinted to 8 colors) for versus; sprite-sheet atlases (Track E) for the horde games.
 - **Keep untouched:** Astro site chrome (`layout/`, `footer`, `navbar`), the vite 6.4.3 override.
 
 ## Open decisions (recommendation in **bold**)
@@ -469,6 +718,17 @@ Tracking:
 
 ## Progress log
 
+- **2026-07-08** — **Roadmap expanded: Survival mode + Overrun shooter + Art pipeline (design only).** Brainstormed
+  (skill) + ran an 8-agent design workflow (5 area designs → adversarial critics → synthesis) grounded in the codebase.
+  Added **Track A · Survival** (co-op PvE, P-A0…P-A5: bandwidth/determinism substrate → mode plumbing + `versus`
+  rename → enemy/wave/one-archetype → step reducer + net → behaviors/roster/lifecycle → UX), a new **Track D — Overrun**
+  (Crimsonland-style co-op horde shooter, P-D0…P-D6; supersedes the Track C "Tactics" card), and a cross-cutting
+  **Track E — sprite-sheet art pipeline** (procedural fallback so gameplay TDD never blocks on art). Track C (Tactics)
+  reframed/deferred. Build order locked: finish P12 projectiles → Survival → Overrun. Biggest correction from the
+  critique: the naive full-world JSON snapshot won't survive hordes — entity caps + quantized/delta @10 Hz +
+  coordinate-hash RNG pulled into the P-A0 foundation. User decisions: independent enemy engines; survival =
+  escalating level campaign + revive + endless; shooter name **Overrun**; art = AI-generated + CC0 placeholders. No
+  feature code yet — also shipped this week: melee weapons feel + render passes (see git).
 - **2026-07-06** — **Implementation started (P6, P7-F3, P11 landed).** **P6:** pure `joinedIds` connect-sound
   detection + `"join"` SFX + first-gesture audio unlock; two-phase death tween (recoil → spin-up phase-out).
   **P7-F3:** new pure `arena/cosmetic.ts` (`Shape` + `coerceShape` wire-boundary), threaded shape through

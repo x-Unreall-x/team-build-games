@@ -14,7 +14,7 @@ describe("encode / decode", () => {
 
   it("round-trips a snapshot and rebuilds a usable World", () => {
     const w = createWorld([{ id: "A", pos: { x: 1, y: 2 } }, { id: "B", pos: { x: 3, y: 4 } }]);
-    const m: NetMessage = { t: "snapshot", tick: w.tick, phase: w.phase, winnerId: w.winnerId, players: w.players };
+    const m: NetMessage = { t: "snapshot", tick: w.tick, phase: w.phase, winnerId: w.winnerId, players: w.players, projectiles: w.projectiles };
     const back = decode(encode(m)) as Extract<NetMessage, { t: "snapshot" }>;
     const world = worldFromSnapshot(back);
     expect(world.players.A.pos).toEqual({ x: 1, y: 2 });

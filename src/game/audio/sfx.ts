@@ -11,7 +11,8 @@ export type SfxName =
   | "go"
   | "gameover"
   | "win"
-  | "join";
+  | "join"
+  | "shoot";
 
 type Ctx = AudioContext;
 
@@ -68,6 +69,11 @@ export class Sfx {
       case "join":
         // short, friendly two-note rise: someone entered the room
         this.melody(t, [660, 988], "square", 0.09);
+        break;
+      case "shoot":
+        // bow twang: a quick downward pitch slide + a soft string noise
+        this.tone(720, t, 0.12, "triangle", 0.5, 240);
+        this.noise(t, 0.06, 0.18, 2200);
         break;
     }
   }

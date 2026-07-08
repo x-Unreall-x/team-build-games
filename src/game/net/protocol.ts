@@ -4,7 +4,7 @@
  * input through it so a peer can only ever send well-formed *intent bits*, never positions/health.
  */
 
-import type { Direction, Intent, PlayerId, World } from "../arena/types";
+import type { Direction, Intent, PlayerId, Projectile, World } from "../arena/types";
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 
@@ -41,6 +41,7 @@ export type NetMessage =
       phase: World["phase"];
       winnerId: PlayerId | null;
       players: World["players"];
+      projectiles: Projectile[];
     }
   | { t: "event"; kind: string; targetId?: PlayerId }
   | { t: "ping"; sentAt: number }
@@ -83,5 +84,5 @@ export function coerceIntent(raw: unknown): Intent {
 
 /** Build a World from a snapshot message. */
 export function worldFromSnapshot(m: Extract<NetMessage, { t: "snapshot" }>): World {
-  return { players: m.players, phase: m.phase, tick: m.tick, winnerId: m.winnerId };
+  return { players: m.players, projectiles: m.projectiles, phase: m.phase, tick: m.tick, winnerId: m.winnerId };
 }

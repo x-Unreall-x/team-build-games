@@ -80,6 +80,7 @@ export class SyncEngine {
           phase: this.world.phase,
           winnerId: this.world.winnerId,
           players: this.world.players,
+          projectiles: this.world.projectiles,
         }),
       );
       this.opts.onWorld(this.world);

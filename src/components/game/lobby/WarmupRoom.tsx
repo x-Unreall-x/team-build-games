@@ -3,15 +3,14 @@ import { PALETTE } from "../../../game/arena/render/scene";
 import type { LobbyPlayer } from "../../../game/net/lobby";
 import type { PlayerId } from "../../../game/arena/types";
 import { SHAPES, type Shape } from "../../../game/arena/cosmetic";
-import { WEAPONS, WEAPON_LIST, type Weapon } from "../../../game/arena/weapons";
+import { WEAPON_LIST, type Weapon } from "../../../game/arena/weapons";
 import { MAX_PLAYERS } from "../../../game/constants";
 
 const hex = (i: number) => `#${(PALETTE[i % PALETTE.length] ?? 0).toString(16).padStart(6, "0")}`;
 
 const SHAPE_GLYPH: Record<Shape, string> = { circle: "●", square: "■", triangle: "▲", diamond: "◆" };
 
-// Bow (ranged) is added with its projectile system; melee weapons are selectable now.
-const PICKABLE_WEAPONS: Weapon[] = WEAPON_LIST.filter((w) => !WEAPONS[w].ranged);
+const PICKABLE_WEAPONS: Weapon[] = WEAPON_LIST; // sword/spear/knife (melee) + bow (ranged)
 const WEAPON_LABEL: Record<Weapon, string> = { sword: "Sword", spear: "Spear", knife: "Knife", bow: "Bow" };
 
 interface Props {

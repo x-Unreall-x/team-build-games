@@ -238,6 +238,49 @@ describe("stepWorld — combat & death", () => {
   });
 });
 
+describe("stepWorld — ranged (bow) projectiles", () => {
+  const bowAtk: Intent = { move: NONE, facing: "right", aim: 0, dash: false, attack: true };
+
+  it("looses a traveling arrow instead of a melee hit, and puts the bow on cooldown", () => {
+    const w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 }, facing: "right", weapon: "bow" },
+      { id: "B", pos: { x: 25, y: 15 } }, // far down-range — not hit this tick
+    ]);
+    const after = stepWorld(w, { A: bowAtk, B: idle() }, 0.05);
+    expect(after.projectiles.length).toBe(1); // arrow spawned, still flying
+    expect(after.players.B.health).toBe(START_HEALTH); // no instant/melee damage
+    expect(after.players.A.attackCooldownRemaining).toBeGreaterThan(0);
+  });
+
+  it("an arrow that reaches a player deals 1 damage and is consumed", () => {
+    let w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 }, facing: "right", weapon: "bow" },
+      { id: "B", pos: { x: 18, y: 15 } }, // 3 m down-range
+    ]);
+    w = stepWorld(w, { A: bowAtk, B: idle() }, 0.05);
+    let guard = 0;
+    while (w.projectiles.length > 0 && guard++ < 50) {
+      w = stepWorld(w, { A: idle("right"), B: idle() }, 0.05);
+    }
+    expect(w.players.B.health).toBe(START_HEALTH - 1);
+    expect(w.projectiles.length).toBe(0); // arrow consumed on hit
+  });
+
+  it("an arrow expires at its range without hitting anyone", () => {
+    let w = createWorld([
+      { id: "A", pos: { x: 2, y: 15 }, facing: "right", weapon: "bow" },
+      { id: "Z", pos: { x: 2, y: 1 } }, // off the flight path
+    ]);
+    w = stepWorld(w, { A: bowAtk, Z: idle() }, 0.05);
+    let guard = 0;
+    while (w.projectiles.length > 0 && guard++ < 100) {
+      w = stepWorld(w, { A: idle("right"), Z: idle() }, 0.05);
+    }
+    expect(w.projectiles.length).toBe(0); // gone (range/wall), not stuck
+    expect(w.players.Z.health).toBe(START_HEALTH); // nobody hit
+  });
+});
+
 describe("stepWorld — lifecycle invariants", () => {
   it("is a no-op once the match has ended (returns the same world)", () => {
     const ended = createWorld([{ id: "A", pos: { x: 15, y: 15 } }], "ended");
