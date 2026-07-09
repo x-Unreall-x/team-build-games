@@ -54,6 +54,7 @@ export function solve(
     }
 
     for (let i = 0; i < pts.length; i++) {
+      if (pinned[i] === true) continue;
       const p = pts[i]!;
       p.pos.x = Math.min(X_MAX_M, Math.max(X_MIN_M, p.pos.x));
       const g = groundAt(p.pos.x);

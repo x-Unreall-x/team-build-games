@@ -64,4 +64,11 @@ describe("solve", () => {
     const run = () => solve(integrate(pts, 0.05), con, [false, false, true], flat);
     expect(run()).toEqual(run());
   });
+
+  it("is pure: input points are not mutated", () => {
+    const input = [p(0, 1), p(2, 1)];
+    solve(input, [{ a: 0, b: 1, len: 1 }], [false, false], flat);
+    expect(input[0]!.pos).toEqual({ x: 0, y: 1 });
+    expect(input[1]!.pos).toEqual({ x: 2, y: 1 });
+  });
 });
