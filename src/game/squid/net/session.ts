@@ -82,6 +82,7 @@ export class SquidSession {
       stage: this.stage,
       result: (world?.result ?? null) as RoundResult,
       timeMs: world ? timeMsOf(world) : 0,
+      playerIds: world?.playerIds ?? [],
     };
   }
 
