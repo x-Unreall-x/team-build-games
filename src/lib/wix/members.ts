@@ -88,18 +88,3 @@ export async function getSessionMember(): Promise<MemberInfo | null> {
   if (loggedIn()) return { id: memberIdFromToken() ?? "member", name: "Player", email: null, avatarUrl: null };
   return null; // visitor
 }
-
-/** Diagnostic snapshot of auth resolution (surfaced by `/api/me?debug=1`). */
-export async function debugAuth(): Promise<Record<string, unknown>> {
-  let gcmOk = false;
-  let gcmId: string | null = null;
-  let gcmError: string | null = null;
-  try {
-    const id = (await members.getCurrentMember())?.member?._id ?? null;
-    gcmOk = !!id;
-    gcmId = id;
-  } catch (e) {
-    gcmError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  }
-  return { loggedIn: loggedIn(), getCurrentMemberOk: gcmOk, getCurrentMemberId: gcmId, getCurrentMemberError: gcmError, tokenMemberId: memberIdFromToken() };
-}
