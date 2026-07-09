@@ -4,11 +4,10 @@
  * All draws are coordinate-hashed off (seed, wave|spawnSeq) — reproducible anywhere.
  */
 
-import type { Vec2 } from "../arena/types";
 import { OVERRUN_FIELD_M } from "./constants";
 import { ENEMIES } from "./enemies";
 import { hash01 } from "./rng";
-import type { EnemyKind } from "./types";
+import type { EnemyKind, Vec2 } from "./types";
 
 const BASE_BUDGET = 6;
 const BUDGET_PER_WAVE = 4;

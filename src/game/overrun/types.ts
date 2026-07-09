@@ -4,7 +4,11 @@
  * seed so any peer can reproduce every future random draw after a host migration.
  */
 
-import type { InputState, PlayerId, Vec2 } from "../arena/types";
+/** 2D vector in world meters; +y is down. */
+export interface Vec2 { x: number; y: number; }
+/** Held movement keys for one frame. */
+export interface InputState { up: boolean; down: boolean; left: boolean; right: boolean; }
+export type PlayerId = string;
 
 export type GunId = "pistol" | "shotgun" | "rifle";
 export type EnemyKind = "rusher" | "tank";

@@ -9,7 +9,6 @@
  * → revive → wipe-check (revive-before-wipe) → pickups → waves/spawning → caps.
  */
 
-import type { PlayerId } from "../arena/types";
 import {
   EVENT_TTL_TICKS, INTERMISSION_S, MAX_ENEMIES, MAX_EVENTS, OVERRUN_FIELD_M,
   PLAYER_RADIUS_M, PLAYER_SPEED_MS, REVIVE_HEALTH, REVIVE_RANGE_M, REVIVE_S,
@@ -21,7 +20,7 @@ import { effectiveStats, rollOffer, xpToNext } from "./perks";
 import { rollDrop } from "./drops";
 import { composeWave, spawnPos } from "./waves";
 import { freshAmmo, GUNS } from "./weapons";
-import type { Enemy, Pickup, ShooterEvent, ShooterIntent, ShooterPhase, ShooterPlayer, ShooterWorld } from "./types";
+import type { Enemy, Pickup, PlayerId, ShooterEvent, ShooterIntent, ShooterPhase, ShooterPlayer, ShooterWorld } from "./types";
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 

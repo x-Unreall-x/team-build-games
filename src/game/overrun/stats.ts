@@ -3,8 +3,7 @@
  * sanitizePayload/buildShopUrl funnel by the island — this stays pure strings).
  */
 
-import type { PlayerId } from "../arena/types";
-import type { ShooterStats, ShooterWorld } from "./types";
+import type { PlayerId, ShooterStats, ShooterWorld } from "./types";
 
 /** Landed trigger-pulls over total, in [0,1]; 0 when no shots fired. */
 export function accuracy(s: ShooterStats): number {

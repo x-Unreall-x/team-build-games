@@ -1,9 +1,8 @@
 /** Pure world factory + queries. Spawns are a deterministic ring (sorted-id order). */
 
-import type { PlayerId } from "../arena/types";
 import { OVERRUN_FIELD_M, PLAYER_HEALTH } from "./constants";
 import { DEFAULT_GUN, freshAmmo } from "./weapons";
-import type { ShooterPlayer, ShooterWorld } from "./types";
+import type { PlayerId, ShooterPlayer, ShooterWorld } from "./types";
 
 const SPAWN_RING_M = 3;
 

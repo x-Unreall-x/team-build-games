@@ -3,9 +3,8 @@
  * hit hard. AI is chase-nearest-alive with lowest-id tie-breaks (deterministic).
  */
 
-import type { Vec2 } from "../arena/types";
 import { OVERRUN_FIELD_M, PLAYER_RADIUS_M } from "./constants";
-import type { Enemy, EnemyKind, ShooterPlayer } from "./types";
+import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
 export interface EnemyDef {
   kind: EnemyKind;

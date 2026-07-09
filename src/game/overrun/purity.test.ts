@@ -31,4 +31,13 @@ describe("overrun sim core purity", () => {
       expect(src, `${f} must stay engine/transport-free`).not.toMatch(/from ["']phaser["']/i);
     }
   });
+
+  it("no overrun file — including tests — imports from arena/: Arena and Overrun are separate games", () => {
+    const files = readdirSync(CORE_DIR).filter((f) => f.endsWith(".ts"));
+    expect(files.length).toBeGreaterThan(8);
+    for (const f of files) {
+      const src = readFileSync(join(CORE_DIR, f), "utf8");
+      expect(src, `${f} must not import from arena/`).not.toMatch(/from ["'][^"']*arena/);
+    }
+  });
 });
