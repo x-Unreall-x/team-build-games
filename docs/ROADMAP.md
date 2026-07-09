@@ -237,12 +237,14 @@ Goal: best-of-N matches with a between-rounds reset and a final 1-2-3 podium.
   handled gracefully.
 
 Tracking:
-- [ ] round-count selector in `WarmupRoom`; `rounds` carried in `start`
+- [ ] round-count selector in `WarmupRoom`; `rounds` carried in `start` (protocol done: `start` now has `rounds`/`roundNumber`/`tiebreak`; `standings` message added)
 - [ ] host tallies round wins; between-round reset + re-countdown; match ends after final round
-- [ ] standings synced to all peers; `MatchPhase` extended (`intermission`/`scoreboard`)
+- [ ] standings synced to all peers; session phase extended (`intermission`/`scoreboard`)
 - [ ] `Podium` overlay: 1st/2nd/3rd pedestals, musa per place, nickname above; ties handled
-- [ ] tie-for-podium → sudden-death extra round(s) among the tied players — unit-tested
-- [ ] sim-core round logic (win tally, reset, end-after-N, tie-break) unit-tested — pure, no clock/RNG
+- [x] tie-for-podium → sudden-death extra round(s) among the tied players — **pure core done + unit-tested**
+- [x] **sim-core round logic (win tally, standings, end-after-N, tie-break) — `arena/rounds.ts`, pure/no-clock/no-RNG, 7 tests.** Reduces to today's single-match behaviour at `rounds=1`.
+
+**Integration plan (remaining, needs live multiplayer playtest):** reuse `start` per round (host re-broadcasts `start` with the round's players — full set for a regular round, the tied subset for a sudden-death decider — so all peers `beginMatch` identically). Host owns the authoritative `RoundsState`; on each round's `world.phase==="ended"` it records the win (`recordRoundWin`/`recordTiebreakWin`), then `nextRound()`: `play`→intermission then next `start`; `tiebreak`→intermission then `start` with the tied subset; `done`→broadcast `{t:"standings",phase:"scoreboard",podium}`. Clients mirror via the `standings` broadcast (tally + podium) and the per-round `start`. Session phase gains `intermission`/`scoreboard`; a `Podium.tsx` overlay renders places from `getMeta` (shape/avatar + nickname).
 
 ### P9 — Arena types: auto-generated labyrinth · `dependsOn: P3`
 Goal: an arena-type selector; first type is an auto-generated maze with 3 m-wide, fully-interconnected
@@ -489,19 +491,31 @@ client + server, a members-area shell, and the locked-feature primitive. Anonymo
 
 ### B1 — Avatar upload (first member feature; Arena) · `dependsOn: B0` — **absorbs F4**
 Goal: a signed-in member uploads one character photo; it's resized, stored, and shown on their character to
-every peer.
+every peer. **Two tiers (DECIDED 2026-07-09): a global profile photo + optional per-game overrides.**
 
-- [ ] Avatar control (members area + Arena lobby): file input **jpg/jpeg/png** → client-side **resize + center-crop to a square** (256×256) via an offscreen `<canvas>`
-- [ ] **Trusted `/api/avatar` server route** uploads the image to **Wix Media** (elevated app creds; clients never write directly); store the **CDN URL** on the member (one avatar for now)
-- [ ] Arena attaches the logged-in member's avatar **URL** to their roster entry → carried on the wire (`hello`/`start`) → `render/scene.ts` maps it onto the body (Phaser texture per player id), **falling back to shape/color** when absent/loading
-- [ ] Anonymous users see the avatar picker **locked** (`<LockedFeature hint="Sign in to use a photo">`)
-- [ ] **cosmetic-only** (never enters the sim); payload capped; type/size validated server-side
+**B1a — global avatar (SHIPPED 2026-07-08):**
+- [x] Avatar control (Account settings): file input **jpg/jpeg/png** → client-side **resize + center-crop to a square** (256×256) via an offscreen `<canvas>` (`AvatarUploader.tsx` + `avatarCrop.ts`, unit-tested)
+- [x] **Trusted `/api/avatar` server route** uploads the image to **Wix Media** (elevated app creds; clients never write directly) and stores the **CDN URL** as the member **profile photo** — surfaced everywhere via `getSessionMember()`
+- [x] **cosmetic-only** (never enters the sim); payload capped; type/size validated server-side
+
+**B1b — per-game avatars (SHIPPED 2026-07-09):** separate avatar per game, set in the Arena lobby *or* Account → Player. Resolution: **per-game (`PlayerAvatars`) → global profile photo → shape/color**.
+- [x] `PlayerAvatars` collection `{ memberId, gameId, url }` (ADMIN writes; keyed by a deterministic `<gameSlug>-<memberId>` id for O(1) elevated get/upsert) — first slice of the B2 data model
+- [x] Extend `/api/avatar` with optional `gameId`: present → upsert a `PlayerAvatars` row; absent → the global profile photo (B1a behaviour). `gameId` allowlisted via `lib/members/games.ts`
+- [x] Pure `resolveGameAvatar(perGame, global)` (per-game → global → null) — unit-tested (4)
+- [x] Per-game avatar control in **Account → Player** (per game, SSR-resolved) and the **Arena lobby** (member-gated inline hint for anonymous)
+- [x] Arena attaches the resolved avatar **URL** to its roster entry → carried on the wire (`hello`/`start`, sanitized by `coerceAvatarUrl`) → `render/scene.ts` composites a **circular** avatar texture over the body, **falling back to shape/color** on absent/load-error/CORS-taint
 
 ### B2 — Progress & stats persistence · `dependsOn: B0`
 Goal: per-member game data, written only by a trusted server route.
 
-- [ ] Wix Data collections (`Players`, `Matches`/stats) with **PRIVILEGED** write permissions
-- [ ] `POST /api/match-result` — the **host reports the result**, server validates (sanity bounds) and writes per-member stats (wins, matches played, best survival level, favorite weapon…) — the only writer
+**Data model (DECIDED 2026-07-09) — data-type collections keyed by `(memberId, gameId)`, server-authoritative (elevated PRIVILEGED writes).** One collection *per data type*, not per game: a new game is just a new `gameId` value — no new collections, permissions, or write code. Rationale: Wix Data can't sort/filter nested object/JSON fields, so anything ever leaderboarded must be a **top-level column**; leaderboards are almost always *per-game single-metric* sorts, which this shape serves without a collection-per-game explosion. Escape hatch: split one game into its own collection later only if its schema diverges hard.
+- **`PlayerAvatars` `{ memberId, gameId, url }`** — per-game avatar override (built in B1, see below). Uniform across games.
+- **`PlayerStats` `{ memberId, gameId, score, wins, losses, matches, stats(object) }`** — shared leaderboard metrics (`score`/`wins`/`losses`/`matches`) are **first-class indexed columns** → a per-game leaderboard is `filter(gameId).descending("score").limit(N)`. Game-specific *display-only* extras live in the `stats` object blob (no schema churn).
+- **`PlayerProgress` `{ memberId, gameId, data(object) }`** — read-whole "save" blob for levels/items (built when needed).
+- **Indexes:** `memberId`, `gameId`, and the leaderboard sort columns (`score`, `wins`). Leaderboards themselves are a **future** option — the columns exist so we don't hit a JSON dead-end.
+
+- [ ] Create `PlayerStats` + `PlayerProgress` collections (PRIVILEGED writes) — `PlayerAvatars` lands earlier with B1
+- [ ] `POST /api/match-result` — the **host reports the result**, server validates (sanity bounds) and upserts the `(memberId, gameId)` `PlayerStats` row (wins, matches played, best survival level, favorite weapon…) — the only writer
 - [ ] Members area shows a player's stats; anonymous runs aren't saved (locked hint *"Sign in to save your progress"*)
 - **Open risk:** a cheating host can mis-report — acceptable for casual play; add server sanity checks.
 
@@ -521,7 +535,7 @@ Goal: unobtrusive ads for free users, hidden for paid members. (There are NO ads
 
 **Open decisions (Track B)**
 - Wix-dashboard config steps for headless Members auth + social providers + Pricing Plans — **owner action, potential blocker for B0/B3**.
-- Avatar store location: member **custom profile field** vs a `Players` collection row keyed by `memberId` (recommend the `Players` row so it co-locates with progress).
+- ~~Avatar store location~~ **DECIDED 2026-07-09:** global avatar = member **profile photo** (B1a); per-game overrides = a **`PlayerAvatars`** row keyed by `(memberId, gameId)` (B1b). See the B2 data model.
 - Avatar size/format: **256×256 square, jpg/jpeg/png, one per member** (recommended); re-crop on re-upload.
 - Ad network + premium-perk list — deferred to B3/B4.
 - Mapping member identity → the in-game P2P peer id (the member's avatar/stats attach to their current session's roster entry).
@@ -749,6 +763,25 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 
 ## Progress log
 
+- **2026-07-09** — **B1b per-game avatars shipped + data model decided.** Finalized the Track B data
+  model (data-type collections keyed by `(memberId, gameId)`; leaderboard metrics as first-class columns).
+  Built the avatar slice: created `PlayerAvatars` (ADMIN, deterministic `<gameSlug>-<memberId>` id; verified
+  upsert/get live), pure `resolveGameAvatar` (per-game → global → shape, TDD), elevated `playerAvatars`
+  adapter, `games` registry + allowlist, `/api/avatar` `gameId` branch, per-game uploader in Account → Player
+  (SSR-resolved) + Arena lobby (member-gated), and full wire→render: `avatarUrl` on hello/start
+  (`coerceAvatarUrl` https-only trust boundary) → `scene.ts` composites a circular avatar texture over the
+  body with shape fallback on any load/CORS failure. 151 tests, tsc clean, built.
+- **2026-07-09** — **P2P cross-device connectivity fixed (root cause: no TURN relay).** Symptom: other
+  players couldn't join even on the same home wifi — only a 2nd tab on the host's own PC connected.
+  Systematic-debugging confirmed signaling (Nostr relays) works (the same-PC tabs matchmake through the
+  same public relays a phone would use); the failure was ICE. STUN-only ICE can't pair two devices behind
+  one home NAT (mDNS `.local` host candidates don't resolve across devices; same-NAT reflexive pairs need
+  router hairpinning), and there was **no TURN relay** to fall back on (`Arena.tsx` shipped STUN-only
+  despite `rtc.ts` flagging TURN as required). Fix: pure TDD'd `net/ice.ts`
+  (`buildIceServers`/`iceConfigFromEnv`, 9 tests) reads `PUBLIC_TURN_URLS/USERNAME/CREDENTIAL` +
+  optional `PUBLIC_STUN_URLS`, STUN-only when unset (no regression). Verified the `PUBLIC_*` values
+  inline into the client bundle via a sentinel build. **Owner action to finish:** provision free TURN
+  creds (metered.ca), `wix env set` the three PUBLIC_TURN_* vars, redeploy, verify cross-device. 147 tests, tsc clean.
 - **2026-07-08** — **P12 bow shipped + Track B (members area) designed.** Finished P12: new pure
   `arena/projectile.ts` + `World.projectiles`; ranged weapons loose host-simulated arrows (deterministic
   `owner#tick` id) stepped/expired/hit in `sim.ts`, carried in the snapshot; bow in the picker; arrow/held-bow

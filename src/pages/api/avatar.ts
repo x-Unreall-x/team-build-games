@@ -2,7 +2,9 @@ import type { APIRoute } from "astro";
 import { auth } from "@wix/essentials";
 import { files } from "@wix/media";
 import { members } from "@wix/members";
-import { getContextualAuth } from "@wix/sdk-runtime/context";
+import { isKnownGameId } from "../../lib/members/games";
+import { getMemberId } from "../../lib/wix/members";
+import { setGameAvatarUrl } from "../../lib/wix/playerAvatars";
 
 const MAX_BYTES = 400_000; // client sends a 256×256 png — comfortably under this
 
@@ -20,34 +22,30 @@ function base64ToBytes(b64: string): Uint8Array {
 
 /**
  * Trusted avatar upload (Track B B1). A signed-in member POSTs a small square png/jpeg data URL;
- * we upload it to Wix Media (elevated — clients can't write media directly) and set it as the
- * member's profile photo, so `getSessionMember()` surfaces it everywhere. One avatar per member.
+ * we upload it to Wix Media (elevated — clients can't write media directly).
+ *
+ * - No `gameId` (B1a) → stored as the member's **profile photo** (the global avatar), so
+ *   `getSessionMember()` surfaces it everywhere.
+ * - With a known `gameId` (B1b) → stored as a **per-game override** row in `PlayerAvatars`.
+ *
+ * One avatar per (member) globally, and one per (member, game). Cosmetic-only; validated server-side.
  */
 export const POST: APIRoute = async ({ request }) => {
-  // 1) must be a signed-in member
-  let loggedIn = false;
-  try {
-    loggedIn = (getContextualAuth() as { loggedIn?: () => boolean }).loggedIn?.() === true;
-  } catch {
-    loggedIn = false;
-  }
-  if (!loggedIn) return json({ error: "Sign in to set an avatar." }, 401);
-
-  let memberId: string | undefined;
-  try {
-    memberId = (await members.getCurrentMember())?.member?._id ?? undefined;
-  } catch {
-    memberId = undefined;
-  }
-  if (!memberId) return json({ error: "Could not resolve your member account." }, 401);
+  // 1) resolve the signed-in member id (Members-API read, or the session-token fallback — see
+  //    getMemberId; getCurrentMember() alone returns nothing in POST API routes even when logged in).
+  const memberId = await getMemberId();
+  if (!memberId) return json({ error: "Sign in to set an avatar." }, 401);
 
   // 2) parse + validate the image (a data URL produced by the client-side resize/crop)
   let dataUrl = "";
+  let gameId: unknown;
   try {
-    ({ dataUrl = "" } = await request.json());
+    ({ dataUrl = "", gameId } = await request.json());
   } catch {
     return json({ error: "Malformed request." }, 400);
   }
+  // gameId is optional; when present it must be a known game (allowlist prevents arbitrary rows).
+  if (gameId !== undefined && !isKnownGameId(gameId)) return json({ error: "Unknown game." }, 400);
   const match = /^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(dataUrl);
   if (!match) return json({ error: "Expected a PNG or JPEG image." }, 400);
   const mimeType = match[1]!;
@@ -74,13 +72,17 @@ export const POST: APIRoute = async ({ request }) => {
   }
   if (!avatarUrl) return json({ error: "Media upload returned no URL." }, 502);
 
-  // 4) store as the member's profile photo (Manage Members → elevated)
+  // 4) store — per-game override (PlayerAvatars) or the global profile photo (both elevated)
   try {
-    await auth.elevate(members.updateMember)(memberId, {
-      profile: { photo: { url: avatarUrl, width: 256, height: 256 } },
-    });
+    if (isKnownGameId(gameId)) {
+      await setGameAvatarUrl(memberId, gameId, avatarUrl);
+    } else {
+      await auth.elevate(members.updateMember)(memberId, {
+        profile: { photo: { url: avatarUrl, width: 256, height: 256 } },
+      });
+    }
   } catch {
-    // Uploaded, but couldn't persist to the profile — surface it so the photo shape can be adjusted.
+    // Uploaded, but couldn't persist — surface it so the caller can retry/adjust.
     return json({ avatarUrl, warning: "uploaded-but-not-saved" }, 200);
   }
 

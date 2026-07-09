@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "wix-app": {
+      "source": "/Users/kyryloi/wix/wix-headless-masterclass/team-build-games/node_modules/@wix/agent-skills",
+      "sourceType": "local",
+      "computedHash": "61e9edb397667617e974a1565d9081e48ed64c990f75c7e09029d9ad1ba44d69"
+    },
+    "wix-design-system": {
+      "source": "/Users/kyryloi/wix/wix-headless-masterclass/team-build-games/node_modules/@wix/agent-skills",
+      "sourceType": "local",
+      "computedHash": "bee87f4486050e11eec2b914f67f2535462c7e29d25f110d72740b617f556bd8"
+    },
+    "wix-headless": {
+      "source": "/Users/kyryloi/wix/wix-headless-masterclass/team-build-games/node_modules/@wix/agent-skills",
+      "sourceType": "local",
+      "computedHash": "62aa16cab8a34c82eac0bdada57e3fcdd116be0e3c2adefde75ddcc3ce1e1b3f"
+    },
+    "wix-manage": {
+      "source": "/Users/kyryloi/wix/wix-headless-masterclass/team-build-games/node_modules/@wix/agent-skills",
+      "sourceType": "local",
+      "computedHash": "5e89e9b9d42f4512361998447f547121a4e8e1d10baad392bf66946b705ce0c0"
+    }
+  }
+}

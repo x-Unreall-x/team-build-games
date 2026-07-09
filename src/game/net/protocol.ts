@@ -7,6 +7,7 @@
 import type { Direction, Intent, PlayerId, Projectile, World } from "../arena/types";
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
+import type { Placement } from "../arena/rounds";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -16,6 +17,7 @@ export interface RosterEntry {
   iconColor: number;
   shape: Shape;
   weapon: Weapon;
+  avatarUrl?: string | null;
   alive: boolean;
 }
 
@@ -26,14 +28,20 @@ export interface StartPlayer {
   iconColor: number;
   shape: Shape;
   weapon: Weapon;
+  avatarUrl?: string | null;
   isBot: boolean;
 }
 
 export type NetMessage =
-  | { t: "hello"; name: string; iconColor: number; shape: Shape; weapon: Weapon }
+  | { t: "hello"; name: string; iconColor: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
   | { t: "kick"; targetId: PlayerId }
-  | { t: "start"; countdownMs: number; players: StartPlayer[] }
+  // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.
+  | { t: "host"; hostId: PlayerId }
+  // P8 round fields are optional so a plain single-match `start` (rounds=1, today's behaviour) still validates.
+  | { t: "start"; countdownMs: number; players: StartPlayer[]; rounds?: number; roundNumber?: number; tiebreak?: boolean }
+  // Host → peers at each round's end: the running tally + phase. `podium` is set on the final board.
+  | { t: "standings"; wins: Record<PlayerId, number>; roundNumber: number; rounds: number; phase: "intermission" | "scoreboard"; podium?: Placement[] }
   | { t: "input"; tick: number; intent: Intent }
   | {
       t: "snapshot";
@@ -63,6 +71,20 @@ export function decode(s: string): NetMessage | null {
     /* fall through */
   }
   return null;
+}
+
+const MAX_AVATAR_URL_LEN = 512;
+
+/**
+ * Sanitize an untrusted avatar URL from a peer (cosmetic trust boundary). Only https URLs of a
+ * sane length are accepted — everything else (data:/javascript:/http:/oversized) becomes null so a
+ * peer can't make a viewer's browser fetch an arbitrary resource. The image is used only as a texture.
+ */
+export function coerceAvatarUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const url = raw.trim();
+  if (url.length === 0 || url.length > MAX_AVATAR_URL_LEN) return null;
+  return url.startsWith("https://") ? url : null;
 }
 
 const DIRECTIONS: Direction[] = ["up", "down", "left", "right"];

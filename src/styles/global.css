@@ -1,9 +1,23 @@
 @import "tailwindcss";
 
+/* The arcade is always open after dark: `dark:` variants key off the .dark class
+   pinned on <html>, not the OS setting, so islands styled light+dark render dark. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-display:
-    "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  /* Arcade display face — headings, labels, buttons. Body copy stays on the sans stack. */
+  --font-display: "Press Start 2P", "Courier New", monospace;
+
+  /* Deep "arcade at night" backgrounds. Accents use stock Tailwind neons
+     (cyan-400, fuchsia-400, emerald-400, amber-300) — no custom accent tokens needed. */
+  --color-night-950: #060610;
+  --color-night-900: #0b0b1a;
+  --color-night-800: #131328;
+  --color-night-700: #1d1d3a;
+
   --animate-marquee: marquee 40s linear infinite;
+  --animate-blink: blink 1.1s steps(2, jump-none) infinite;
+  --animate-float: float 5s ease-in-out infinite;
 }
 
 @keyframes marquee {
@@ -15,19 +29,24 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+@keyframes blink {
+  50% {
+    opacity: 0;
   }
 }
 
-@supports (font: -apple-system-body) and (-webkit-appearance: none) {
-  img[loading='lazy'] {
-    clip-path: inset(0.6px);
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
   }
 }
 
 html {
+  color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -48,23 +67,121 @@ button {
 
 a:focus-visible,
 input:focus-visible,
+select:focus-visible,
 button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgb(23 23 23 / 1), 0 0 0 4px rgb(250 250 250 / 1);
+  box-shadow:
+    0 0 0 2px #060610,
+    0 0 0 4px #22d3ee;
 }
 
-@media (prefers-color-scheme: dark) {
-  a:focus-visible,
-  input:focus-visible,
-  button:focus-visible {
-    box-shadow: 0 0 0 2px rgb(250 250 250 / 1), 0 0 0 4px rgb(23 23 23 / 1);
-  }
-}
-
-/* Editorial section eyebrow */
-.eyebrow {
-  font-size: 0.6875rem;
-  letter-spacing: 0.18em;
+/* The pixel face has no lowercase worth reading — everything set in it goes caps. */
+.font-display {
   text-transform: uppercase;
-  font-weight: 500;
+}
+
+/* Tiny pixel section label, e.g. "CHOOSE YOUR GAME". */
+.eyebrow {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: 0.625rem;
+  letter-spacing: 0.2em;
+}
+
+/* Soft neon glow taken from the current text color. */
+.neon {
+  text-shadow:
+    0 0 10px currentColor,
+    0 0 32px color-mix(in oklab, currentColor 55%, transparent);
+}
+
+/* Full-viewport CRT dressing: faint scanlines + corner vignette. Sits above content,
+   ignores the pointer, and is subtle enough to keep text crisp. */
+.crt::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 0.12) 0px,
+    rgb(0 0 0 / 0.12) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+.crt::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 58%,
+    rgb(0 0 0 / 0.38) 100%
+  );
+}
+
+/* Faint blueprint grid for hero/CTA panels. */
+.pixel-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Chunky arcade button: pixel face + hard offset shadow that flattens on press. */
+.arcade-btn {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.9em 1.4em;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: #060610;
+  background: #22d3ee;
+  border: 2px solid #060610;
+  box-shadow:
+    4px 4px 0 0 rgb(34 211 238 / 0.35),
+    4px 4px 0 2px #060610;
+  transition:
+    transform 120ms,
+    box-shadow 120ms,
+    background-color 120ms;
+}
+
+.arcade-btn:hover {
+  background: #67e8f9;
+}
+
+.arcade-btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 0 transparent;
+}
+
+.arcade-btn-ghost {
+  color: #e5e5e5;
+  background: transparent;
+  border-color: rgb(255 255 255 / 0.3);
+  box-shadow:
+    4px 4px 0 0 rgb(255 255 255 / 0.12),
+    4px 4px 0 2px rgb(255 255 255 / 0.25);
+}
+
+.arcade-btn-ghost:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-blink,
+  .animate-float {
+    animation: none;
+  }
 }

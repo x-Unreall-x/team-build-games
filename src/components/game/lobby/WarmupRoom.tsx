@@ -5,6 +5,7 @@ import type { PlayerId } from "../../../game/arena/types";
 import { SHAPES, type Shape } from "../../../game/arena/cosmetic";
 import { WEAPON_LIST, type Weapon } from "../../../game/arena/weapons";
 import { MAX_PLAYERS } from "../../../game/constants";
+import AvatarUploader from "../../members/AvatarUploader";
 
 const hex = (i: number) => `#${(PALETTE[i % PALETTE.length] ?? 0).toString(16).padStart(6, "0")}`;
 
@@ -29,6 +30,10 @@ interface Props {
   onWeapon: (w: Weapon) => void;
   onStart: (botCount: number) => void;
   onKick: (id: PlayerId) => void;
+  onMakeHost: (id: PlayerId) => void;
+  /** Signed-in members can set a per-game character photo; anonymous players see a locked hint. */
+  isMember: boolean;
+  avatarUrl: string | null;
 }
 
 export default function WarmupRoom(props: Props) {
@@ -112,6 +117,28 @@ export default function WarmupRoom(props: Props) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="text-neutral-500">Your character photo</span>
+          {props.isMember ? (
+            <AvatarUploader gameId="arena" currentUrl={props.avatarUrl} />
+          ) : (
+            <div className="flex items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-700">
+              <span aria-hidden>🔒</span>
+              <span>Sign in to use a photo — everyone else picks a shape.</span>
+              <a
+                href={`/api/auth/login?returnToUrl=${encodeURIComponent(
+                  typeof window !== "undefined" ? window.location.pathname + window.location.search : "/games/arena",
+                )}`}
+                data-astro-reload
+                data-astro-prefetch="false"
+                className="ml-auto shrink-0 rounded bg-sky-500 px-2 py-1 font-semibold text-white hover:bg-sky-400"
+              >
+                Sign in
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1 text-sm">
@@ -203,12 +230,21 @@ export default function WarmupRoom(props: Props) {
                 {p.id === props.hostId && <span className="ml-1 text-xs text-amber-500">host</span>}
               </span>
               {props.isHost && p.id !== props.localId && (
-                <button
-                  onClick={() => props.onKick(p.id)}
-                  className="rounded px-2 py-0.5 text-xs text-red-500 hover:bg-red-500/10"
-                >
-                  kick
-                </button>
+                <>
+                  <button
+                    onClick={() => props.onMakeHost(p.id)}
+                    className="rounded px-2 py-0.5 text-xs text-amber-500 hover:bg-amber-500/10"
+                    title="Give host to this player"
+                  >
+                    make host
+                  </button>
+                  <button
+                    onClick={() => props.onKick(p.id)}
+                    className="rounded px-2 py-0.5 text-xs text-red-500 hover:bg-red-500/10"
+                  >
+                    kick
+                  </button>
+                </>
               )}
             </li>
           ))}

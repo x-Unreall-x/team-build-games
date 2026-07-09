@@ -18,10 +18,9 @@ if (!Astro.props.menu.length) return null;
             <a
               href={item.path === "//" ? "/" : item.path}
               class={clsx(
-                "block p-2 text-lg underline-offset-4 hover:text-black hover:underline md:inline-block md:text-sm dark:hover:text-neutral-300",
+                "block p-2 text-lg underline-offset-4 hover:text-cyan-300 hover:underline md:inline-block md:text-sm",
                 {
-                  "text-black dark:text-neutral-300":
-                    Astro.url.pathname === item.path,
+                  "text-neutral-200": Astro.url.pathname === item.path,
                 }
               )}
             >

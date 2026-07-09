@@ -15,6 +15,7 @@ export interface LobbyPlayer {
   iconColor: number; // palette index
   shape: Shape; // cosmetic body shape (render-only)
   weapon: Weapon; // equipped weapon (sim-relevant)
+  avatarUrl?: string | null; // signed-in member's photo (render-only); absent → shape/color
 }
 
 export type Roster = Record<PlayerId, LobbyPlayer>;

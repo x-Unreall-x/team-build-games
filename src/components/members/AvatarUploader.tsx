@@ -33,7 +33,14 @@ async function toSquarePng(file: File): Promise<string> {
   return canvas.toDataURL("image/png");
 }
 
-export default function AvatarUploader({ currentUrl }: { currentUrl: string | null }) {
+export default function AvatarUploader({
+  currentUrl,
+  gameId,
+}: {
+  currentUrl: string | null;
+  /** When set, the upload is stored as a per-game override rather than the global profile photo. */
+  gameId?: string;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(currentUrl);
   const [busy, setBusy] = useState(false);
@@ -51,7 +58,7 @@ export default function AvatarUploader({ currentUrl }: { currentUrl: string | nu
       const res = await fetch("/api/avatar", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dataUrl }),
+        body: JSON.stringify(gameId ? { dataUrl, gameId } : { dataUrl }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error ?? "Upload failed.");

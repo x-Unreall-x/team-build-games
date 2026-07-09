@@ -54,3 +54,53 @@ describe("Session — lobby → start → play", () => {
     expect(aw.players["bot:1"]!.status).toBe("alive");
   });
 });
+
+describe("Session — explicit host (creator stays host; transferable)", () => {
+  const opts = (id: string, extra = {}) => ({
+    transport: undefined as never, // set below
+    name: id,
+    iconColor: 0,
+    shape: "circle" as const,
+    weapon: "sword" as const,
+    onChange: () => {},
+    ...extra,
+  });
+
+  it("keeps the room creator as host even when a joiner has a lexicographically-lower id", () => {
+    const hub = new LocalHub();
+    // creator "z" has the HIGHER id; joiner "a" the lower — old lowest-id election would crown "a".
+    const z = new Session({ ...opts("z"), transport: hub.join("z"), isCreator: true });
+    const a = new Session({ ...opts("a"), transport: hub.join("a") });
+
+    expect(z.getState().isHost).toBe(true);
+    expect(a.getState().isHost).toBe(false);
+    expect(a.getState().hostId).toBe("z");
+    expect(z.getState().hostId).toBe("z");
+  });
+
+  it("transfers host to another player via makeHost", () => {
+    const hub = new LocalHub();
+    const z = new Session({ ...opts("z"), transport: hub.join("z"), isCreator: true });
+    const a = new Session({ ...opts("a"), transport: hub.join("a") });
+
+    z.makeHost("a");
+
+    expect(a.getState().isHost).toBe(true);
+    expect(z.getState().isHost).toBe(false);
+    expect(z.getState().hostId).toBe("a");
+    expect(a.getState().hostId).toBe("a");
+  });
+
+  it("migrates host to a remaining peer when the host leaves", () => {
+    const hub = new LocalHub();
+    const z = new Session({ ...opts("z"), transport: hub.join("z"), isCreator: true });
+    const a = new Session({ ...opts("a"), transport: hub.join("a") });
+    const b = new Session({ ...opts("b"), transport: hub.join("b") });
+
+    hub.leave("z"); // creator/host drops
+    // remaining peers re-elect a stable host (lowest remaining id: "a") and agree on it
+    expect(a.getState().hostId).toBe("a");
+    expect(b.getState().hostId).toBe("a");
+    expect(a.getState().isHost).toBe(true);
+  });
+});

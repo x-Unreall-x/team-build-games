@@ -7,6 +7,8 @@ export interface PlayerMeta {
   name: string;
   colorIndex: number;
   shape: Shape;
+  /** Signed-in member's photo (render-only). Absent/null → draw the shape/color body. */
+  avatarUrl?: string | null;
 }
 
 /** What the renderer needs each frame: the world to draw + the current countdown number. */

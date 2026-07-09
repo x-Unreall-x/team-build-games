@@ -11,7 +11,7 @@
 
 import type { Intent, PlayerId, RawInput, World } from "../arena/types";
 import type { Transport } from "./transport";
-import { decode, encode, type StartPlayer } from "./protocol";
+import { coerceAvatarUrl, decode, encode, type StartPlayer } from "./protocol";
 import { SyncEngine } from "./sync";
 import { electHost } from "./election";
 import { createWorld, evenSpawns } from "../arena/match";
@@ -32,6 +32,10 @@ export interface SessionOptions {
   iconColor: number;
   shape: Shape;
   weapon: Weapon;
+  /** Signed-in member's resolved Arena avatar (render-only); null for anonymous players. */
+  avatarUrl?: string | null;
+  /** True for the peer that CREATED the room (opened it with no `?room=`); it claims host. */
+  isCreator?: boolean;
   /** Notified whenever roster/phase/host changes so React can re-render. */
   onChange: () => void;
 }
@@ -48,6 +52,12 @@ export class Session implements MatchDriver {
   /** Bumped on each match start so the UI can recreate the renderer cleanly. */
   matchEpoch = 0;
 
+  /**
+   * The authoritative host, explicitly owned rather than computed by id: the room CREATOR claims it,
+   * joiners ADOPT it (via `hello`/`host` messages), and it can be transferred (`makeHost`). Null until
+   * adopted — `hostId()` then falls back to lowest-id election (also the migration rule on host-leave).
+   */
+  private explicitHostId: PlayerId | null = null;
   private engine: SyncEngine | null = null;
   private initialWorld: World | null = null;
   private meta: Record<PlayerId, PlayerMeta> = {};
@@ -59,15 +69,13 @@ export class Session implements MatchDriver {
   constructor(private readonly opts: SessionOptions) {
     this.t = opts.transport;
     this.localId = this.t.selfId;
-    this.profile = { id: this.localId, name: opts.name, iconColor: opts.iconColor, shape: opts.shape, weapon: opts.weapon };
+    this.profile = { id: this.localId, name: opts.name, iconColor: opts.iconColor, shape: opts.shape, weapon: opts.weapon, avatarUrl: opts.avatarUrl ?? null };
     this.roster = upsert({}, this.profile);
+    if (opts.isCreator) this.explicitHostId = this.localId; // the creator owns host until it transfers/leaves
 
     this.t.onMessage((data, from) => this.onMessage(data, from));
-    this.t.onPeerJoin(() => this.sendHello()); // greet newcomers so they learn our profile
-    this.t.onPeerLeave((id) => {
-      this.roster = remove(this.roster, id);
-      this.opts.onChange();
-    });
+    this.t.onPeerJoin(() => this.sendHello()); // greet newcomers so they learn our profile + host
+    this.t.onPeerLeave((id) => this.onPeerLeave(id));
     this.sendHello();
   }
 
@@ -95,7 +103,7 @@ export class Session implements MatchDriver {
   }
 
   setProfile(name: string, iconColor: number, shape: Shape = this.profile.shape, weapon: Weapon = this.profile.weapon): void {
-    this.profile = { id: this.localId, name, iconColor, shape, weapon };
+    this.profile = { id: this.localId, name, iconColor, shape, weapon, avatarUrl: this.profile.avatarUrl };
     this.roster = upsert(this.roster, this.profile);
     this.sendHello();
     this.opts.onChange();
@@ -110,6 +118,7 @@ export class Session implements MatchDriver {
       iconColor: p.iconColor,
       shape: p.shape,
       weapon: p.weapon,
+      avatarUrl: p.avatarUrl ?? null,
       isBot: false,
     }));
     const bots: StartPlayer[] = Array.from({ length: botCount }, (_, i) => ({
@@ -170,11 +179,39 @@ export class Session implements MatchDriver {
   // ---- internals ---------------------------------------------------------------
 
   private hostId(): PlayerId | null {
+    // Explicit host when known; otherwise fall back to lowest-id election (bootstrap + migration).
+    if (this.explicitHostId && [this.localId, ...this.t.getPeers()].includes(this.explicitHostId)) {
+      return this.explicitHostId;
+    }
     return electHost([this.localId, ...this.t.getPeers()]);
   }
 
+  /** Host-only: hand the host role to another connected player in the lobby. */
+  makeHost(targetId: PlayerId): void {
+    if (this.hostId() !== this.localId || targetId === this.localId) return;
+    if (!(targetId in this.roster)) return;
+    this.explicitHostId = targetId;
+    this.t.send(encode({ t: "host", hostId: targetId }));
+    this.opts.onChange();
+  }
+
+  private onPeerLeave(id: PlayerId): void {
+    const wasHost = id === this.hostId();
+    this.roster = remove(this.roster, id);
+    if (wasHost) {
+      // Host left → drop the stale claim so everyone falls back to lowest-id election (consistent),
+      // then the newly-elected host re-claims + announces so late joiners adopt it too.
+      this.explicitHostId = null;
+      if (electHost([this.localId, ...this.t.getPeers()]) === this.localId) {
+        this.explicitHostId = this.localId;
+        this.t.send(encode({ t: "host", hostId: this.localId }));
+      }
+    }
+    this.opts.onChange();
+  }
+
   private sendHello(): void {
-    this.t.send(encode({ t: "hello", name: this.profile.name, iconColor: this.profile.iconColor, shape: this.profile.shape, weapon: this.profile.weapon }));
+    this.t.send(encode({ t: "hello", name: this.profile.name, iconColor: this.profile.iconColor, shape: this.profile.shape, weapon: this.profile.weapon, avatarUrl: this.profile.avatarUrl, hostId: this.explicitHostId }));
   }
 
   private onMessage(data: string, from: PlayerId): void {
@@ -183,11 +220,17 @@ export class Session implements MatchDriver {
     switch (m.t) {
       case "hello": {
         const isNew = !(from in this.roster);
-        this.roster = upsert(this.roster, { id: from, name: m.name, iconColor: m.iconColor, shape: coerceShape(m.shape), weapon: coerceWeapon(m.weapon) });
-        if (isNew) this.sendHello(); // reply so the newcomer learns us (bounded: only on first sight)
+        this.roster = upsert(this.roster, { id: from, name: m.name, iconColor: m.iconColor, shape: coerceShape(m.shape), weapon: coerceWeapon(m.weapon), avatarUrl: coerceAvatarUrl(m.avatarUrl) });
+        // A joiner with no host yet adopts the sender's claimed host (creator/host propagation).
+        if (this.explicitHostId == null && m.hostId != null) this.explicitHostId = m.hostId;
+        if (isNew) this.sendHello(); // reply so the newcomer learns us + our host (bounded: first sight)
         this.opts.onChange();
         break;
       }
+      case "host":
+        this.explicitHostId = m.hostId;
+        this.opts.onChange();
+        break;
       case "kick":
         if (m.targetId === this.localId) {
           this.leave();
@@ -205,7 +248,7 @@ export class Session implements MatchDriver {
 
   private beginMatch(players: StartPlayer[]): void {
     const ids = players.map((p) => p.id);
-    this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, colorIndex: p.iconColor, shape: p.shape }]));
+    this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, colorIndex: p.iconColor, shape: p.shape, avatarUrl: p.avatarUrl ?? null }]));
     this.botIds = players.filter((p) => p.isBot).map((p) => p.id);
     // Zip the deterministic spawn ring with each player's equipped weapon (same order as ids).
     const spawns = evenSpawns(ids).map((s, i) => ({ ...s, weapon: players[i]!.weapon }));

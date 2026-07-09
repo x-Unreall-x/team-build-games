@@ -10,6 +10,7 @@ import type { ArenaEvent, HudState, MatchDriver } from "../../game/arena/render/
 import { Session } from "../../game/net/session";
 import { SoloDriver } from "../../game/arena/soloDriver";
 import { buildJoinUrl, mintRoomId, parseRoomId } from "../../game/net/roomLink";
+import { buildIceServers, iceConfigFromEnv } from "../../game/net/ice";
 import { joinedIds } from "../../game/net/lobby";
 import { Sfx } from "../../game/audio/sfx";
 import type { PlayerId } from "../../game/arena/types";
@@ -20,7 +21,18 @@ import Hearts from "./hud/Hearts";
 import CooldownBadge from "./hud/CooldownBadge";
 import Countdown from "./hud/Countdown";
 
-const DEFAULT_ICE: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+// STUN + (if provisioned) a TURN relay for cross-NAT play — TURN creds come from PUBLIC_* env at
+// build time (see .env.example). Without TURN, two devices behind the same home NAT can't connect.
+// Keys are read individually so Vite statically inlines each PUBLIC_* value into the client bundle.
+const ICE_SERVERS: RTCIceServer[] = buildIceServers(
+  iceConfigFromEnv({
+    PUBLIC_STUN_URLS: import.meta.env.PUBLIC_STUN_URLS,
+    PUBLIC_TURN_URLS: import.meta.env.PUBLIC_TURN_URLS,
+    PUBLIC_TURN_URL: import.meta.env.PUBLIC_TURN_URL,
+    PUBLIC_TURN_USERNAME: import.meta.env.PUBLIC_TURN_USERNAME,
+    PUBLIC_TURN_CREDENTIAL: import.meta.env.PUBLIC_TURN_CREDENTIAL,
+  }),
+);
 const FRESH_HUD: HudState = { countdown: 3, health: 3, dashFraction: 1, attackFraction: 1, alive: true };
 
 /**
@@ -28,7 +40,7 @@ const FRESH_HUD: HudState = { countdown: 3, health: 3, dashFraction: 1, attackFr
  * The renderer scene is fed a MatchDriver — the netplay Session for multiplayer, or a
  * SoloDriver for practice — so the same canvas serves both.
  */
-export default function Arena() {
+export default function Arena({ isMember = false, avatarUrl = null }: { isMember?: boolean; avatarUrl?: string | null } = {}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const sfxRef = useRef<Sfx>(new Sfx());
@@ -40,6 +52,7 @@ export default function Arena() {
   const colorRef = useRef(0);
   const shapeRef = useRef<Shape>(DEFAULT_SHAPE);
   const weaponRef = useRef<Weapon>(DEFAULT_WEAPON);
+  const avatarUrlRef = useRef<string | null>(avatarUrl); // resolved Arena avatar (SSR); static for the island's life
 
   const [, forceRender] = useState(0);
   const bump = useCallback(() => forceRender((n) => n + 1), []);
@@ -67,8 +80,8 @@ export default function Arena() {
       setRoomId(id);
       const { createRtcTransport } = await import("../../game/net/rtc"); // client-only (WebRTC)
       if (cancelled) return;
-      const transport = createRtcTransport({ roomId: id, iceServers: DEFAULT_ICE });
-      session = new Session({ transport, name: nameRef.current, iconColor: colorRef.current, shape: shapeRef.current, weapon: weaponRef.current, onChange: bump });
+      const transport = createRtcTransport({ roomId: id, iceServers: ICE_SERVERS });
+      session = new Session({ transport, name: nameRef.current, iconColor: colorRef.current, shape: shapeRef.current, weapon: weaponRef.current, avatarUrl: avatarUrlRef.current, isCreator: !existing, onChange: bump });
       sessionRef.current = session;
       setReady(true);
     })();
@@ -244,6 +257,9 @@ export default function Arena() {
           onWeapon={changeWeapon}
           onStart={startMatch}
           onKick={(id) => sessionRef.current?.kick(id)}
+          onMakeHost={(id) => sessionRef.current?.makeHost(id)}
+          isMember={isMember}
+          avatarUrl={avatarUrl}
         />
       ) : (
         <div

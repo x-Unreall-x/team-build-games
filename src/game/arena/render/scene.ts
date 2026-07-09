@@ -54,6 +54,8 @@ interface PlayerView {
   /** Weapon sprite (detailed per-weapon texture), drawn above the body so it's always visible. */
   sword: Phaser.GameObjects.Image;
   pips: Phaser.GameObjects.Rectangle[];
+  /** Signed-in member's circular photo, layered over the body once loaded (else the shape shows). */
+  avatar?: Phaser.GameObjects.Image;
   deadAnimated: boolean;
 }
 
@@ -384,7 +386,58 @@ export class ArenaScene extends Phaser.Scene {
     // Draw order (back→front): shadow, body, face, WEAPON (above body so it's always visible),
     // then the name + health pips floating on top.
     const container = this.add.container(0, 0, [shadow, body, face, sword, name, ...pips]);
-    return { container, body, face, sword, pips, deadAnimated: false };
+    const view: PlayerView = { container, body, face, sword, pips, deadAnimated: false };
+    if (meta.avatarUrl) this.loadAvatar(id, meta.avatarUrl, view);
+    return view;
+  }
+
+  /**
+   * Load a signed-in member's photo and layer it as a circular avatar over the body. Fully
+   * best-effort: on load error OR a CORS-tainted source (the getImageData guard throws before we'd
+   * ever hand a tainted canvas to WebGL), we simply keep the shape/color body. Never blocks render.
+   */
+  private loadAvatar(id: PlayerId, url: string, view: PlayerView): void {
+    const srcKey = `avatar-src-${id}`;
+    const cirKey = `avatar-cir-${id}`;
+    const d = VIS_R * 2;
+
+    const apply = () => {
+      try {
+        if (!this.textures.exists(srcKey)) return;
+        const src = this.textures.get(srcKey).getSourceImage() as CanvasImageSource;
+        const canvas = document.createElement("canvas");
+        canvas.width = d;
+        canvas.height = d;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(d / 2, d / 2, d / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(src, 0, 0, d, d);
+        ctx.restore();
+        ctx.getImageData(0, 0, 1, 1); // taint guard: throws on a CORS-tainted source → keep the shape
+        if (this.textures.exists(cirKey)) this.textures.remove(cirKey);
+        this.textures.addCanvas(cirKey, canvas);
+        const avatar = this.add.image(0, 0, cirKey);
+        view.container.addAt(avatar, view.container.getIndex(view.face) + 1); // above face, below weapon
+        view.avatar = avatar;
+        view.body.setVisible(false);
+        view.face.setVisible(false);
+      } catch {
+        /* CORS-tainted or draw error → the shape body stays. */
+      }
+    };
+
+    if (this.textures.exists(srcKey)) {
+      apply();
+      return;
+    }
+    this.load.crossOrigin = "anonymous"; // required so the CDN image yields a clean (untainted) canvas
+    this.load.image({ key: srcKey, url });
+    this.load.once(`filecomplete-image-${srcKey}`, apply);
+    this.load.start();
   }
 
   private drawField(): void {

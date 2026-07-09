@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { coerceIntent, decode, encode, worldFromSnapshot, type NetMessage } from "./protocol";
+import { coerceAvatarUrl, coerceIntent, decode, encode, worldFromSnapshot, type NetMessage } from "./protocol";
 import { createWorld } from "../arena/match";
+
+describe("coerceAvatarUrl (untrusted peer avatar URL)", () => {
+  it("accepts a normal https URL", () => {
+    expect(coerceAvatarUrl("https://static.wixstatic.com/media/abc.png")).toBe(
+      "https://static.wixstatic.com/media/abc.png",
+    );
+  });
+  it("rejects non-https schemes (data:/javascript:/http:) to block arbitrary fetches", () => {
+    expect(coerceAvatarUrl("http://evil/x.png")).toBeNull();
+    expect(coerceAvatarUrl("javascript:alert(1)")).toBeNull();
+    expect(coerceAvatarUrl("data:image/png;base64,AAAA")).toBeNull();
+  });
+  it("rejects non-strings, empty, and oversized values", () => {
+    expect(coerceAvatarUrl(undefined)).toBeNull();
+    expect(coerceAvatarUrl(null)).toBeNull();
+    expect(coerceAvatarUrl(42)).toBeNull();
+    expect(coerceAvatarUrl("")).toBeNull();
+    expect(coerceAvatarUrl("https://x/" + "a".repeat(600))).toBeNull();
+  });
+  it("trims surrounding whitespace before validating", () => {
+    expect(coerceAvatarUrl("  https://cdn/a.png  ")).toBe("https://cdn/a.png");
+  });
+});
 
 describe("encode / decode", () => {
   it("round-trips an input message", () => {
