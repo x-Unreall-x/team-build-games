@@ -1,6 +1,12 @@
 ---
 import Footer from "../components/layout/footer.astro";
 import RootLayout from "../components/layout/layout.astro";
+import { getSessionMember } from "../lib/wix/members";
+
+// SSR: reflect login state in the header button (per request).
+const member = await getSessionMember();
+const LOGIN_HINT =
+  "Sign in to use a custom character photo and save your progress across games. You can still play anonymously — signing in just unlocks the extras.";
 
 interface GamePackEntry {
   slug: string;
@@ -44,12 +50,32 @@ const games: GamePackEntry[] = [
           A pack of small multiplayer games, backed by Wix Headless. Pick one to play.
         </p>
       </div>
-      <a
-        href="/account"
-        class="shrink-0 rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-      >
-        Account
-      </a>
+      {
+        member ? (
+          <a
+            href="/account"
+            title="View your account"
+            class="flex shrink-0 items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {member.avatarUrl ? (
+              <img src={member.avatarUrl} alt="" class="h-6 w-6 rounded-full object-cover" />
+            ) : (
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-200 text-xs dark:bg-neutral-700">
+                🙂
+              </span>
+            )}
+            <span class="max-w-[11rem] truncate">{member.email ?? member.name}</span>
+          </a>
+        ) : (
+          <a
+            href="/api/auth/login?returnUrl=/"
+            title={LOGIN_HINT}
+            class="shrink-0 rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            Log-in
+          </a>
+        )
+      }
     </header>
 
     <div class="grid gap-6 sm:grid-cols-2">

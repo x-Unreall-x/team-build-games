@@ -22,6 +22,7 @@ export async function getSessionMember(): Promise<MemberInfo | null> {
     return {
       id: m._id,
       name: m.profile?.nickname ?? m.profile?.slug ?? "Player",
+      email: m.loginEmail ?? null,
       avatarUrl: m.profile?.photo?.url ?? null,
     };
   } catch {

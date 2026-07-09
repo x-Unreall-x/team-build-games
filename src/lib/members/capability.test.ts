@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { capabilityOf, defaultLockHint, meetsCapability, type MemberInfo } from "./capability";
 
-const member: MemberInfo = { id: "m1", name: "Ava", avatarUrl: null };
+const member: MemberInfo = { id: "m1", name: "Ava", email: "ava@example.com", avatarUrl: null };
 
 describe("capabilityOf", () => {
   it("is anonymous with no member, member when signed in, paid with an active plan", () => {

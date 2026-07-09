@@ -12,6 +12,7 @@ export type Capability = "anonymous" | "member" | "paid";
 export interface MemberInfo {
   id: string;
   name: string;
+  email: string | null;
   avatarUrl: string | null;
 }
 
