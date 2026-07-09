@@ -34,11 +34,11 @@ export const PLANT_EPS_M = 0.03;
 /** Horizontal push on a planted leg's upper points — this is what propels the body. */
 export const SWING_PLANTED_MPS = 2.2;
 /** Horizontal tip speed for a lifted (in-air) leg repositioning itself. */
-export const SWING_LIFTED_MPS = 3.5;
+export const SWING_LIFTED_MPS = 0.5;
 /** Upward tip speed while the lift key is held. */
 export const LIFT_MPS = 2.5;
-/** A lifted tip may not rise above this height. */
-export const LIFT_MAX_Y_M = 0.9;
+/** A lifted tip may not rise closer to the head than this (tentacles can't go above the shoulder). */
+export const LIFT_TIP_BELOW_HEAD_M = 0.2;
 
 /** Head center below -this ⇒ round failed (only reachable over the hole). */
 export const HEAD_DROP_FAIL_M = 0.5;

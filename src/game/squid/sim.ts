@@ -8,8 +8,8 @@
 import {
   FINISH_X_M,
   HEAD_DROP_FAIL_M,
-  LIFT_MAX_Y_M,
   LIFT_MPS,
+  LIFT_TIP_BELOW_HEAD_M,
   PLANT_EPS_M,
   SUBSTEPS,
   SWING_LIFTED_MPS,
@@ -66,7 +66,8 @@ export function stepSquid(
     if (leg.lifted) {
       // raise the tip toward the body (position nudge — verlet turns it into velocity)
       const t = points[tip]!;
-      t.pos.y = Math.min(LIFT_MAX_Y_M, t.pos.y + LIFT_MPS * dt);
+      const tipCap = points[HEAD]!.pos.y - LIFT_TIP_BELOW_HEAD_M;
+      t.pos.y = Math.min(tipCap, t.pos.y + LIFT_MPS * dt);
       // swing only applied when a player actively controls the leg with a swing intent
       const controllerId = control[legIdx];
       if (controllerId !== null) {
@@ -86,21 +87,18 @@ export function stepSquid(
   }
 
   // 3) physics: substepped integrate + solve, pins = planted tips
-  // Lifted legs are disconnected from the rig (they're "floating") — exclude their constraints
-  // so they don't transfer ground-reaction forces to the body. The tip is still directly
-  // nudged by the motor above; it just won't prop the body if it rests on ground.
-  const liftedPts = new Set<number>();
-  for (const leg of legs) {
-    if (leg.lifted) for (const i of leg.pts) liftedPts.add(i);
-  }
-  const activeConstraints = RIG_CONSTRAINTS.filter(
-    (c) => !liftedPts.has(c.a) && !liftedPts.has(c.b),
-  );
+  // Lifted legs stay fully connected to the rig via RIG_CONSTRAINTS so the chain never
+  // detaches (no spaghetti drift). Ground support is simply skipped for all three points
+  // of a lifted leg — they can swing through the air without being pushed up by terrain.
   const pinned: boolean[] = Array(points.length).fill(false);
   for (const leg of legs) if (leg.planted) pinned[leg.pts[2]] = true;
+  const skipGround: boolean[] = Array(points.length).fill(false);
+  for (const leg of legs) {
+    if (leg.lifted) for (const i of leg.pts) skipGround[i] = true;
+  }
   let pts = points;
   for (let s = 0; s < SUBSTEPS; s++) {
-    pts = solve(integrate(pts, dt / SUBSTEPS), activeConstraints, pinned, groundAt);
+    pts = solve(integrate(pts, dt / SUBSTEPS), RIG_CONSTRAINTS, pinned, groundAt, skipGround);
   }
   // pinned tips must not drift (integrate moves everything): restore them
   for (const leg of legs) {

@@ -25,12 +25,17 @@ export function integrate(points: VPoint[], dt: number): VPoint[] {
 /**
  * Relax distance constraints (SOLVER_ITERATIONS passes) with pinned points immovable,
  * colliding against the ground profile after each pass. Pure.
+ *
+ * @param skipGround - optional per-point flag; when `skipGround[i] === true` the point
+ *   participates in constraint solving but is NOT pushed up by the ground. Used to let
+ *   lifted-leg points remain connected to the rig while receiving no ground support.
  */
 export function solve(
   points: VPoint[],
   constraints: DistCon[],
   pinned: boolean[],
   groundAt: (x: number) => number | null,
+  skipGround?: boolean[],
 ): VPoint[] {
   const pts = clone(points);
 
@@ -57,6 +62,7 @@ export function solve(
       if (pinned[i] === true) continue;
       const p = pts[i]!;
       p.pos.x = Math.min(X_MAX_M, Math.max(X_MIN_M, p.pos.x));
+      if (skipGround?.[i] === true) continue;
       const g = groundAt(p.pos.x);
       if (g !== null && p.pos.y < g) {
         p.pos.y = g;

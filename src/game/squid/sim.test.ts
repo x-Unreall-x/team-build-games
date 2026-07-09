@@ -88,6 +88,21 @@ describe("stepSquid — locomotion (the core mechanic)", () => {
     const w = run(w0, intents, 30);
     expect(w.points[HEAD]!.pos.y).toBeLessThan(y0 - 0.2);
   });
+
+  it("a lifted leg stays attached to the body (no spaghetti drift)", () => {
+    let w = createSquidWorld("stage1", ["A", "B"]);
+    const intents = {
+      A: { swing: 1 as const, lift: true, cycle: false, grabLeg: 0 },
+      B: { swing: 0 as const, lift: false, cycle: false, grabLeg: 4 },
+    };
+    for (let i = 0; i < 60; i++) w = stepSquid(w, intents, 1 / 20); // 3 s of lifted swing
+    const head = w.points[HEAD]!.pos;
+    for (const pi of w.legs[0]!.pts) {
+      const p = w.points[pi]!.pos;
+      // full chain is 3 × LEG_SEGMENT_M ≈ 1.35 m; allow modest solver slack
+      expect(Math.hypot(p.x - head.x, p.y - head.y)).toBeLessThan(2);
+    }
+  });
 });
 
 describe("stepSquid — fail & finish", () => {
