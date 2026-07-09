@@ -2,6 +2,7 @@
 import Footer from "../components/layout/footer.astro";
 import RootLayout from "../components/layout/layout.astro";
 import { getSessionMember } from "../lib/wix/members";
+import AvatarUploader from "../components/members/AvatarUploader";
 
 // SSR: read the current member (anonymous until sign-in).
 const member = await getSessionMember();
@@ -108,11 +109,11 @@ const games = [{ id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald
                     <dt class="text-neutral-500">Email</dt>
                     <dd class="font-medium">{member.email ?? "—"}</dd>
                   </div>
-                  <div class="flex justify-between gap-4">
-                    <dt class="text-neutral-500">Character photo</dt>
-                    <dd class="text-neutral-400">Upload coming soon</dd>
-                  </div>
                 </dl>
+                <div class="mt-5 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+                  <div class="mb-2 text-sm text-neutral-500">Character photo</div>
+                  <AvatarUploader client:load currentUrl={member.avatarUrl} />
+                </div>
               </section>
             </div>
           </div>

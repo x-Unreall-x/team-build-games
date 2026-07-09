@@ -24,6 +24,7 @@
     "@wix/data": "1.0.168",
     "@wix/ecom": "1.0.806",
     "@wix/essentials": "^1.0.6",
+    "@wix/media": "^1.0.264",
     "@wix/redirects": "1.0.60",
     "@wix/sdk": "^1.21.5",
     "@wix/seo": "^1.0.44",
