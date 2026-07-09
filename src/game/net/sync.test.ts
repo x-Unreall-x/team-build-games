@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LocalHub } from "./transport";
-import { SyncEngine } from "./sync";
+import { SyncEngine, type SyncAdapter } from "./sync";
+import { arenaSyncAdapter } from "./arenaAdapter";
 import { createWorld } from "../arena/match";
 import type { Intent, InputState, World } from "../arena/types";
 
@@ -23,6 +24,7 @@ describe("SyncEngine — host authority", () => {
       transport: hub.join("a"),
       localId: "a",
       world: createWorld(spawns().slice(0, 2)),
+      adapter: arenaSyncAdapter,
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
     });
@@ -30,6 +32,7 @@ describe("SyncEngine — host authority", () => {
       transport: hub.join("b"),
       localId: "b",
       world: createWorld(spawns().slice(0, 2)),
+      adapter: arenaSyncAdapter,
       readIntent: () => RIGHT, // b holds "right"
       onWorld: (w) => (bWorld = w),
     });
@@ -60,11 +63,12 @@ describe("SyncEngine — host-controlled bots & peer drop", () => {
       transport: hub.join("a"),
       localId: "a",
       world: createWorld(spawns()),
+      adapter: arenaSyncAdapter,
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
       hostExtraIntents: () => ({ c: RIGHT }), // host drives "c" like a bot
     });
-    const b = new SyncEngine({ transport: hub.join("b"), localId: "b", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: () => {} });
+    const b = new SyncEngine({ transport: hub.join("b"), localId: "b", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: () => {} });
     for (let i = 0; i < 3; i++) {
       b.tick(0.1);
       a.tick(0.1);
@@ -81,10 +85,11 @@ describe("SyncEngine — host-controlled bots & peer drop", () => {
       transport: ta,
       localId: "a",
       world: createWorld(spawns().slice(0, 2)),
+      adapter: arenaSyncAdapter,
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
     });
-    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns().slice(0, 2)), readIntent: () => IDLE, onWorld: () => {} });
+    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns().slice(0, 2)), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: () => {} });
 
     a.tick(0.05);
     tb.close(); // b drops → host a marks b dead
@@ -104,9 +109,9 @@ describe("SyncEngine — host migration", () => {
     const ta = hub.join("a");
     const tb = hub.join("b");
     const tc = hub.join("c");
-    const a = new SyncEngine({ transport: ta, localId: "a", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.a = w) });
-    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.b = w) });
-    const c = new SyncEngine({ transport: tc, localId: "c", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.c = w) });
+    const a = new SyncEngine({ transport: ta, localId: "a", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: (w) => (worlds.a = w) });
+    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: (w) => (worlds.b = w) });
+    const c = new SyncEngine({ transport: tc, localId: "c", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: (w) => (worlds.c = w) });
 
     expect(a.isHost).toBe(true);
     for (let i = 0; i < 4; i++) {
@@ -130,5 +135,60 @@ describe("SyncEngine — host migration", () => {
     expect(c.isHost).toBe(false);
     expect(b.getWorld().tick).toBeGreaterThan(tickBeforeLeave); // sim kept advancing
     expect(worlds.c!.tick).toBe(b.getWorld().tick); // c is now following b's snapshots
+  });
+});
+
+describe("snapshot cadence + deltas (generic engine)", () => {
+  it("skips broadcast when encodeSnapshot returns null, and passes the last SENT world as prevSent", () => {
+    // Minimal fake adapter over a counter world {n: number}: snapshot every 2nd tick.
+    const sent: Array<{ n: number; prev: number | null }> = [];
+    type CW = { n: number };
+    const adapter: SyncAdapter<CW, Record<string, never>> = {
+      step: (w) => ({ n: w.n + 1 }),
+      coerceIntent: () => ({}),
+      encodeInput: () => JSON.stringify({ t: "i" }),
+      encodeSnapshot: (w, prev) => {
+        if (w.n % 2 !== 0) return null;
+        sent.push({ n: w.n, prev: prev?.n ?? null });
+        return JSON.stringify({ t: "s", n: w.n });
+      },
+      decodeMessage: (data) => {
+        const m = JSON.parse(data);
+        if (m.t === "i") return { kind: "input", intent: {} };
+        if (m.t === "s") return { kind: "snapshot", world: { n: m.n } };
+        return null;
+      },
+      electHost: (_w, connected) => [...connected].sort()[0] ?? null,
+    };
+    const hub = new LocalHub();
+    const host = new SyncEngine({ transport: hub.join("a"), localId: "a", world: { n: 0 }, adapter, readIntent: () => ({}), onWorld: () => {} });
+    const client = new SyncEngine({ transport: hub.join("b"), localId: "b", world: { n: 0 }, adapter, readIntent: () => ({}), onWorld: () => {} });
+    for (let t = 0; t < 4; t++) { host.tick(0.05); client.tick(0.05); }
+    expect(sent).toEqual([{ n: 2, prev: null }, { n: 4, prev: 2 }]);
+    expect(client.getWorld().n).toBe(4);
+  });
+
+  it("applies 'update' messages against the client's held world", () => {
+    type CW = { n: number };
+    const adapter: SyncAdapter<CW, Record<string, never>> = {
+      step: (w) => ({ n: w.n + 1 }),
+      coerceIntent: () => ({}),
+      encodeInput: () => JSON.stringify({ t: "i" }),
+      encodeSnapshot: (w, prev) =>
+        prev === null ? JSON.stringify({ t: "s", n: w.n }) : JSON.stringify({ t: "d", add: w.n - prev.n }),
+      decodeMessage: (data) => {
+        const m = JSON.parse(data);
+        if (m.t === "i") return { kind: "input", intent: {} };
+        if (m.t === "s") return { kind: "snapshot", world: { n: m.n } };
+        if (m.t === "d") return { kind: "update", apply: (prev: CW) => ({ n: prev.n + m.add }) };
+        return null;
+      },
+      electHost: (_w, connected) => [...connected].sort()[0] ?? null,
+    };
+    const hub = new LocalHub();
+    const host = new SyncEngine({ transport: hub.join("a"), localId: "a", world: { n: 0 }, adapter, readIntent: () => ({}), onWorld: () => {} });
+    const client = new SyncEngine({ transport: hub.join("b"), localId: "b", world: { n: 0 }, adapter, readIntent: () => ({}), onWorld: () => {} });
+    for (let t = 0; t < 3; t++) { host.tick(0.05); client.tick(0.05); }
+    expect(client.getWorld().n).toBe(3); // keyframe n=1, then deltas +1 +1
   });
 });
