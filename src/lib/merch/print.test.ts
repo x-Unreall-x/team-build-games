@@ -40,6 +40,25 @@ describe("buildShopUrl", () => {
   });
 });
 
+describe("buildShopUrl visual params", () => {
+  it("includes warrior and avatar query params when visual is provided", () => {
+    const url = buildShopUrl("tee", { title: "CHAMPION", sub: "JUL 9" }, {
+      warriorSrc: "/assets/arena/warriors/swordsman.png",
+      avatarUrl: "https://cdn.example.com/avatar.jpg",
+    });
+    expect(url).toContain("warrior=");
+    expect(url).toContain("avatar=");
+    expect(url).toContain("swordsman");
+    expect(url).toContain("cdn.example.com");
+  });
+
+  it("omits warrior and avatar params when visual is not provided", () => {
+    const url = buildShopUrl("tee", { title: "CHAMPION", sub: "JUL 9" });
+    expect(url).not.toContain("warrior");
+    expect(url).not.toContain("avatar");
+  });
+});
+
 import { matchResultPayload } from "./print";
 
 describe("matchResultPayload", () => {

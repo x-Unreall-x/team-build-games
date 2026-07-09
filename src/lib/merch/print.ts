@@ -44,9 +44,15 @@ export function sanitizePayload(raw: { title?: string; sub?: string }): PrintPay
   };
 }
 
-/** Build the shop URL that carries a payload into the merch funnel. */
-export function buildShopUrl(product: string, payload: PrintPayload): string {
+/** Build the shop URL that carries a payload (and optional visual) into the merch funnel. */
+export function buildShopUrl(
+  product: string,
+  payload: PrintPayload,
+  visual?: { warriorSrc?: string | null; avatarUrl?: string | null },
+): string {
   const params = new URLSearchParams({ title: payload.title, sub: payload.sub });
+  if (visual?.warriorSrc) params.set("warrior", visual.warriorSrc);
+  if (visual?.avatarUrl) params.set("avatar", visual.avatarUrl);
   return `/shop/${product}?${params.toString()}`;
 }
 

@@ -444,7 +444,9 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
                   {(["tee", "mug", "keychain", "poster"] as const).map((slug) => (
                     <a
                       key={slug}
-                      href={buildShopUrl(slug, matchPayload)}
+                      href={buildShopUrl(slug, matchPayload, { warriorSrc, avatarUrl })}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex flex-col items-center gap-1 rounded-lg border border-white/10 p-2 text-neutral-300 no-underline transition hover:border-cyan-400/50 hover:bg-white/5"
                       style={{ width: 90 }}
                     >
