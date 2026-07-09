@@ -91,6 +91,23 @@ export const MERCH_PRODUCTS: MerchProduct[] = [
       { key: "printColor", label: "Print color", choices: PRINT_COLORS },
     ],
   },
+  {
+    slug: "keychain",
+    name: "Fighter Keychain",
+    tagline: "Your character, pocket-sized and battle-hardened.",
+    basePriceCents: 900,
+    options: [
+      {
+        key: "material",
+        label: "Material",
+        choices: [
+          { value: "acrylic", label: "Clear acrylic" },
+          { value: "metal", label: "Brushed metal", priceDeltaCents: 600 },
+        ],
+      },
+      { key: "printColor", label: "Print color", choices: PRINT_COLORS },
+    ],
+  },
 ];
 
 export const MAX_QTY = 16; // one full room, twice over

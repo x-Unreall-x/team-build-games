@@ -7,7 +7,7 @@
  * payload into the print area, so long titles squeeze instead of overflowing.
  */
 type Props = {
-  product: "tee" | "mug" | "poster";
+  product: "tee" | "mug" | "keychain" | "poster";
   garmentColor: string;
   printColor: string;
   title: string;
@@ -96,6 +96,52 @@ const { product, garmentColor, printColor, title, sub } = Astro.props;
         font-size="5"
         text-anchor="middle"
         textLength="60"
+        lengthAdjust="spacingAndGlyphs"
+        style="font-family: var(--font-display)"
+      >
+        {sub}
+      </text>
+    </svg>
+  )
+}
+
+{
+  product === "keychain" && (
+    <svg viewBox="0 0 200 200" class="h-full w-full" role="img" aria-label="Keychain preview">
+      <circle cx="100" cy="44" r="10" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="4" />
+      <rect
+        data-garment
+        fill={garmentColor}
+        stroke="rgba(255,255,255,0.25)"
+        stroke-width="2"
+        x="65"
+        y="54"
+        width="70"
+        height="110"
+        rx="10"
+      />
+      <text
+        data-print-title
+        x="100"
+        y="105"
+        fill={printColor}
+        font-size="7"
+        text-anchor="middle"
+        textLength="58"
+        lengthAdjust="spacingAndGlyphs"
+        style="font-family: var(--font-display)"
+      >
+        {title}
+      </text>
+      <text
+        data-print-sub
+        x="100"
+        y="120"
+        fill={printColor}
+        opacity="0.75"
+        font-size="5"
+        text-anchor="middle"
+        textLength="54"
         lengthAdjust="spacingAndGlyphs"
         style="font-family: var(--font-display)"
       >

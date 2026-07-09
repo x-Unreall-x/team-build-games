@@ -68,3 +68,32 @@ describe("describeSelection", () => {
     );
   });
 });
+
+describe("keychain product", () => {
+  const keychain = productBySlug("keychain");
+
+  it("exists in the catalog", () => {
+    expect(keychain).toBeDefined();
+  });
+
+  it("has material and printColor options", () => {
+    const keys = keychain!.options.map((o) => o.key);
+    expect(keys).toContain("material");
+    expect(keys).toContain("printColor");
+  });
+
+  it("metal material adds a price delta", () => {
+    const metalChoice = keychain!.options
+      .find((o) => o.key === "material")!
+      .choices.find((c) => c.value === "metal")!;
+    expect(metalChoice.priceDeltaCents).toBeGreaterThan(0);
+  });
+
+  it("base price is correct", () => {
+    expect(keychain!.basePriceCents).toBe(900);
+  });
+
+  it("default selection includes material=acrylic", () => {
+    expect(defaultSelection(keychain!)).toMatchObject({ material: "acrylic" });
+  });
+});

@@ -15,3 +15,10 @@ export const DEFAULT_SHAPE: Shape = "circle";
 export function coerceShape(raw: unknown): Shape {
   return SHAPES.includes(raw as Shape) ? (raw as Shape) : DEFAULT_SHAPE;
 }
+
+export const BODY_ASSET: Record<Shape, string> = {
+  circle:   "/assets/arena/warriors/swordsman.png",
+  square:   "/assets/arena/warriors/spearman.png",
+  triangle: "/assets/arena/warriors/knife-fighter.png",
+  diamond:  "/assets/arena/warriors/archer.png",
+};
