@@ -22,6 +22,20 @@
 - Working directory: `/Users/kyryloi/wix/wix-headless-masterclass/team-build-games`.
 - Commit after every task with a conventional message ending in `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 
+## Plan amendments — baseline drift (added 2026-07-09, worktree base `0388ad4`)
+
+The concurrent arena session landed protocol v2 between plan-writing and execution. These
+amendments OVERRIDE the corresponding details in the tasks below:
+
+1. **`iconColor` no longer exists** in `hello`/`StartPlayer`/`LobbyPlayer`/`RosterEntry` (`PROTOCOL_VERSION = 2`), and arena's `PlayerMeta` lost `colorIndex`. Adapt Overrun:
+   - `OverrunSession` constructor options drop `iconColor` → `{ transport, name, isCreator?, onChange }`; `setProfile(name: string)` only; `sendHello` sends no `iconColor`.
+   - The `oStart` message carries `players: { id: PlayerId; name: string }[]` (no iconColor). Update the Task 9 protocol union member accordingly.
+   - **`colorIndex` is DERIVED**: each player's index in the `oStart` players array (host builds it from `rosterList` order). `beginMatch` stores `meta = { name, colorIndex: arrayIndex }`. `OverrunMeta.colorIndex` stays in the render contract — it is now derived, not chosen.
+   - `OverrunWarmupRoom` has NO color picker — name input only; party-list color dots use the same derived roster-order index. Its props drop `colorIndex`/`onColor`.
+   - Task 12's session tests: construct sessions without `iconColor`; assert `getMeta` colorIndexes are distinct per player after start.
+2. **Baseline numbers**: 201 tests at execution start (not 151); maze (P9) and the merch storefront (`/shop/*` pages) already exist — the Task 14 merch link should point at the LIVE funnel exactly as `Arena.tsx` does at HEAD (re-read it; if its buildShopUrl call changed products/params, mirror the new form).
+3. **Read files at HEAD before mirroring**: `session.ts`/`lobby.ts`/`protocol.ts`/`Arena.tsx`/`WarmupRoom.tsx` all changed after the plan's code excerpts were written. Where a task says "mirror the arena X", the CURRENT file wins over any stale detail in this plan's prose.
+
 ## File Structure (all new unless marked Modify)
 
 ```
