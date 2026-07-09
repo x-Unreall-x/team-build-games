@@ -66,6 +66,10 @@ export class SyncEngine<W, I> {
   }
 
   private onPeerLeave(id: PeerId): void {
+    // Refresh the host cache before gating on it — it's only otherwise refreshed inside
+    // tick(), so it can be stale at leave-fire time. The departed peer is already gone
+    // from getPeers(), so this recomputes who the new host is (possibly us).
+    this.hostId = this.computeHost();
     this.inputs.delete(id);
     if (this.isHost && this.opts.adapter.onPeerLeave) {
       this.world = this.opts.adapter.onPeerLeave(this.world, id);

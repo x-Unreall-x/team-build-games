@@ -235,14 +235,6 @@ export class OverrunSession {
         this.t.send(encode({ t: "host", hostId: this.localId }));
       }
     }
-    // SyncEngine.onPeerLeave is registered on this same transport AFTER ours (it's created in
-    // beginMatch, which runs after the constructor), so it fires right after this callback in
-    // the same dispatch. It gates its fold-in (marking the departed player dead) on its OWN
-    // cached `isHost`, which `tick()` alone refreshes — so on a host departure every surviving
-    // engine would still believe the departed peer is host and silently skip the fold. Forcing
-    // a zero-dt tick here (unconditionally, since the departure may or may not have been the
-    // engine's believed host) guarantees that cache is current before its handler runs.
-    this.engine?.tick(0);
     this.opts.onChange();
   }
 
