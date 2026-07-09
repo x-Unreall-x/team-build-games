@@ -3,43 +3,124 @@ import Footer from "../components/layout/footer.astro";
 import RootLayout from "../components/layout/layout.astro";
 import { getSessionMember } from "../lib/wix/members";
 
-// SSR: read the current member (currently anonymous until @wix/members + Members Area app land).
+// SSR: read the current member (anonymous until sign-in).
 const member = await getSessionMember();
+
+// Games listed under "Player" — extend as games ship. Per-game stats + session
+// history are placeholders until Track B B2 (progress persistence); no fabricated data.
+const games = [{ id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald-500/20" }];
 ---
 
 <RootLayout>
-  <section class="mx-auto w-full max-w-2xl px-4 py-12">
-    <h1 class="text-4xl font-bold tracking-tight">Account</h1>
-
-    {
-      member ? (
-        <div class="mt-6 flex flex-col gap-5">
+  {
+    member ? (
+      <section class="mx-auto w-full max-w-4xl px-4 py-12">
+        {/* header: identity + logout */}
+        <div class="mb-8 flex items-center justify-between gap-4">
           <div class="flex items-center gap-4">
             {member.avatarUrl ? (
-              <img src={member.avatarUrl} alt="" class="h-16 w-16 rounded-full object-cover" />
+              <img src={member.avatarUrl} alt="" class="h-14 w-14 rounded-full object-cover" />
             ) : (
-              <div class="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-200 text-2xl dark:bg-neutral-700">
+              <span class="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-200 text-2xl dark:bg-neutral-700">
                 🙂
-              </div>
+              </span>
             )}
             <div>
-              <div class="text-lg font-semibold">{member.name}</div>
-              <div class="text-sm text-neutral-500">Signed in</div>
+              <div class="text-2xl font-bold leading-tight">{member.name}</div>
+              {member.email && <div class="text-sm text-neutral-500">{member.email}</div>}
             </div>
           </div>
-          <form method="POST" action="/api/auth/logout?returnUrl=/account">
+          <form method="POST" action="/api/auth/logout?returnUrl=/">
             <button
               type="submit"
               class="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
-              Sign out
+              Log out
             </button>
           </form>
-          <p class="text-sm text-neutral-500">
-            Custom avatar upload (B1) and saved progress (B2) are coming next.
-          </p>
         </div>
-      ) : (
+
+        <div class="grid gap-8 sm:grid-cols-[180px_1fr]">
+          {/* section nav */}
+          <nav class="flex flex-row gap-2 sm:flex-col">
+            <button
+              data-section="player"
+              aria-current="page"
+              class="account-tab rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-600 hover:bg-neutral-100 aria-[current=page]:bg-neutral-900 aria-[current=page]:text-white dark:text-neutral-300 dark:hover:bg-neutral-800 dark:aria-[current=page]:bg-white dark:aria-[current=page]:text-neutral-900"
+            >
+              Player
+            </button>
+            <button
+              data-section="settings"
+              class="account-tab rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-600 hover:bg-neutral-100 aria-[current=page]:bg-neutral-900 aria-[current=page]:text-white dark:text-neutral-300 dark:hover:bg-neutral-800 dark:aria-[current=page]:bg-white dark:aria-[current=page]:text-neutral-900"
+            >
+              Account settings
+            </button>
+          </nav>
+
+          {/* panels */}
+          <div>
+            {/* Player */}
+            <div data-panel="player">
+              <p class="mb-6 text-sm text-neutral-500">
+                Stats and match history are saved once member progress is enabled (coming soon) —
+                the layout below is where each game's data will land.
+              </p>
+              {games.map((g) => (
+                <section class="mb-8 rounded-2xl border border-neutral-200 p-5 dark:border-neutral-800">
+                  <h3 class="text-lg font-semibold">{g.name}</h3>
+
+                  <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      ["Matches", "—"],
+                      ["Wins", "—"],
+                      ["Losses", "—"],
+                      ["Win rate", "—"],
+                    ].map(([label, value]) => (
+                      <div class="rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800/60">
+                        <div class="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
+                        <div class="text-xl font-bold">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h4 class="mt-5 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                    Recent sessions
+                  </h4>
+                  <p class="mt-2 text-sm text-neutral-500">
+                    No sessions yet. After a match, each session will show here — date/time, who you
+                    played with, win/loss, and the avatar you used.
+                  </p>
+                </section>
+              ))}
+            </div>
+
+            {/* Account settings */}
+            <div data-panel="settings" hidden>
+              <section class="rounded-2xl border border-neutral-200 p-5 dark:border-neutral-800">
+                <h3 class="text-lg font-semibold">Account settings</h3>
+                <dl class="mt-4 flex flex-col gap-3 text-sm">
+                  <div class="flex justify-between gap-4">
+                    <dt class="text-neutral-500">Display name</dt>
+                    <dd class="font-medium">{member.name}</dd>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <dt class="text-neutral-500">Email</dt>
+                    <dd class="font-medium">{member.email ?? "—"}</dd>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <dt class="text-neutral-500">Character photo</dt>
+                    <dd class="text-neutral-400">Upload coming soon</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    ) : (
+      <section class="mx-auto w-full max-w-2xl px-4 py-12">
+        <h1 class="text-4xl font-bold tracking-tight">Account</h1>
         <div class="mt-6 flex flex-col items-start gap-4">
           <p class="max-w-prose text-neutral-600 dark:text-neutral-300">
             Sign in to use a custom character photo and save your progress across games. You can
@@ -52,8 +133,21 @@ const member = await getSessionMember();
             Sign in
           </a>
         </div>
-      )
-    }
-  </section>
+      </section>
+    )
+  }
   <Footer />
 </RootLayout>
+
+<script>
+  // Switch between the Player and Account settings sections.
+  const tabs = document.querySelectorAll<HTMLButtonElement>(".account-tab");
+  const panels = document.querySelectorAll<HTMLElement>("[data-panel]");
+  tabs.forEach((tab) =>
+    tab.addEventListener("click", () => {
+      const name = tab.dataset.section;
+      panels.forEach((p) => (p.hidden = p.dataset.panel !== name));
+      tabs.forEach((t) => t.setAttribute("aria-current", t.dataset.section === name ? "page" : "false"));
+    }),
+  );
+</script>
