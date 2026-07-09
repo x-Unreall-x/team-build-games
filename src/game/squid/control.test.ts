@@ -54,4 +54,14 @@ describe("leg control", () => {
     const c = releasePlayer(claimLeg(emptyControl(), "A", 4), "A");
     expect(c[4]).toBeNull();
   });
+
+  it("claiming a leg you already hold is a no-op (same array)", () => {
+    const c = claimLeg(emptyControl(), "A", 2);
+    expect(claimLeg(c, "A", 2)).toBe(c);
+  });
+
+  it("releasePlayer on a player holding nothing is a no-op (same array)", () => {
+    const c = emptyControl();
+    expect(releasePlayer(c, "A")).toBe(c);
+  });
 });

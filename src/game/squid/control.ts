@@ -27,6 +27,7 @@ export function releasePlayer(control: LegControl, playerId: PlayerId): LegContr
 /** Claim `leg` if unheld (releasing the player's previous leg). No-op on bad index / held leg. */
 export function claimLeg(control: LegControl, playerId: PlayerId, leg: number): LegControl {
   if (!Number.isInteger(leg) || leg < 0 || leg >= LEG_COUNT) return control;
+  if (control[leg] === playerId) return control;
   if (control[leg] !== null && control[leg] !== playerId) return control;
   const next = [...releasePlayer(control, playerId)];
   next[leg] = playerId;
