@@ -29,6 +29,7 @@ export function createPlayer(id: PlayerId, pos: Vec2, facing: Direction = "down"
     dash: initialDash(),
     attack: null,
     attackCooldownRemaining: 0,
+    stats: { hits: 0, misses: 0, distance: 0 },
   };
 }
 

@@ -13,7 +13,7 @@ function player(
   status: PlayerState["status"] = "alive",
   weapon: Weapon = "sword",
 ): PlayerState {
-  return { id, pos, facing, aim: directionAngle(facing), weapon, health: 3, status, dash: initialDash(), attack: null, attackCooldownRemaining: 0 };
+  return { id, pos, facing, aim: directionAngle(facing), weapon, health: 3, status, dash: initialDash(), attack: null, attackCooldownRemaining: 0, stats: { hits: 0, misses: 0, distance: 0 } };
 }
 
 // Combat is now driven by a free aim ANGLE (radians), not a 4-way facing.

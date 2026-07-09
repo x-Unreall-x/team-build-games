@@ -298,3 +298,47 @@ describe("stepWorld — lifecycle invariants", () => {
     expect(turned.players.A.facing).toBe("left");
   });
 });
+
+describe("stepWorld — per-player stats (hits / misses / distance)", () => {
+  const attack = (aim: number): Intent => ({ move: NONE, facing: "right", aim, dash: false, attack: true });
+
+  it("starts everyone at zero and accumulates distance for movers only", () => {
+    const w = createWorld([{ id: "A", pos: { x: 15, y: 15 } }, { id: "B", pos: { x: 5, y: 5 } }]);
+    expect(w.players.A.stats).toEqual({ hits: 0, misses: 0, distance: 0 });
+    const n = stepWorld(w, { A: moveRight }, 0.1);
+    expect(n.players.A.stats.distance).toBeCloseTo(RUN_SPEED_MS * 0.1, 5);
+    expect(n.players.B.stats.distance).toBe(0);
+    expect(n.players.A.stats.hits).toBe(0);
+  });
+
+  it("counts a melee swing that connects as a hit", () => {
+    const w = createWorld([{ id: "A", pos: { x: 15, y: 15 } }, { id: "B", pos: { x: 16, y: 15 } }]);
+    const n = stepWorld(w, { A: attack(0) }, 0.05); // aim +x (right); B is 1m right, within reach
+    expect(n.players.A.stats.hits).toBe(1);
+    expect(n.players.A.stats.misses).toBe(0);
+    expect(n.players.B.health).toBe(START_HEALTH - 1);
+  });
+
+  it("counts a melee swing that hits nobody as a miss", () => {
+    const w = createWorld([{ id: "A", pos: { x: 15, y: 15 } }, { id: "B", pos: { x: 15, y: 11 } }]);
+    const n = stepWorld(w, { A: attack(0) }, 0.05); // aim right; B is straight up → outside the cone
+    expect(n.players.A.stats.misses).toBe(1);
+    expect(n.players.A.stats.hits).toBe(0);
+    expect(n.players.B.health).toBe(START_HEALTH);
+  });
+
+  it("credits a bow hit to the shooter when the arrow connects", () => {
+    let w = createWorld([{ id: "A", pos: { x: 8, y: 15 }, weapon: "bow" }, { id: "B", pos: { x: 18, y: 15 } }]);
+    w = stepWorld(w, { A: attack(0) }, 0.05); // fire toward +x; B is 10m right
+    expect(w.players.A.stats.hits).toBe(0); // not counted at fire time
+    for (let i = 0; i < 40 && w.players.A.stats.hits === 0 && w.phase === "playing"; i++) w = stepWorld(w, {}, 0.05);
+    expect(w.players.A.stats.hits).toBe(1);
+  });
+
+  it("counts a bow arrow that expires without hitting as a miss", () => {
+    let w = createWorld([{ id: "A", pos: { x: 15, y: 15 }, weapon: "bow" }, { id: "B", pos: { x: 2, y: 2 } }]);
+    w = stepWorld(w, { A: attack(0) }, 0.05); // fire toward +x; nobody in the path
+    for (let i = 0; i < 60 && w.players.A.stats.misses === 0 && w.phase === "playing"; i++) w = stepWorld(w, {}, 0.05);
+    expect(w.players.A.stats.misses).toBe(1);
+  });
+});

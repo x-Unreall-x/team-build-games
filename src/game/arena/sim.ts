@@ -8,7 +8,7 @@
  * Composes movement + dash + combat + death + win.
  */
 
-import type { Intent, PlayerState, Projectile, Vec2, World } from "./types";
+import type { Intent, PlayerState, PlayerStats, Projectile, Vec2, World } from "./types";
 import { aimVector, clampToField, directionAngle, directionFromInput, directionVector } from "./logic";
 import {
   consumeDashDistance,
@@ -41,6 +41,9 @@ export function stepWorld(
   const players: Record<string, PlayerState> = {};
   const attackedThisTick: string[] = [];
   const newProjectiles: Projectile[] = [];
+  // Cosmetic per-player tallies, seeded from the running totals and applied at the end of the tick.
+  const stats: Record<string, PlayerStats> = {};
+  for (const p of Object.values(world.players)) stats[p.id] = { ...p.stats };
 
   for (const p of Object.values(world.players)) {
     if (p.status !== "alive") {
@@ -75,6 +78,7 @@ export function stepWorld(
       y: p.pos.y + moveDir.y * moveLen,
     };
     const pos = clampToField(rawPos, FIELD_M, FIGURE_RADIUS_M);
+    stats[p.id]!.distance += Math.hypot(pos.x - p.pos.x, pos.y - p.pos.y); // actual metres moved (post-clamp)
     dash = consumeDashDistance(dash, moveLen);
 
     // Attack: a new swing requires the 1s cooldown to be ready; otherwise decay any
@@ -82,10 +86,10 @@ export function stepWorld(
     let attackCooldownRemaining = Math.max(0, p.attackCooldownRemaining - dt);
     let attack = p.attack;
     if (intent.attack && attackCooldownRemaining <= 0) {
-      const stats = WEAPONS[p.weapon];
+      const weap = WEAPONS[p.weapon];
       attack = { aim, ttl: ATTACK_TTL_S };
-      attackCooldownRemaining = stats.cooldown;
-      if (stats.ranged) {
+      attackCooldownRemaining = weap.cooldown;
+      if (weap.ranged) {
         // Ranged weapon (bow): loose an arrow along the aim instead of a melee hit.
         newProjectiles.push(
           spawnArrow({
@@ -93,10 +97,10 @@ export function stepWorld(
             pos,
             aim,
             tick: world.tick,
-            speed: stats.ranged.speed,
-            range: stats.ranged.range,
+            speed: weap.ranged.speed,
+            range: weap.ranged.range,
             damage: 1,
-            knockback: stats.knockback,
+            knockback: weap.knockback,
           }),
         );
       } else {
@@ -117,12 +121,15 @@ export function stepWorld(
   const knockByTarget: Record<string, Vec2> = {};
   for (const attackerId of attackedThisTick) {
     const attacker = players[attackerId]!;
-    const stats = WEAPONS[attacker.weapon];
+    const weap = WEAPONS[attacker.weapon];
     const push = aimVector(attacker.aim);
-    for (const ev of resolveAttack(attacker, candidates)) {
+    const events = resolveAttack(attacker, candidates);
+    if (events.length > 0) stats[attackerId]!.hits += 1;
+    else stats[attackerId]!.misses += 1; // melee swing that connected with nobody
+    for (const ev of events) {
       damageByTarget[ev.targetId] = (damageByTarget[ev.targetId] ?? 0) + 1;
       const k = knockByTarget[ev.targetId] ?? { x: 0, y: 0 };
-      knockByTarget[ev.targetId] = { x: k.x + push.x * stats.knockback, y: k.y + push.y * stats.knockback };
+      knockByTarget[ev.targetId] = { x: k.x + push.x * weap.knockback, y: k.y + push.y * weap.knockback };
     }
   }
 
@@ -133,6 +140,7 @@ export function stepWorld(
     const moved = advanceProjectile(proj, dt);
     const hitId = projectileTarget(moved, candidates);
     if (hitId) {
+      if (stats[moved.ownerId]) stats[moved.ownerId]!.hits += 1; // arrow connected → shooter's hit
       damageByTarget[hitId] = (damageByTarget[hitId] ?? 0) + moved.damage;
       const spd = Math.hypot(moved.vel.x, moved.vel.y) || 1;
       const k = knockByTarget[hitId] ?? { x: 0, y: 0 };
@@ -142,8 +150,14 @@ export function stepWorld(
       };
       continue; // consumed on hit
     }
-    if (moved.distRemaining <= 0) continue; // spent its range
-    if (moved.pos.x < 0 || moved.pos.x > FIELD_M || moved.pos.y < 0 || moved.pos.y > FIELD_M) continue; // hit a wall
+    if (moved.distRemaining <= 0) {
+      if (stats[moved.ownerId]) stats[moved.ownerId]!.misses += 1; // arrow spent its range → miss
+      continue;
+    }
+    if (moved.pos.x < 0 || moved.pos.x > FIELD_M || moved.pos.y < 0 || moved.pos.y > FIELD_M) {
+      if (stats[moved.ownerId]) stats[moved.ownerId]!.misses += 1; // arrow hit a wall → miss
+      continue;
+    }
     projectiles.push(moved);
   }
 
@@ -158,6 +172,9 @@ export function stepWorld(
         ? { ...p, pos, health: 0, status: "dead", attack: null }
         : { ...p, pos, health };
   }
+
+  // 3.5) Fold this tick's stat tallies back onto every player.
+  for (const id of Object.keys(players)) players[id] = { ...players[id]!, stats: stats[id] ?? players[id]!.stats };
 
   // 4) Win condition: one (or zero) left → match ends.
   const next: World = { ...world, players, projectiles, tick: world.tick + 1 };

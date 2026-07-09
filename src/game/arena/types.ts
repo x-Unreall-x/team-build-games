@@ -70,6 +70,18 @@ export interface PlayerState {
   attack: AttackState | null;
   /** Seconds until the next attack is allowed (0 = ready). */
   attackCooldownRemaining: number;
+  /** Per-match cumulative stats (render/scoreboard only; never affects the sim). */
+  stats: PlayerStats;
+}
+
+/** Cosmetic per-player tallies shown on the finished scoreboard (P8). */
+export interface PlayerStats {
+  /** Attacks that landed on >=1 target (melee swing connected, or arrow hit). */
+  hits: number;
+  /** Attacks that connected with nobody (melee whiff, or arrow expired). */
+  misses: number;
+  /** Total metres travelled. */
+  distance: number;
 }
 
 /** What a client sends per tick — never positions or health. */

@@ -16,6 +16,7 @@ const player = (id: string, pos: Vec2, status: PlayerState["status"] = "alive"):
   dash: initialDash(),
   attack: null,
   attackCooldownRemaining: 0,
+  stats: { hits: 0, misses: 0, distance: 0 },
 });
 
 describe("spawnArrow", () => {
