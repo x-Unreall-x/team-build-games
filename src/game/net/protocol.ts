@@ -58,6 +58,12 @@ export type NetMessage =
       players: World["players"];
       projectiles: Projectile[];
     }
+  // Overrun (Track D) — payloads are opaque here; src/game/overrun/net/codec.ts owns their shape.
+  | { t: "oHello"; name: string; hostId?: PlayerId | null }
+  | { t: "oStart"; countdownMs: number; seed: number; players: { id: PlayerId; name: string }[] }
+  | { t: "oInput"; intent: unknown }
+  | { t: "oSnap"; w: unknown }
+  | { t: "oDelta"; d: unknown }
   | { t: "event"; kind: string; targetId?: PlayerId }
   | { t: "ping"; sentAt: number }
   | { t: "pong"; sentAt: number; hostTick: number }
