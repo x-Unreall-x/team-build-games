@@ -1,0 +1,46 @@
+// src/game/overrun/net/adapter.ts
+/**
+ * Overrun's SyncAdapter: plugs stepShooter + the quantized keyframe/delta codec
+ * into the shared SyncEngine. Cadence: broadcast every SNAPSHOT_EVERY_TICKS
+ * ticks; keyframe when there's no delta base or on the KEYFRAME_EVERY schedule.
+ */
+
+import type { PeerId } from "../../net/transport";
+import type { SyncAdapter } from "../../net/sync";
+import { decode, encode } from "../../net/protocol";
+import { electHost } from "../../net/election";
+import { KEYFRAME_EVERY, SNAPSHOT_EVERY_TICKS } from "../constants";
+import { coerceShooterIntent } from "../intent";
+import { stepShooter } from "../sim";
+import { applyDelta, diffWorld, qWorld, unqWorld, type ODelta, type QWorld } from "./codec";
+import type { ShooterIntent, ShooterWorld } from "../types";
+
+export const overrunSyncAdapter: SyncAdapter<ShooterWorld, ShooterIntent> = {
+  step: stepShooter,
+  coerceIntent: coerceShooterIntent,
+  encodeInput: (_w, intent) => encode({ t: "oInput", intent }),
+  encodeSnapshot: (w, prevSent) => {
+    if (w.tick % SNAPSHOT_EVERY_TICKS !== 0 || w.tick === 0) return null;
+    const snapIndex = w.tick / SNAPSHOT_EVERY_TICKS;
+    if (prevSent === null || snapIndex % KEYFRAME_EVERY === 0) {
+      return encode({ t: "oSnap", w: qWorld(w) });
+    }
+    return encode({ t: "oDelta", d: diffWorld(qWorld(prevSent), qWorld(w)) });
+  },
+  decodeMessage: (data) => {
+    const m = decode(data);
+    if (!m) return null;
+    if (m.t === "oInput") return { kind: "input", intent: m.intent };
+    if (m.t === "oSnap") return { kind: "snapshot", world: unqWorld(m.w as QWorld) };
+    if (m.t === "oDelta") return { kind: "update", apply: (prev: ShooterWorld) => applyDelta(prev, m.d as ODelta) };
+    return null;
+  },
+  electHost: (w, connected: PeerId[]) => {
+    const present = connected.filter((id) => w.players[id] && w.players[id]!.status !== "dead");
+    return electHost(present.length > 0 ? present : [...connected]);
+  },
+  onPeerLeave: (w, id) =>
+    w.players[id] && w.players[id]!.status !== "dead"
+      ? { ...w, players: { ...w.players, [id]: { ...w.players[id]!, status: "dead", health: 0 } } }
+      : w,
+};
