@@ -50,6 +50,7 @@ export default function LockedFeature({ required = "member", hint, children }: P
         <a
           href={cta.href}
           data-astro-reload
+          data-astro-prefetch="false"
           className="rounded-md bg-sky-500 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-400"
         >
           {cta.label}
