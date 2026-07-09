@@ -176,6 +176,18 @@ if (avatarUrl)  tabParams.set("avatar",  avatarUrl);
           ))
         }
 
+        {avatarUrl && (
+          <fieldset>
+            <legend class="font-display text-[9px] text-neutral-400">Avatar photo</legend>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-300 transition hover:border-white/40 has-[:checked]:border-cyan-400 has-[:checked]:text-white">
+                <input type="checkbox" id="avatar-toggle" class="sr-only" checked />
+                Show my avatar on the print
+              </label>
+            </div>
+          </fieldset>
+        )}
+
         <fieldset>
           <legend class="font-display text-[9px] text-neutral-400">Quantity</legend>
           <div class="mt-3 flex items-center gap-3">
@@ -254,5 +266,15 @@ if (avatarUrl)  tabParams.set("avatar",  avatarUrl);
       });
     }
     refresh();
+  }
+
+  // Avatar toggle: show/hide the avatar <image> in the SVG preview.
+  const avatarToggle = document.getElementById("avatar-toggle") as HTMLInputElement | null;
+  if (avatarToggle) {
+    const syncAvatar = () => {
+      for (const el of document.querySelectorAll<SVGElement>("[data-avatar]"))
+        el.style.display = avatarToggle.checked ? "" : "none";
+    };
+    avatarToggle.addEventListener("change", syncAvatar);
   }
 </script>
