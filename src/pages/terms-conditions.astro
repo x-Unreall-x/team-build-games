@@ -4,13 +4,20 @@ import Layout from "../components/layout/layout.astro";
 import Prose from "../components/prose.astro";
 
 const title = "Terms & Conditions";
-const body = `<p class="font_8">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Nam libero justo laoreet sit amet cursus sit. Dictumst quisque sagittis purus sit amet volutpat consequat. Egestas diam in arcu cursus euismod. Sed faucibus turpis in eu mi bibendum. Consectetur libero id faucibus nisl. Quisque id diam vel quam elementum. Eros donec ac odio tempor orci dapibus ultrices. Turpis tincidunt id aliquet risus. Pellentesque eu tincidunt tortor aliquam nulla facilisi cras fermentum odio.</p>`;
+const body = `<p>House rules for the arcade:</p>
+<ul>
+  <li><p><strong>It's a game night, not a service contract.</strong> The games are provided as-is, for fun. Expect occasional bugs, balance changes, and the odd disconnect — report them, laugh about them, rematch.</p></li>
+  <li><p><strong>Be a good teammate.</strong> Pick names and character photos you'd be happy to see on a shared screen. Hosts can kick players from a room, and the site owner can remove accounts that spoil the fun.</p></li>
+  <li><p><strong>Fair play.</strong> Matches are hosted by a player's browser and inputs are validated, but this is casual play — don't cheat, and don't build your performance review on a leaderboard.</p></li>
+  <li><p><strong>Trash talk</strong> is permitted and, between rounds, encouraged. Keep it friendly — you still have a standup together tomorrow.</p></li>
+</ul>`;
 ---
 
-<Layout>
+<Layout title="Terms & Conditions — TeamBuild Games">
   <div class="w-full">
     <div class="mx-8 max-w-2xl py-20 sm:mx-auto">
-      <h1 class="mb-8 text-5xl font-bold">{title}</h1>
+      <p class="eyebrow mb-4 text-fuchsia-400">House rules</p>
+      <h1 class="mb-8 font-display text-2xl text-white">{title}</h1>
       <Prose class="mb-8" html={body} />
     </div>
   </div>

@@ -1,0 +1,71 @@
+/**
+ * Shared world constants for the game pack.
+ *
+ * The world is modelled in METERS; rendering multiplies by `PX_PER_M` to get
+ * screen pixels. Keeping the simulation in meters makes the spec exact
+ * ("30 m field", "0.5 m figure", "~4 m/s run") and decouples it from canvas size.
+ */
+
+/** Pixels drawn per world meter. 28 → a 30 m field is 840 px (render scale; +40% over the original 20). */
+export const PX_PER_M = 28;
+
+/** The arena is a square field, FIELD_M meters on each side. */
+export const FIELD_M = 30;
+
+/** A figure (player) is this wide, in meters — sized to match the drawn musa sprite. */
+export const FIGURE_M = 1.5;
+
+/** Figure radius in meters (bounds clamping, proximity, and the body's hittable area). */
+export const FIGURE_RADIUS_M = FIGURE_M / 2;
+
+/** Player running speed, meters per second. 30 m field crossed in ~7.5 s. */
+export const RUN_SPEED_MS = 4;
+
+/** How close (meters, center-to-center) the player must be to interact with an NPC. */
+export const NPC_INTERACT_M = 1.5;
+
+// --- Combat / abilities (Arena) ---
+
+/** Sword reach in meters (how far in front an attack hits) — matches the on-screen sword image. */
+export const SWORD_REACH_M = 2;
+
+/** Half-angle (radians) of the attack cone; 45° → a 90° forward arc. */
+export const ATTACK_CONE_HALF_ANGLE = Math.PI / 4;
+
+/** Seconds the swing visual stays up (damage itself resolves on the initiation tick). */
+export const ATTACK_TTL_S = 0.2;
+
+/** Minimum delay between attacks (seconds). */
+export const ATTACK_COOLDOWN_S = 1;
+
+/** Distance (meters) a victim is knocked back, away from the attacker, on a hit (reach + 1 m). */
+export const KNOCKBACK_M = SWORD_REACH_M + 1;
+
+/** Dash speed multiplier applied to run speed while dashing. */
+export const DASH_MULT = 4;
+
+/** Dash burst distance in meters. */
+export const DASH_DIST_M = 2;
+
+/** Dash cooldown in seconds (icon greys out then brightens over this window). */
+export const DASH_COOLDOWN_S = 3;
+
+/** Radius (meters) of a ranged projectile, for its body-overlap hit test. */
+export const PROJECTILE_RADIUS_M = 0.15;
+
+// --- Match rules (Arena) ---
+
+/** Hearts each player starts with. */
+export const START_HEALTH = 3;
+
+/** Max players per warm-up room / match. */
+export const MAX_PLAYERS = 8;
+
+/** Pre-match countdown length in seconds (3-2-1 tik-tok). */
+export const COUNTDOWN_S = 3;
+
+/** Authoritative simulation rate (Hz). */
+export const TICK_HZ = 20;
+
+/** Convert a world-meters value to screen pixels. */
+export const toPx = (meters: number): number => meters * PX_PER_M;

@@ -1,61 +1,101 @@
 ---
-import { getCollections } from "../../../lib/wix";
-import type { Menu } from "../../../lib/wix/types";
-import CartModal from "../../cart/cart-modal.astro";
+import { getSessionMember } from "../../../lib/wix/members";
 import LogoSquare from "../../logo-square.astro";
-import MobileMenu from "./mobile-menu.astro";
-import Search from "./search.astro";
 
-// Drive navbar links from real store categories (each Collection has `path` and `title`).
-const collections = await getCollections();
-const menu: Menu[] = collections.map((c) => ({ title: c.title, path: c.path }));
+// SSR: the player chip reflects login state on every page (anonymous → sign-in hint).
+const member = await getSessionMember();
+const LOGIN_HINT =
+  "Sign in to use a custom character photo and save your progress across games. You can still play anonymously — signing in just unlocks the extras.";
 
-const { SITE_NAME } = import.meta.env;
+const links = [
+  { title: "Games", path: "/#games" },
+  { title: "How it works", path: "/#how" },
+  { title: "FAQ", path: "/frequently-asked-questions" },
+  { title: "About", path: "/about" },
+];
 ---
 
-<nav class="relative flex items-center justify-between p-4 lg:px-6">
-  <div class="block flex-none md:hidden">
-    <MobileMenu menu={menu}>
-      <Search />
-    </MobileMenu>
-  </div>
-  <div class="flex w-full items-center">
-    <div class="flex w-full md:w-1/3">
-      <a
-        href="/"
-        class="mr-2 flex w-full items-center justify-center md:w-auto lg:mr-6"
-      >
-        <LogoSquare />
-        <div
-          class="ml-2 flex-none text-sm font-medium uppercase md:hidden lg:block"
-        >
-          {SITE_NAME}
-        </div>
-      </a>
-      {
-        menu.length ? (
-          <ul class="hidden gap-6 text-sm md:flex md:items-center">
-            {menu.map((item: Menu) => (
-              <li>
-                <a
-                  href={item.path}
-                  data-astro-prefetch
-                  class="text-neutral-500 underline-offset-4 hover:text-black hover:underline dark:text-neutral-400 dark:hover:text-neutral-300"
-                >
-                  {item.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : null
-      }
-    </div>
-    <div class="hidden justify-center md:flex md:w-1/3">
-      <Search />
-    </div>
+<nav
+  class="sticky top-0 z-40 border-b border-white/10 bg-night-950/85 backdrop-blur"
+>
+  <div
+    class="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 lg:px-6"
+  >
+    <a href="/" class="flex shrink-0 items-center gap-3" aria-label="TeamBuild Games — home">
+      <LogoSquare />
+      <span class="font-display text-[11px] leading-relaxed text-white">
+        Team<span class="text-cyan-400">Build</span>
+        <span class="text-fuchsia-400">Games</span>
+      </span>
+    </a>
 
-    <div class="flex justify-end md:w-1/3">
-      <CartModal />
-    </div>
+    <ul class="hidden items-center gap-7 md:flex">
+      {
+        links.map((link) => (
+          <li>
+            <a
+              href={link.path}
+              data-astro-prefetch
+              class="font-display text-[10px] text-neutral-400 transition hover:text-cyan-300"
+            >
+              {link.title}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+
+    {
+      member ? (
+        <a
+          href="/account"
+          title="Player profile"
+          class="flex shrink-0 items-center gap-2 rounded-lg border border-white/15 bg-night-900 px-3 py-1.5 hover:border-cyan-400/60 hover:text-cyan-300"
+        >
+          {member.avatarUrl ? (
+            <img
+              src={member.avatarUrl}
+              alt=""
+              class="h-6 w-6 rounded object-cover"
+            />
+          ) : (
+            <span class="flex h-6 w-6 items-center justify-center rounded bg-night-700 text-xs">
+              🕹️
+            </span>
+          )}
+          <span class="hidden max-w-[9rem] truncate font-display text-[9px] sm:block">
+            {member.name}
+          </span>
+        </a>
+      ) : (
+        <a
+          href="/api/auth/login?returnToUrl=/"
+          title={LOGIN_HINT}
+          data-astro-reload
+          data-astro-prefetch="false"
+          class="shrink-0 rounded-lg border border-white/15 bg-night-900 px-3 py-2 font-display text-[9px] text-neutral-300 hover:border-cyan-400/60 hover:text-cyan-300"
+        >
+          Sign in
+        </a>
+      )
+    }
   </div>
+
+  {/* Slim link row on small screens instead of a hamburger — only four links. */}
+  <ul
+    class="flex items-center justify-center gap-6 border-t border-white/5 px-4 py-2 md:hidden"
+  >
+    {
+      links.map((link) => (
+        <li>
+          <a
+            href={link.path}
+            class="font-display text-[9px] text-neutral-400 hover:text-cyan-300"
+          >
+            {link.title}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
 </nav>
