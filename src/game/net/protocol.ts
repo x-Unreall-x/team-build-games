@@ -8,6 +8,7 @@ import type { Direction, Intent, PlayerId, Projectile, World } from "../arena/ty
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 import type { Placement } from "../arena/rounds";
+import type { SquidIntent, SquidWorld, StageId } from "../squid/types";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -32,6 +33,14 @@ export interface StartPlayer {
   isBot: boolean;
 }
 
+/** A participant in a starting squid round (no weapons/shapes — cosmetics are color+name). */
+export interface SquidStartPlayer {
+  id: PlayerId;
+  name: string;
+  iconColor: number;
+  avatarUrl?: string | null;
+}
+
 export type NetMessage =
   | { t: "hello"; name: string; iconColor: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
@@ -51,6 +60,9 @@ export type NetMessage =
       players: World["players"];
       projectiles: Projectile[];
     }
+  | { t: "squidStart"; countdownMs: number; stage: StageId; players: SquidStartPlayer[] }
+  | { t: "squidInput"; tick: number; intent: SquidIntent }
+  | { t: "squidSnapshot"; world: SquidWorld }
   | { t: "event"; kind: string; targetId?: PlayerId }
   | { t: "ping"; sentAt: number }
   | { t: "pong"; sentAt: number; hostTick: number }

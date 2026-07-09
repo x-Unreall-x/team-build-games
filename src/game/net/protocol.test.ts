@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { coerceAvatarUrl, coerceIntent, decode, encode, worldFromSnapshot, type NetMessage } from "./protocol";
 import { createWorld } from "../arena/match";
+import { createSquidWorld } from "../squid/match";
 
 describe("coerceAvatarUrl (untrusted peer avatar URL)", () => {
   it("accepts a normal https URL", () => {
@@ -77,5 +78,24 @@ describe("coerceIntent", () => {
     expect(coerceIntent({ facing: "left", aim: 1.5 }).aim).toBeCloseTo(1.5, 5);
     expect(coerceIntent({ facing: "left", aim: "nope" }).aim).toBeUndefined();
     expect(coerceIntent({ facing: "left", aim: Infinity }).aim).toBeUndefined();
+  });
+});
+
+describe("squid protocol messages", () => {
+  it("round-trips squidStart", () => {
+    const m = {
+      t: "squidStart" as const,
+      countdownMs: 3000,
+      stage: "stage2" as const,
+      players: [{ id: "A", name: "Ann", iconColor: 2, avatarUrl: null }],
+    };
+    expect(decode(encode(m))).toEqual(m);
+  });
+
+  it("round-trips squidInput and squidSnapshot with a real world", () => {
+    const input = { t: "squidInput" as const, tick: 7, intent: { swing: 1 as const, lift: true, cycle: false } };
+    expect(decode(encode(input))).toEqual(input);
+    const snap = { t: "squidSnapshot" as const, world: createSquidWorld("stage1", ["A", "B"]) };
+    expect(decode(encode(snap))).toEqual(snap);
   });
 });
