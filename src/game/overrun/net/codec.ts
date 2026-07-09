@@ -26,9 +26,17 @@ const s = (csv: number) => csv / 100;
 const mrad = (rad: number) => Math.round(rad * 1000);
 const rad = (mr: number) => mr / 1000;
 
-const STATUS: ShooterStatus[] = ["alive", "downed", "dead"];
-const PICKUP_KINDS: PickupKind[] = ["shotgun", "rifle", "medkit"];
-const EVENT_KINDS = ["shot", "kill", "pickup", "levelup", "downed", "revived"] as const;
+const STATUS = ["alive", "downed", "dead"] as const satisfies readonly ShooterStatus[];
+type AssertAllStatus = ShooterStatus extends (typeof STATUS)[number] ? true : never;
+const _assertAllStatus: AssertAllStatus = true;
+
+const PICKUP_KINDS = ["shotgun", "rifle", "medkit"] as const satisfies readonly PickupKind[];
+type AssertAllPickupKind = PickupKind extends (typeof PICKUP_KINDS)[number] ? true : never;
+const _assertAllPickupKind: AssertAllPickupKind = true;
+
+const EVENT_KINDS = ["shot", "kill", "pickup", "levelup", "downed", "revived"] as const satisfies readonly ShooterEvent["kind"][];
+type AssertAllEventKind = ShooterEvent["kind"] extends (typeof EVENT_KINDS)[number] ? true : never;
+const _assertAllEventKind: AssertAllEventKind = true;
 
 // players: short-key object (readable, only 8 of them)
 interface QPlayer {
