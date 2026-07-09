@@ -238,11 +238,11 @@ export default function Squid() {
               {result.result === "finished" ? (
                 <>
                   <h2 className="text-4xl font-bold">Finish! 🏁 {formatTimeMs(result.timeMs)}</h2>
-                  {result.saved === null && <p className="text-sm text-neutral-300">Saving score…</p>}
+                  {result.saved === null && sessionState!.isHost && <p className="text-sm text-neutral-300">Saving score…</p>}
                   {result.saved === false && sessionState!.isHost && (
                     <p className="text-sm text-amber-300">Couldn't save the score — the time still counts in your hearts.</p>
                   )}
-                  {result.saved === true && <p className="text-sm text-emerald-300">Saved to the team highscores!</p>}
+                  {result.saved === true && sessionState!.isHost && <p className="text-sm text-emerald-300">Saved to the team highscores!</p>}
                 </>
               ) : (
                 <h2 className="text-4xl font-bold">The octopus fell! ☠️</h2>
