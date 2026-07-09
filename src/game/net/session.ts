@@ -12,7 +12,7 @@
 import type { Intent, PlayerId, RawInput, World } from "../arena/types";
 import type { Transport } from "./transport";
 import { coerceAvatarUrl, decode, encode, type StartPlayer } from "./protocol";
-import { SyncEngine } from "./sync";
+import { arenaSyncAdapter, SyncEngine } from "./sync";
 import { electHost } from "./election";
 import { createWorld, evenSpawns } from "../arena/match";
 import { initialMemory, inputToIntent } from "../arena/intent";
@@ -58,7 +58,7 @@ export class Session implements MatchDriver {
    * adopted — `hostId()` then falls back to lowest-id election (also the migration rule on host-leave).
    */
   private explicitHostId: PlayerId | null = null;
-  private engine: SyncEngine | null = null;
+  private engine: SyncEngine<World, Intent> | null = null;
   private initialWorld: World | null = null;
   private meta: Record<PlayerId, PlayerMeta> = {};
   private botIds: PlayerId[] = [];
@@ -259,6 +259,7 @@ export class Session implements MatchDriver {
       transport: this.t,
       localId: this.localId,
       world: this.initialWorld,
+      adapter: arenaSyncAdapter,
       readIntent: () => {
         const { intent, memory } = inputToIntent(this.pendingRaw, this.mem);
         this.mem = memory;

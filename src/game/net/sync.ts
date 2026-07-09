@@ -1,12 +1,11 @@
+// src/game/net/sync.ts
 /**
  * Host-authoritative sync engine — one per peer, driven by explicit `tick(dt)` calls
  * (no internal timer, so it's deterministic and unit-testable under a LocalHub).
  *
- * Every peer independently elects the host = lowest ALIVE & connected id (./election), so
- * migration needs no negotiation. The host runs the canonical `stepWorld` and broadcasts
- * snapshots; clients send inputs only (sanitized via `coerceIntent` — the anti-cheat boundary)
- * and render the latest snapshot. When the host dies or leaves, the next-lowest peer already
- * holds that snapshot and seamlessly takes over.
+ * Generic over the world/intent types: everything game-specific (step function, intent
+ * trust boundary, wire codec, host election, peer-leave rule) is injected via a
+ * `SyncAdapter`, so the arena and squid share this engine verbatim.
  */
 
 import type { Intent, PlayerId, World } from "../arena/types";
@@ -15,26 +14,41 @@ import type { PeerId, Transport } from "./transport";
 import { coerceIntent, decode, encode, worldFromSnapshot } from "./protocol";
 import { electHostForWorld } from "./election";
 
-export interface SyncOptions {
+/** Everything game-specific the engine needs. Implementations must be pure/stateless. */
+export interface SyncAdapter<W, I> {
+  step(world: W, intents: Record<PlayerId, I>, dt: number): W;
+  /** Anti-cheat boundary: sanitize an untrusted wire intent. */
+  coerceIntent(raw: unknown): I;
+  encodeInput(world: W, intent: I): string;
+  encodeSnapshot(world: W): string;
+  /** Decode a wire message addressed to this engine; null → not ours (lobby traffic etc.). */
+  decodeMessage(data: string): { kind: "input"; intent: unknown } | { kind: "snapshot"; world: W } | null;
+  electHost(world: W, connected: PeerId[]): PeerId | null;
+  /** Host-side: fold a departed peer into the world (arena: kill their figure; squid: release their leg). */
+  onPeerLeave?(world: W, id: PeerId): W;
+}
+
+export interface SyncOptions<W, I> {
   transport: Transport;
   localId: PeerId;
   /** Initial canonical world (host seeds from it; clients hold it until the first snapshot). */
-  world: World;
+  world: W;
+  adapter: SyncAdapter<W, I>;
   /** Local input for this tick (e.g. from the keyboard adapter). */
-  readIntent: () => Intent;
+  readIntent: () => I;
   /** Called every tick with the world to render (canonical on host, latest snapshot on clients). */
-  onWorld: (world: World) => void;
+  onWorld: (world: W) => void;
   /** Host only: extra intents for non-peer entities the host simulates (e.g. bots). */
-  hostExtraIntents?: () => Record<PlayerId, Intent>;
+  hostExtraIntents?: () => Record<PlayerId, I>;
 }
 
-export class SyncEngine {
-  private world: World;
+export class SyncEngine<W, I> {
+  private world: W;
   private hostId: PeerId | null;
   /** Host buffer: latest intent received per peer (rate-limited to one-per-tick by overwrite). */
-  private inputs = new Map<PeerId, Intent>();
+  private inputs = new Map<PeerId, I>();
 
-  constructor(private readonly opts: SyncOptions) {
+  constructor(private readonly opts: SyncOptions<W, I>) {
     this.world = opts.world;
     this.hostId = this.computeHost();
     opts.transport.onMessage((data, from) => this.onMessage(data, from));
@@ -43,12 +57,8 @@ export class SyncEngine {
 
   private onPeerLeave(id: PeerId): void {
     this.inputs.delete(id);
-    // The host removes a departed player from the canonical world so the match can resolve
-    // (their figure simply dies — the renderer plays the usual disappear, win re-checks).
-    if (this.isHost && this.world.players[id]?.status === "alive") {
-      const players = { ...this.world.players };
-      players[id] = { ...players[id]!, status: "dead", attack: null, health: 0 };
-      this.world = { ...this.world, players };
+    if (this.isHost && this.opts.adapter.onPeerLeave) {
+      this.world = this.opts.adapter.onPeerLeave(this.world, id);
     }
   }
 
@@ -60,7 +70,7 @@ export class SyncEngine {
     return this.hostId;
   }
 
-  getWorld(): World {
+  getWorld(): W {
     return this.world;
   }
 
@@ -72,21 +82,12 @@ export class SyncEngine {
     if (this.isHost) {
       this.inputs.set(this.opts.localId, intent);
       const intents = { ...this.opts.hostExtraIntents?.(), ...Object.fromEntries(this.inputs) };
-      this.world = stepWorld(this.world, intents, dt);
-      this.opts.transport.send(
-        encode({
-          t: "snapshot",
-          tick: this.world.tick,
-          phase: this.world.phase,
-          winnerId: this.world.winnerId,
-          players: this.world.players,
-          projectiles: this.world.projectiles,
-        }),
-      );
+      this.world = this.opts.adapter.step(this.world, intents, dt);
+      this.opts.transport.send(this.opts.adapter.encodeSnapshot(this.world));
       this.opts.onWorld(this.world);
     } else {
       this.opts.transport.send(
-        encode({ t: "input", tick: this.world.tick, intent }),
+        this.opts.adapter.encodeInput(this.world, intent),
         this.hostId ?? undefined,
       );
       this.opts.onWorld(this.world);
@@ -94,18 +95,38 @@ export class SyncEngine {
   }
 
   private onMessage(data: string, from: PeerId): void {
-    const m = decode(data);
+    const m = this.opts.adapter.decodeMessage(data);
     if (!m) return;
-    if (m.t === "input" && this.isHost) {
-      // sanitize untrusted input (anti-cheat): peers can only send well-formed intent bits
-      this.inputs.set(from, coerceIntent(m.intent));
-    } else if (m.t === "snapshot" && !this.isHost) {
-      this.world = worldFromSnapshot(m);
+    if (m.kind === "input" && this.isHost) {
+      this.inputs.set(from, this.opts.adapter.coerceIntent(m.intent));
+    } else if (m.kind === "snapshot" && !this.isHost) {
+      this.world = m.world;
     }
   }
 
   private computeHost(): PeerId | null {
     const connected = [this.opts.localId, ...this.opts.transport.getPeers()];
-    return electHostForWorld(this.world, connected);
+    return this.opts.adapter.electHost(this.world, connected);
   }
 }
+
+/** The arena's adapter — byte-identical wire behavior to the pre-generic engine. */
+export const arenaSyncAdapter: SyncAdapter<World, Intent> = {
+  step: stepWorld,
+  coerceIntent,
+  encodeInput: (world, intent) => encode({ t: "input", tick: world.tick, intent }),
+  encodeSnapshot: (w) =>
+    encode({ t: "snapshot", tick: w.tick, phase: w.phase, winnerId: w.winnerId, players: w.players, projectiles: w.projectiles }),
+  decodeMessage: (data) => {
+    const m = decode(data);
+    if (!m) return null;
+    if (m.t === "input") return { kind: "input", intent: m.intent };
+    if (m.t === "snapshot") return { kind: "snapshot", world: worldFromSnapshot(m) };
+    return null;
+  },
+  electHost: electHostForWorld,
+  onPeerLeave: (w, id) =>
+    w.players[id]?.status === "alive"
+      ? { ...w, players: { ...w.players, [id]: { ...w.players[id]!, status: "dead", attack: null, health: 0 } } }
+      : w,
+};
