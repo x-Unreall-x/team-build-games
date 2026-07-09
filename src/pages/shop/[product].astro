@@ -20,6 +20,8 @@ const payload = sanitizePayload({
   title: Astro.url.searchParams.get("title") ?? undefined,
   sub: Astro.url.searchParams.get("sub") ?? undefined,
 });
+const warriorSrc = Astro.url.searchParams.get("warrior") ?? undefined;
+const avatarUrl  = Astro.url.searchParams.get("avatar")  ?? undefined;
 const error = Astro.url.searchParams.get("error");
 const errorMessage =
   error === "save"
@@ -35,8 +37,10 @@ const garmentColor = garmentOption?.choices[0]?.swatch ?? "#0b0b1a";
 const printColor =
   product.options.find((o) => o.key === "printColor")?.choices[0]?.swatch ?? "#22d3ee";
 
-// keep the payload when hopping between products
+// keep the payload (and optional visual) when hopping between products
 const tabParams = new URLSearchParams({ title: payload.title, sub: payload.sub });
+if (warriorSrc) tabParams.set("warrior", warriorSrc);
+if (avatarUrl)  tabParams.set("avatar",  avatarUrl);
 ---
 
 <Layout
@@ -97,6 +101,8 @@ const tabParams = new URLSearchParams({ title: payload.title, sub: payload.sub }
             printColor={printColor}
             title={payload.title}
             sub={payload.sub}
+            warriorSrc={warriorSrc}
+            avatarUrl={avatarUrl}
           />
         </div>
       </div>
