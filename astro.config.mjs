@@ -21,6 +21,13 @@ export default defineConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    // Agent worktrees live below the repo and may add tsconfig files while this server runs.
+    // They are separate projects; watching them causes Vite to invalidate optimized deps mid-page.
+    server: {
+      watch: {
+        ignored: ["**/.claude/**"],
+      },
+    },
   },
 
   ...(isBuild && { adapter: cloudProviderFetchAdapter({}) }),

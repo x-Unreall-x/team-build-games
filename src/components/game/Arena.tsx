@@ -242,6 +242,12 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const matchWinnerId = board?.podium.find((p) => p.place === 1)?.players[0] ?? null;
   const youWonMatch = board?.podium.some((p) => p.place === 1 && p.players.includes(localId)) ?? false;
   const standingsOrder = board ? board.podium.flatMap((pl) => pl.players) : [];
+  const losers = board
+    ? board.podium
+        .filter((pl) => !pl.players.includes(localId))
+        .flatMap((pl) => pl.players)
+        .map(nameOf)
+    : [];
   const teeSub = `${name} · ${new Date()
     .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     .toUpperCase()}`;
@@ -342,9 +348,72 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
           {/* Netplay: final scoreboard — scores, winner, and per-player stats. Stays connected. */}
           {!practiceDriver && phase === "ended" && board && (
             <Overlay>
-              <h2 className="text-3xl font-bold">
-                {youWonMatch ? "You win the match! 🏆" : matchWinnerId ? `${nameOf(matchWinnerId)} wins the match` : "Draw"}
-              </h2>
+              {/* Outcome card: tee preview + rich result text */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.05)", borderRadius: 10, padding: "10px 14px", width: "100%", maxWidth: 420 }}>
+                <svg viewBox="0 0 200 200" style={{ width: 72, height: 72, flexShrink: 0 }} role="img" aria-label="T-shirt preview">
+                  <path
+                    fill={youWonMatch ? "#92400e" : "#1e293b"}
+                    stroke="rgba(255,255,255,0.25)"
+                    strokeWidth={2}
+                    d="M50 52 H80 V62 H120 V52 H150 L172 88 L146 103 L140 91 V172 H60 V91 L54 103 L28 88 Z"
+                  />
+                  {avatarUrlRef.current && (
+                    <>
+                      <defs>
+                        <clipPath id="ro-av">
+                          <circle cx="100" cy="108" r="20" />
+                        </clipPath>
+                      </defs>
+                      <image href={avatarUrlRef.current} x="80" y="88" width="40" height="40" clipPath="url(#ro-av)" preserveAspectRatio="xMidYMid slice" />
+                    </>
+                  )}
+                  <text
+                    x="100"
+                    y={avatarUrlRef.current ? "146" : "108"}
+                    fill={youWonMatch ? "#fcd34d" : "#64748b"}
+                    fontSize={8}
+                    textAnchor="middle"
+                    textLength={70}
+                    lengthAdjust="spacingAndGlyphs"
+                    style={{ fontFamily: "var(--font-display)", textTransform: "uppercase" }}
+                  >
+                    {youWonMatch ? "CHAMPION" : matchWinnerId ? "ELIMINATED" : "DRAW"}
+                  </text>
+                  <text
+                    x="100"
+                    y={avatarUrlRef.current ? "160" : "124"}
+                    fill={youWonMatch ? "#fcd34d" : "#64748b"}
+                    opacity={0.7}
+                    fontSize={5}
+                    textAnchor="middle"
+                    textLength={68}
+                    lengthAdjust="spacingAndGlyphs"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {name.toUpperCase()}
+                  </text>
+                </svg>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <p style={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.3, color: youWonMatch ? "#fcd34d" : matchWinnerId ? "#fca5a5" : "#e2e8f0" }}>
+                    {youWonMatch
+                      ? "YOU WON!"
+                      : matchWinnerId
+                        ? `YOU LOST TO ${nameOf(matchWinnerId).toUpperCase()}`
+                        : "MUTUAL DESTRUCTION"}
+                  </p>
+                  {youWonMatch && losers.length > 0 && (
+                    <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: 4 }}>
+                      {"Defeated: " + losers.join(", ")}
+                    </p>
+                  )}
+                  {!youWonMatch && matchWinnerId && (
+                    <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: 4 }}>
+                      {"GG · " + nameOf(matchWinnerId) + " dominated"}
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <table className="mt-1 border-separate border-spacing-x-4 text-sm text-neutral-200">
                 <thead className="text-xs uppercase tracking-wide text-neutral-400">
                   <tr>
@@ -388,12 +457,15 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
                 </button>
               </div>
               {!canRematch && <p className="text-sm text-neutral-300">Waiting for the host to restart…</p>}
-              {/* trophy shop: immortalize the result on merch (sandbox store — nothing charged/shipped) */}
               <a
                 href={buildShopUrl(
                   "tee",
                   sanitizePayload({
-                    title: youWonMatch ? "ARENA CHAMPION" : matchWinnerId ? "ELIMINATED WITH HONOR" : "MUTUAL DESTRUCTION",
+                    title: youWonMatch
+                      ? "ARENA CHAMPION"
+                      : matchWinnerId
+                        ? `LOST TO ${nameOf(matchWinnerId)}`
+                        : "MUTUAL DESTRUCTION",
                     sub: teeSub,
                   }),
                 )}
