@@ -1,9 +1,19 @@
-/** Pure squid sim types. No engine/net/DOM imports — mirrors the arena core's discipline. */
+/**
+ * Pure squid sim types. No engine/net/DOM imports — mirrors the arena core's discipline.
+ * Self-contained: Squid owns its primitives so the two games share no code (structurally identical
+ * to Arena's, but not imported from it — keeps the games fully independent).
+ */
 
-import type { PlayerId, Vec2 } from "../arena/types";
 import type { StageId } from "./stage";
 
-export type { PlayerId, Vec2 };
+/** Opaque player identifier (a Trystero peer id). */
+export type PlayerId = string;
+/** 2D vector in metres. */
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
 export type { StageId };
 
 /** A verlet point: position + previous position (velocity is pos - prev). */
