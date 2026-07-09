@@ -74,6 +74,7 @@ export default function MerchPreviewInline({
     />
   );
 
+  // avatarUrl is server-resolved from the local member's own Wix media profile — first-party, never a peer-supplied URL.
   const avatar = avatarUrl ? (
     <image
       href={avatarUrl}
