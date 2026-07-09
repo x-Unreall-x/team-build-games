@@ -761,8 +761,51 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 
 ---
 
+## Track F — Squid (co-op octopus walker) — **SHIPPED 2026-07-10** · `dependsOn: none (first consumer of the generic SyncEngine)`
+
+1–8 players cooperatively walk a verlet-physics octopus 5 m to an arched finish line — each player
+holds ONE leg at a time (click to grab, Space to cycle; ←/→ swing, hold ↑ to lift/replant). Planted
+legs are the base that propels the body (QWOP-style, emergent from pinned tips + rigid chains).
+Rounds are timed; the host posts finish times to a per-stage **team highscore board** shown in the
+waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.5 m hole at 3 m — head in ⇒ game over).
+
+- **Module map:** pure core `src/game/squid/{constants,stage,types,verlet,octopus,control,intent,sim,match}.ts`
+  (fully unit-tested, no clock/RNG/engine imports; clock accumulates injected `dt`); net
+  `src/game/squid/net/{adapter,session}.ts` over the now-generic `SyncEngine<W,I>` (`net/sync.ts` —
+  arena byte-identical via `arenaSyncAdapter`; this closes the Track D "generalize session/sync" open
+  decision); render `src/game/squid/render/{contract,scene}.ts` (side view, per-player leg tints);
+  UI `Squid.tsx` + `SquidWarmupRoom.tsx` (stage select + top-10 dashboards); page `games/squid.astro`
+  + live cabinet in `lib/games/registry.ts`; persistence `lib/squid/scores.ts` +
+  `/api/squid-result` (host-reported, sanity-bounded) + `/api/squid-scores` reading a per-stage
+  top-10 JSON doc in `GameScores` (elevated get/save only — no query builders).
+- **Live-verified (headless Playwright):** lobby → stage select → countdown → grab (click + Space) →
+  walk → **Finish! 3:27.1** → score saved → dashboard row; API bounds all 400; two-tab roster sync
+  over live Nostr relays. Playtest caught + fixed a real clock bug (timer counted frames, not dt).
+- **Open follow-ups (feel, next playtest):** collapsed stance (3-segment legs buckle — head drags;
+  consider joint stiffness / head↔tip struts); solo progress walls at The Gap's edge (rear pinned
+  anchors + lead tips can't plant — fail state hard to reach solo; tune hole/stance or embrace as
+  co-op challenge); sticky-lifted abandoned legs dangle below the floor (clip or auto-replant);
+  `SWING_LIFTED_MPS=0.5` is deliberate but sluggish (raising it is capped by the <0.15 m head-drift
+  test); more stages; per-member stats via Track B; touch controls; SFX polish; WASD aliases in the
+  controls legend.
+
+---
+
 ## Progress log
 
+- **2026-07-10** — **Track F: Squid shipped (subagent-driven, 14-task plan).** New co-op octopus
+  walker per the approved spec (`docs/superpowers/specs/2026-07-09-squid-game-design.md`; plan in
+  `docs/superpowers/plans/2026-07-09-squid-game.md`). Pure fixed-iteration verlet core (head hub +
+  8×3-segment legs; planted tips pinned; lifted legs keep their chain but skip ground support; lift
+  cap is head-relative so the rig falls into the hole as one piece), leg-ownership reducers,
+  edge-triggered intents + `coerceSquidIntent` trust boundary, and a **generic
+  `SyncEngine<W,I>`/`SyncAdapter`** refactor (arena wire-identical) that squid rides with its own
+  session (explicit-host parity). Per-stage team top-10 persisted via `GameScores` single-doc rows +
+  trusted API routes. Review loop caught real bugs pre-merge: spaghetti-leg detachment (constraints
+  were being dropped for lifted legs), a per-click phantom sim tick, non-host "Saving…" stuck state,
+  leaderboard-wipe on transient read errors — and the live Playwright playtest caught the round clock
+  counting frames instead of dt (3×+ fast timers). 226 tests green (56 new), tsc clean, build green; solo
+  finish + score save + dashboard verified in-browser. Feel follow-ups logged in Track F.
 - **2026-07-09** — **B1b per-game avatars shipped + data model decided.** Finalized the Track B data
   model (data-type collections keyed by `(memberId, gameId)`; leaderboard metrics as first-class columns).
   Built the avatar slice: created `PlayerAvatars` (ADMIN, deterministic `<gameSlug>-<memberId>` id; verified
