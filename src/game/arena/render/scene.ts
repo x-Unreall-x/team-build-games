@@ -12,17 +12,10 @@ import { attackCooldownFraction } from "../combat";
 import { directionVector } from "../logic";
 import { createKeyboard, type KeyboardReader } from "../input/keyboard";
 import { screenDeltaToWorldAngle } from "../input/mouse";
-import type { Shape } from "../cosmetic";
+import { BODY_ASSET, type Shape } from "../cosmetic";
 import type { ArenaEvent, HudState, MatchDriver } from "./contract";
 
 export type { ArenaEvent, HudState, PlayerMeta, MatchDriver } from "./contract";
-
-const BODY_ASSET: Record<Shape, string> = {
-  circle: "/assets/arena/warriors/swordsman.png",
-  square: "/assets/arena/warriors/spearman.png",
-  triangle: "/assets/arena/warriors/knife-fighter.png",
-  diamond: "/assets/arena/warriors/archer.png",
-};
 
 const WEAPON_ASSET: Record<Weapon, string> = {
   sword: "/assets/arena/weapons/sword.png",
