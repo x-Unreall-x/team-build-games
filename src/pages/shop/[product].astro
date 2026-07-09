@@ -12,6 +12,7 @@ import {
   unitPriceCents,
 } from "../../lib/merch/catalog";
 import { sanitizePayload } from "../../lib/merch/print";
+import { BODY_ASSET } from "../../game/arena/cosmetic";
 
 const product = productBySlug(Astro.params.product ?? "");
 if (!product) return Astro.redirect(`/shop/tee${Astro.url.search}`);
@@ -20,8 +21,15 @@ const payload = sanitizePayload({
   title: Astro.url.searchParams.get("title") ?? undefined,
   sub: Astro.url.searchParams.get("sub") ?? undefined,
 });
-const warriorSrc = Astro.url.searchParams.get("warrior") ?? undefined;
-const avatarUrl  = Astro.url.searchParams.get("avatar")  ?? undefined;
+
+// warrior: must be one of the known same-origin sprite paths
+const _rawWarrior = Astro.url.searchParams.get("warrior");
+const _allowedWarriors = new Set(Object.values(BODY_ASSET));
+const warriorSrc = _rawWarrior && _allowedWarriors.has(_rawWarrior) ? _rawWarrior : undefined;
+
+// avatar: must be a first-party Wix CDN URL
+const _rawAvatar = Astro.url.searchParams.get("avatar");
+const avatarUrl = _rawAvatar && /^https:\/\/static\.wixstatic\.com\//.test(_rawAvatar) ? _rawAvatar : undefined;
 const error = Astro.url.searchParams.get("error");
 const errorMessage =
   error === "save"
