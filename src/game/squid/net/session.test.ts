@@ -30,7 +30,7 @@ describe("SquidSession — lobby → start → play", () => {
     const aw = a.frame(0, IDLE).world;
     const bw = b.frame(0, GRAB4).world;
     expect(aw.phase).toBe("playing");
-    expect(aw.elapsedTicks).toBeGreaterThan(0);
+    expect(aw.elapsedS).toBeGreaterThan(0);
     expect(aw.control[4]).toBe("b"); // host applied b's grab
     expect(bw.control[4]).toBe("b"); // client sees it via snapshot
   });

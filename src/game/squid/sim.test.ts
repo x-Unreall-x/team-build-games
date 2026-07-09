@@ -23,9 +23,9 @@ describe("stepSquid — determinism & lifecycle", () => {
     expect(a).toEqual(b);
   });
 
-  it("counts elapsed ticks so timeMsOf is exact", () => {
+  it("accumulates elapsed time so timeMsOf is exact", () => {
     const w = run(createSquidWorld("stage1", ["A"]), {}, 20);
-    expect(w.elapsedTicks).toBe(20);
+    expect(w.elapsedS).toBeCloseTo(1.0);
     expect(timeMsOf(w)).toBe(1000);
   });
 
@@ -137,7 +137,7 @@ describe("stepSquid — fail & finish", () => {
 
   it("head crossing the finish arch ends the round with the exact time", () => {
     let w = rigAt(createSquidWorld("stage1", ["A"]), FINISH_X_M - 0.05);
-    w = { ...w, elapsedTicks: 100 };
+    w = { ...w, elapsedS: 5 };
     // nudge the head over the line
     const pts = w.points.map((p, i) =>
       i === HEAD ? { pos: { x: FINISH_X_M + 0.01, y: p.pos.y }, prev: p.prev } : p,
@@ -145,7 +145,7 @@ describe("stepSquid — fail & finish", () => {
     w = stepSquid({ ...w, points: pts }, {}, DT);
     expect(w.result).toBe("finished");
     expect(w.phase).toBe("ended");
-    expect(timeMsOf(w)).toBe(Math.round(((100 + 1) / 20) * 1000));
+    expect(timeMsOf(w)).toBe(5050);
   });
 
   it("an ended world is frozen", () => {

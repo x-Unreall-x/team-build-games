@@ -42,8 +42,8 @@ export interface SquidWorld {
   control: (PlayerId | null)[];
   /** Sorted participant ids (deterministic intent iteration + meta lookups). */
   playerIds: PlayerId[];
-  /** Ticks spent in "playing" before a result was set. */
-  elapsedTicks: number;
+  /** Seconds spent in "playing" before a result was set (accumulated from injected dt — stepping rate is NOT fixed). */
+  elapsedS: number;
   result: RoundResult;
 }
 

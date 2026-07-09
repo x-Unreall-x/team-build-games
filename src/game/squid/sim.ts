@@ -117,7 +117,7 @@ export function stepSquid(
   }
 
   // 5) clock + fail/finish
-  const elapsedTicks = world.elapsedTicks + 1;
+  const elapsedS = world.elapsedS + dt;
   const head = pts[HEAD]!;
   let result: RoundResult = world.result;
   if (head.pos.y < -HEAD_DROP_FAIL_M) result = "failed";
@@ -129,7 +129,7 @@ export function stepSquid(
     points: pts,
     legs,
     control,
-    elapsedTicks,
+    elapsedS,
     result,
     phase: result !== null ? "ended" : "playing",
   };
