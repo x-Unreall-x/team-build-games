@@ -13,6 +13,8 @@ export const KEYFRAME_EVERY = 10;
 export const SNAPSHOT_INTERVAL_S = SNAPSHOT_EVERY_TICKS / SHOOTER_TICK_HZ;
 /** Cap on catch-up sim ticks per render frame (tab-refocus etc.). */
 export const MAX_CATCHUP_TICKS = 4;
+/** Overrun's own pre-match countdown (game-neutral COUNTDOWN_S is arena's — kept separate). */
+export const OVERRUN_COUNTDOWN_S = 3;
 
 // --- field / players ---
 export const OVERRUN_FIELD_M = 30;
