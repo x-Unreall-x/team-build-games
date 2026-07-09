@@ -6,9 +6,10 @@ import { defineConfig } from "vitest/config";
  *   npm run test:arena    → Arena (sim + netcode) only
  *   npm run test:members  → members-area helpers only
  *   npm run test:merch    → merch/print helpers only
+ *   npm run test:squid    → Squid (sim + net + score helpers) only
  *
  * `exclude` drops build output, deps, and — importantly — git worktrees under `.claude/worktrees/*`.
- * Those hold OTHER branches' full checkouts (e.g. the Squid game track); without this, a `vitest run`
+ * Those hold OTHER branches' full checkouts; without this, a `vitest run`
  * from the main tree also executes those branches' suites and reports their WIP failures here.
  */
 const exclude = ["**/node_modules/**", "**/dist/**", "**/.astro/**", "**/.claude/**", "**/.git/**"];
@@ -39,6 +40,14 @@ export default defineConfig({
           environment: "node",
           exclude,
           include: ["src/lib/merch/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "squid",
+          environment: "node",
+          exclude,
+          include: ["src/game/squid/**/*.test.ts", "src/lib/squid/**/*.test.ts"],
         },
       },
     ],

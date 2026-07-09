@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:arena": "vitest run --project arena",
     "test:members": "vitest run --project members",
-    "test:merch": "vitest run --project merch"
+    "test:merch": "vitest run --project merch",
+    "test:squid": "vitest run --project squid"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",
