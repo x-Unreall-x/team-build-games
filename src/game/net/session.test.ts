@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LocalHub } from "./transport";
 import { Session } from "./session";
+import { COUNTDOWN_S } from "../constants";
 import type { RawInput } from "../arena/types";
 
 const IDLE: RawInput = { up: false, down: false, left: false, right: false, dash: false, attack: false };
@@ -102,5 +103,57 @@ describe("Session — explicit host (creator stays host; transferable)", () => {
     expect(a.getState().hostId).toBe("a");
     expect(b.getState().hostId).toBe("a");
     expect(a.getState().isHost).toBe(true);
+  });
+});
+
+describe("Session — rounds lifecycle (host-gated, P8)", () => {
+  const opts = (id: string, extra = {}) => ({
+    transport: undefined as never,
+    name: id,
+    iconColor: 0,
+    shape: "circle" as const,
+    weapon: "sword" as const,
+    onChange: () => {},
+    ...extra,
+  });
+
+  it("rounds=1: a round ending finishes the match (phase 'ended') with a populated board", () => {
+    const hub = new LocalHub();
+    const a = new Session({ ...opts("a"), transport: hub.join("a"), isCreator: true });
+    new Session({ ...opts("b"), transport: hub.join("b") });
+    a.start(0, 1);
+    a.frame(COUNTDOWN_S + 0.1, IDLE); // exit countdown → playing
+    expect(a.phase).toBe("playing");
+    hub.leave("b"); // b drops → host marks it dead
+    a.frame(0.05, IDLE); // only 'a' alive → round resolves
+    expect(a.phase).toBe("ended");
+    const st = a.getState();
+    expect(st.board?.final).toBe(true);
+    expect(st.board?.wins.a).toBe(1);
+    expect(st.board?.podium[0]?.players).toContain("a"); // 'a' is 1st
+  });
+
+  it("rounds>1: a round ending pauses at 'roundover' until the host advances", () => {
+    const hub = new LocalHub();
+    const a = new Session({ ...opts("a"), transport: hub.join("a"), isCreator: true });
+    new Session({ ...opts("b"), transport: hub.join("b") });
+    a.start(0, 2); // best of 2
+    a.frame(COUNTDOWN_S + 0.1, IDLE);
+    hub.leave("b");
+    a.frame(0.05, IDLE); // round 1 resolves
+    expect(a.phase).toBe("roundover");
+    expect(a.getState().board?.final).toBe(false);
+    expect(a.getState().board?.wins.a).toBe(1);
+    // only the host's Next-round advances the match
+    a.nextRoundAction();
+    expect(a.phase).toBe("countdown"); // round 2 begins
+    expect(a.getState().roundNumber).toBe(2);
+  });
+
+  it("ignores nextRoundAction unless we are the host at a round-over", () => {
+    const hub = new LocalHub();
+    const a = new Session({ ...opts("a"), transport: hub.join("a"), isCreator: true });
+    a.nextRoundAction(); // in lobby → no-op
+    expect(a.phase).toBe("lobby");
   });
 });
