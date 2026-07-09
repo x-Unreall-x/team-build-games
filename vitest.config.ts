@@ -41,6 +41,14 @@ export default defineConfig({
           include: ["src/lib/merch/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "overrun",
+          environment: "node",
+          exclude,
+          include: ["src/game/overrun/**/*.test.ts"],
+        },
+      },
     ],
   },
 });
