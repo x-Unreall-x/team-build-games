@@ -41,7 +41,6 @@ export interface Board {
 export interface SessionOptions {
   transport: Transport;
   name: string;
-  iconColor: number;
   shape: Shape;
   weapon: Weapon;
   /** Signed-in member's resolved Arena avatar (render-only); null for anonymous players. */
@@ -91,7 +90,7 @@ export class Session implements MatchDriver {
   constructor(private readonly opts: SessionOptions) {
     this.t = opts.transport;
     this.localId = this.t.selfId;
-    this.profile = { id: this.localId, name: opts.name, iconColor: opts.iconColor, shape: opts.shape, weapon: opts.weapon, avatarUrl: opts.avatarUrl ?? null };
+    this.profile = { id: this.localId, name: opts.name, shape: opts.shape, weapon: opts.weapon, avatarUrl: opts.avatarUrl ?? null };
     this.roster = upsert({}, this.profile);
     if (opts.isCreator) this.explicitHostId = this.localId; // the creator owns host until it transfers/leaves
 
@@ -132,8 +131,8 @@ export class Session implements MatchDriver {
     this.opts.onChange();
   }
 
-  setProfile(name: string, iconColor: number, shape: Shape = this.profile.shape, weapon: Weapon = this.profile.weapon): void {
-    this.profile = { id: this.localId, name, iconColor, shape, weapon, avatarUrl: this.profile.avatarUrl };
+  setProfile(name: string, shape: Shape = this.profile.shape, weapon: Weapon = this.profile.weapon): void {
+    this.profile = { id: this.localId, name, shape, weapon, avatarUrl: this.profile.avatarUrl };
     this.roster = upsert(this.roster, this.profile);
     this.sendHello();
     this.opts.onChange();
@@ -145,7 +144,6 @@ export class Session implements MatchDriver {
     const humans: StartPlayer[] = rosterList(this.roster).map((p) => ({
       id: p.id,
       name: p.name,
-      iconColor: p.iconColor,
       shape: p.shape,
       weapon: p.weapon,
       avatarUrl: p.avatarUrl ?? null,
@@ -154,7 +152,6 @@ export class Session implements MatchDriver {
     const bots: StartPlayer[] = Array.from({ length: botCount }, (_, i) => ({
       id: `bot:${i + 1}`,
       name: `Bot ${i + 1}`,
-      iconColor: (humans.length + i) % 8,
       shape: DEFAULT_SHAPE,
       weapon: DEFAULT_WEAPON,
       isBot: true,
@@ -203,7 +200,7 @@ export class Session implements MatchDriver {
   // ---- MatchDriver (renderer) --------------------------------------------------
 
   getMeta(id: PlayerId): PlayerMeta {
-    return this.meta[id] ?? { name: id.slice(0, 6), colorIndex: 0, shape: DEFAULT_SHAPE };
+    return this.meta[id] ?? { name: id.slice(0, 6), shape: DEFAULT_SHAPE };
   }
 
   frame(dt: number, input: RawInput): FramePacket {
@@ -317,7 +314,7 @@ export class Session implements MatchDriver {
   }
 
   private sendHello(): void {
-    this.t.send(encode({ t: "hello", name: this.profile.name, iconColor: this.profile.iconColor, shape: this.profile.shape, weapon: this.profile.weapon, avatarUrl: this.profile.avatarUrl, hostId: this.explicitHostId }));
+    this.t.send(encode({ t: "hello", name: this.profile.name, shape: this.profile.shape, weapon: this.profile.weapon, avatarUrl: this.profile.avatarUrl, hostId: this.explicitHostId }));
   }
 
   private onMessage(data: string, from: PlayerId): void {
@@ -326,7 +323,7 @@ export class Session implements MatchDriver {
     switch (m.t) {
       case "hello": {
         const isNew = !(from in this.roster);
-        this.roster = upsert(this.roster, { id: from, name: m.name, iconColor: m.iconColor, shape: coerceShape(m.shape), weapon: coerceWeapon(m.weapon), avatarUrl: coerceAvatarUrl(m.avatarUrl) });
+        this.roster = upsert(this.roster, { id: from, name: m.name, shape: coerceShape(m.shape), weapon: coerceWeapon(m.weapon), avatarUrl: coerceAvatarUrl(m.avatarUrl) });
         // A joiner with no host yet adopts the sender's claimed host (creator/host propagation).
         if (this.explicitHostId == null && m.hostId != null) this.explicitHostId = m.hostId;
         if (isNew) this.sendHello(); // reply so the newcomer learns us + our host (bounded: first sight)
@@ -373,7 +370,7 @@ export class Session implements MatchDriver {
     this.roundNumber = roundNumber;
     this.roundTiebreak = tiebreak;
     const ids = players.map((p) => p.id);
-    this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, colorIndex: p.iconColor, shape: p.shape, avatarUrl: p.avatarUrl ?? null }]));
+    this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, shape: p.shape, avatarUrl: p.avatarUrl ?? null }]));
     this.botIds = players.filter((p) => p.isBot).map((p) => p.id);
     // Zip the deterministic spawn ring with each player's equipped weapon (same order as ids).
     const spawns = evenSpawns(ids).map((s, i) => ({ ...s, weapon: players[i]!.weapon }));

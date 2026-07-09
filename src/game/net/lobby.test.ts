@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { isFull, joinedIds, lobbyHost, remove, rosterList, upsert, type Roster } from "./lobby";
 
-const p = (id: string, name = id, iconColor = 0) => ({ id, name, iconColor, shape: "circle" as const, weapon: "sword" as const });
+const p = (id: string, name = id) => ({ id, name, shape: "circle" as const, weapon: "sword" as const });
 
 describe("lobby roster", () => {
   it("adds, updates, and removes players", () => {
     let r: Roster = {};
-    r = upsert(r, p("b", "Bee", 1));
-    r = upsert(r, p("a", "Ay", 2));
+    r = upsert(r, p("b", "Bee"));
+    r = upsert(r, p("a", "Ay"));
     expect(rosterList(r).map((x) => x.id)).toEqual(["a", "b"]); // sorted by id
-    r = upsert(r, p("b", "Beatrice", 3)); // update
+    r = upsert(r, p("b", "Beatrice")); // update
     expect(r.b.name).toBe("Beatrice");
     r = remove(r, "a");
     expect(Object.keys(r)).toEqual(["b"]);

@@ -15,7 +15,7 @@ persistence, then the turn-based game #2.
   **host-authoritative star on a WebRTC mesh**; clients send inputs only, the host runs the sim.
 - **Audio:** raw **Web Audio** oscillator SFX (no binary assets).
 - **Scope:** Arena incl. **versus + Survival** modes (Track A) + Wix backend (Track B) + turn-based #2 deferred (Track C) + **Overrun** co-op horde shooter (Track D) + **sprite-sheet art pipeline** (Track E).
-- **Musa art:** tint **one base musa sprite** into 8 player colors (versus). The horde games (Survival/Overrun) move to **sprite-sheet assets** (Track E) with a procedural fallback.
+- **Musa art:** use distinct full-color fighter sprites with separately animated weapon images. Player-color tinting has been removed.
 - **Horde determinism/netcode (locked 2026-07-08):** enemies/projectiles/pickups/waves are **host-owned**, seeded from `start`, drawn via a **coordinate-hash RNG** `hash(seed,tick,entityId,salt)` (not a shared cursor); snapshots carry **all** host state and are **capped + quantized/delta-encoded @10 Hz** with client interpolation. No `Math.random`/clock in any sim core.
 
 ---
@@ -85,10 +85,10 @@ Goal: replace the NPC prototype scene with a sim-driven renderer that plays the 
 
 Tracking:
 - [x] `input/keyboard.ts` input adapter (WASD/arrows + Shift + Space)
-- [x] `render/scene.ts` Phaser scene: field + tinted musa + shadows + y-sort + facing
+- [x] `render/scene.ts` Phaser scene: illustrated terrain/fighters + shadows + y-sort + facing
 - [x] ~1 m sword sprite renders on attack in locked facing direction
 - [x] dash visual + death "jump and disappear" tween
-- [x] musa base sprite generated procedurally (no binary asset) + tinted via an 8-color palette
+- [x] fighter and weapon PNG assets loaded separately so combat animations remain independent
 - [x] `Hearts` / `DashIndicator` / `Countdown` HUD overlays bound to state
 - [x] `audio/sfx.ts`: shared `AudioContext` + `playTone`/noise + tik/go/dash/attack/hit/gameover/win; resume-on-first-gesture
 - [x] `Arena.tsx` phase-driven shell (menu → countdown → playing → ended); **solo slice playable** (move/face/dash/attack/hit/die/win)
@@ -136,9 +136,9 @@ Tracking:
 - [ ] **deeper reconnect edge cases** (host-eliminated-mid-tick desync window, ICE restart) — needs live multi-peer; P5 hardening
 
 ### P4 — Warm-up room, party list, join link, synchronized countdown · `dependsOn: P3`
-- `lobby.ts` (pure room model: id, players[name,iconColor,isHost], max 8, add/remove/kick, host
+- `lobby.ts` (pure room model: id, players[name,fighter,isHost], max 8, add/remove/kick, host
   election — unit-tested), `roomLink.ts` (`?room=<id>` build/parse — unit-tested),
-  `lobby/WarmupRoom.tsx` (name input, musa color picker, right-side party list + per-player kick,
+  `lobby/WarmupRoom.tsx` (name input, fighter picker, right-side party list + per-player kick,
   copyable join link, host **Start**).
 - hello/roster handshake; authoritative roster re-broadcast on join/leave/kick; opening a link joins
   the party; Start → synchronized 3 s **tik-tok** countdown → match on all peers.
@@ -146,7 +146,7 @@ Tracking:
 Tracking:
 - [x] `lobby.ts` reducers (room, players, max-8, add/remove/kick, host election) unit-tested
 - [x] `roomLink.ts` build/parse/mint unit-tested
-- [x] `WarmupRoom.tsx`: name input + musa color picker (8 swatches) + party list + kick + copy link + Start
+- [x] `WarmupRoom.tsx`: name input + fighter picker + party list + kick + copy link + Start
 - [x] presence handshake: `hello` on join + reply-on-first-sight so rosters converge (any join order) — unit-tested
 - [x] opening a join link joins the party (`?room=`); max-8 enforced in `lobby.upsert`
 - [x] kick removes a player (host) and they leave the room
@@ -202,14 +202,13 @@ Tracking:
 - known nuance (deferred): a newcomer hears one chime per existing peer as the roster converges; refine to suppress the initial-population burst if it feels noisy
 
 ### P7 — Player customization: shapes & uploaded avatars · `dependsOn: P4`
-Goal: let a player personalize their musa (pick a shape **or** upload an image) and have every peer
-render it. **Cosmetic only — never enters the sim core** (determinism preserved).
+Goal: let a player select a fighter and optionally overlay an uploaded face photo, visible to every peer.
+**Cosmetic only — never enters the sim core** (determinism preserved).
 
 - **F3 — shape selection:** extend `PlayerMeta` (`render/contract.ts`) with `shape` and carry it on the
   wire — add `shape` to `hello` + `StartPlayer`/`RosterEntry` in `protocol.ts`, thread through
-  `session.ts` (`profile`/`meta`/roster) and `lobby.ts`. Add a shape picker beside the color swatches in
-  `WarmupRoom.tsx` (e.g. circle / square / triangle / diamond / hex). `render/scene.ts` draws the chosen
-  shape as the body, reusing the per-color tint pipeline (procedural, no assets).
+  `session.ts` (`profile`/`meta`/roster) and `lobby.ts`. The legacy shape ids select one of four fighter
+  illustrations in `WarmupRoom.tsx`; `render/scene.ts` loads the corresponding body asset.
 - **F4 — custom image avatar → MOVED to Track B (2026-07-08).** Uploaded member photos are now part of the
   **members area**: Wix Members auth (**B0**) + avatar upload/store + render (**B1**). Shape (F3) remains the
   anonymous/free cosmetic; the member photo layers on top for signed-in players. See Track B.
@@ -467,11 +466,11 @@ Goal: mode picker, mode-aware shell/HUD, revive UX, and the real sprite-sheet en
 Goal: a **Wix Members** area that gives players a durable identity to which their **avatar, saved progress,
 and (later) a paid membership** attach — all written through **trusted Astro server API routes** (run on Wix
 infra with elevated app creds), since P2P clients can't be trusted writers. **Sign-in is OPTIONAL** (anonymous
-P2P play with shape/color is preserved); member-only features are always **shown but LOCKED with an unlock
+P2P play with fighter selection is preserved); member-only features are always **shown but LOCKED with an unlock
 hint** (decided 2026-07-08). This track supersedes the old W0/W1/W2 stub and **absorbs F4 (avatars)**.
 
 **Capability model (drives every "locked" hint):**
-- **Anonymous** — plays any mode (shape + color), joins via link. Avatar → *"Sign in to use a photo"*; progress → *"Sign in to save"*; (later) sees ads.
+- **Anonymous** — plays any mode with a selected fighter, joins via link. Avatar → *"Sign in to use a photo"*; progress → *"Sign in to save"*; (later) sees ads.
 - **Signed-in (free)** — custom avatar + saved progress. Premium perks → *"Upgrade to unlock"*; (later) still sees ads.
 - **Paid member** — ads off + premium perks.
 
@@ -498,12 +497,12 @@ every peer. **Two tiers (DECIDED 2026-07-09): a global profile photo + optional 
 - [x] **Trusted `/api/avatar` server route** uploads the image to **Wix Media** (elevated app creds; clients never write directly) and stores the **CDN URL** as the member **profile photo** — surfaced everywhere via `getSessionMember()`
 - [x] **cosmetic-only** (never enters the sim); payload capped; type/size validated server-side
 
-**B1b — per-game avatars (SHIPPED 2026-07-09):** separate avatar per game, set in the Arena lobby *or* Account → Player. Resolution: **per-game (`PlayerAvatars`) → global profile photo → shape/color**.
+**B1b — per-game avatars (SHIPPED 2026-07-09):** separate avatar per game, set in the Arena lobby *or* Account → Player. Resolution: **per-game (`PlayerAvatars`) → global profile photo → fighter artwork**.
 - [x] `PlayerAvatars` collection `{ memberId, gameId, url }` (ADMIN writes; keyed by a deterministic `<gameSlug>-<memberId>` id for O(1) elevated get/upsert) — first slice of the B2 data model
 - [x] Extend `/api/avatar` with optional `gameId`: present → upsert a `PlayerAvatars` row; absent → the global profile photo (B1a behaviour). `gameId` allowlisted via `lib/members/games.ts`
 - [x] Pure `resolveGameAvatar(perGame, global)` (per-game → global → null) — unit-tested (4)
 - [x] Per-game avatar control in **Account → Player** (per game, SSR-resolved) and the **Arena lobby** (member-gated inline hint for anonymous)
-- [x] Arena attaches the resolved avatar **URL** to its roster entry → carried on the wire (`hello`/`start`, sanitized by `coerceAvatarUrl`) → `render/scene.ts` composites a **circular** avatar texture over the body, **falling back to shape/color** on absent/load-error/CORS-taint
+- [x] Arena attaches the resolved avatar **URL** to its roster entry → carried on the wire (`hello`/`start`, sanitized by `coerceAvatarUrl`) → `render/scene.ts` composites a **circular face photo** over the fighter's head and keeps the fighter artwork on absent/load-error/CORS-taint
 
 ### B2 — Progress & stats persistence · `dependsOn: B0`
 Goal: per-member game data, written only by a trusted server route.

@@ -10,8 +10,8 @@ const RIGHT: RawInput = { ...IDLE, right: true };
 describe("Session — lobby → start → play", () => {
   it("converges the roster, elects a host, starts a match, and syncs a client's movement", () => {
     const hub = new LocalHub();
-    const a = new Session({ transport: hub.join("a"), name: "Ay", iconColor: 0, shape: "circle", weapon: "sword", onChange: () => {} });
-    const b = new Session({ transport: hub.join("b"), name: "Bee", iconColor: 1, shape: "circle", weapon: "sword", onChange: () => {} });
+    const a = new Session({ transport: hub.join("a"), name: "Ay", shape: "circle", weapon: "sword", onChange: () => {} });
+    const b = new Session({ transport: hub.join("b"), name: "Bee", shape: "circle", weapon: "sword", onChange: () => {} });
 
     // presence converges on both peers despite join ordering
     expect(a.getState().roster.map((p) => p.id)).toEqual(["a", "b"]);
@@ -40,8 +40,8 @@ describe("Session — lobby → start → play", () => {
 
   it("a host-driven bot is simulated and visible to clients", () => {
     const hub = new LocalHub();
-    const a = new Session({ transport: hub.join("a"), name: "A", iconColor: 0, shape: "circle", weapon: "sword", onChange: () => {} });
-    const b = new Session({ transport: hub.join("b"), name: "B", iconColor: 1, shape: "circle", weapon: "sword", onChange: () => {} });
+    const a = new Session({ transport: hub.join("a"), name: "A", shape: "circle", weapon: "sword", onChange: () => {} });
+    const b = new Session({ transport: hub.join("b"), name: "B", shape: "circle", weapon: "sword", onChange: () => {} });
 
     a.start(1); // 2 humans + 1 bot
     expect(a.getMeta("bot:1").name).toBe("Bot 1");
@@ -60,7 +60,6 @@ describe("Session — explicit host (creator stays host; transferable)", () => {
   const opts = (id: string, extra = {}) => ({
     transport: undefined as never, // set below
     name: id,
-    iconColor: 0,
     shape: "circle" as const,
     weapon: "sword" as const,
     onChange: () => {},
@@ -110,7 +109,6 @@ describe("Session — rounds lifecycle (host-gated, P8)", () => {
   const opts = (id: string, extra = {}) => ({
     transport: undefined as never,
     name: id,
-    iconColor: 0,
     shape: "circle" as const,
     weapon: "sword" as const,
     onChange: () => {},

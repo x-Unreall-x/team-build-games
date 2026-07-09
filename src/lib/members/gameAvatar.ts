@@ -2,7 +2,7 @@
  * Pure 3-tier avatar resolution for a signed-in player in a given game:
  *   per-game override (PlayerAvatars) → global profile photo → none.
  *
- * `null` means "no photo" — the renderer falls back to the anonymous shape/color cosmetic.
+ * `null` means "no photo" — the renderer keeps the selected fighter's illustrated head.
  */
 
 function firstNonBlank(...urls: (string | null | undefined)[]): string | null {

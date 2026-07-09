@@ -9,12 +9,11 @@ import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 import type { Placement } from "../arena/rounds";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export interface RosterEntry {
   id: PlayerId;
   name: string;
-  iconColor: number;
   shape: Shape;
   weapon: Weapon;
   avatarUrl?: string | null;
@@ -25,7 +24,6 @@ export interface RosterEntry {
 export interface StartPlayer {
   id: PlayerId;
   name: string;
-  iconColor: number;
   shape: Shape;
   weapon: Weapon;
   avatarUrl?: string | null;
@@ -33,7 +31,7 @@ export interface StartPlayer {
 }
 
 export type NetMessage =
-  | { t: "hello"; name: string; iconColor: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
+  | { t: "hello"; name: string; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
   | { t: "kick"; targetId: PlayerId }
   // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.

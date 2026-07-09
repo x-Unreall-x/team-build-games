@@ -1,5 +1,6 @@
 /**
- * Cosmetic-only player identity (shape now; avatar image later). Carried on the wire and drawn
+ * Cosmetic-only player identity. Legacy shape ids now select fighter artwork; avatar photos are
+ * layered over the fighter's head. Carried on the wire and drawn
  * by the renderer, but NEVER read by the sim core — purely visual, so it can't affect determinism.
  * `coerceShape` is the wire trust boundary (a peer can only ever send a known shape), mirroring
  * `protocol.coerceIntent`.
