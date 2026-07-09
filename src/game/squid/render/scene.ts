@@ -46,6 +46,7 @@ export class SquidScene extends Phaser.Scene {
   private lastCountdown = -1;
   private ended = false;
   private lastHud: SquidHudState | null = null;
+  private lastWorld: SquidWorld | null = null;
 
   constructor() {
     super("squid");
@@ -67,7 +68,8 @@ export class SquidScene extends Phaser.Scene {
     };
     // click near a leg's lower half to grab it
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      const world = this.cfg.driver.frame(0, this.readInput()).world;
+      const world = this.lastWorld;
+      if (!world) return;
       const click = fromPx(p.x, p.y);
       let best: { leg: number; d: number } | null = null;
       world.legs.forEach((leg, i) => {
@@ -78,6 +80,7 @@ export class SquidScene extends Phaser.Scene {
         }
       });
       if (best) {
+        // cast: TS loses narrowing on `let` vars reassigned inside a forEach closure
         this.pendingGrab = (best as { leg: number }).leg;
         this.cfg.onEvent({ type: "grab" });
       }
@@ -98,6 +101,7 @@ export class SquidScene extends Phaser.Scene {
     const dt = Math.min(deltaMs / 1000, 0.1);
     const input = this.readInput();
     const { world, countdown } = this.cfg.driver.frame(dt, input);
+    this.lastWorld = world;
     this.pendingGrab = null; // grab is one-shot
 
     if (countdown !== this.lastCountdown) {
