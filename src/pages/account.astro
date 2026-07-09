@@ -30,7 +30,7 @@ const games = [{ id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald
               {member.email && <div class="text-sm text-neutral-500">{member.email}</div>}
             </div>
           </div>
-          <form method="POST" action="/api/auth/logout?returnUrl=/">
+          <form method="POST" action="/api/auth/logout?returnToUrl=/" data-astro-reload>
             <button
               type="submit"
               class="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
@@ -127,7 +127,8 @@ const games = [{ id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald
             still play anonymously — signing in just unlocks the extras.
           </p>
           <a
-            href="/api/auth/login?returnUrl=/account"
+            href="/api/auth/login?returnToUrl=/account"
+            data-astro-reload
             class="rounded-lg bg-sky-500 px-5 py-2 font-semibold text-white hover:bg-sky-400"
           >
             Sign in

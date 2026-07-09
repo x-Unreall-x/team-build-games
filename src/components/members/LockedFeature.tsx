@@ -25,7 +25,7 @@ export default function LockedFeature({ required = "member", hint, children }: P
   const cta =
     required === "paid"
       ? { label: "Upgrade", href: "/account" } // B3 wires this to the pricing/checkout flow
-      : { label: "Sign in", href: `/api/auth/login?returnUrl=${encodeURIComponent(returnUrl)}` };
+      : { label: "Sign in", href: `/api/auth/login?returnToUrl=${encodeURIComponent(returnUrl)}` };
 
   return (
     <div style={{ position: "relative", display: "inline-block" }}>
@@ -49,6 +49,7 @@ export default function LockedFeature({ required = "member", hint, children }: P
         <span style={{ fontSize: 12, fontWeight: 600 }}>{message}</span>
         <a
           href={cta.href}
+          data-astro-reload
           className="rounded-md bg-sky-500 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-400"
         >
           {cta.label}
