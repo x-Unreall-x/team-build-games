@@ -49,3 +49,43 @@ export function buildShopUrl(product: string, payload: PrintPayload): string {
   const params = new URLSearchParams({ title: payload.title, sub: payload.sub });
   return `/shop/${product}?${params.toString()}`;
 }
+
+export interface MatchResultOptions {
+  youWon: boolean;
+  /** null when draw */
+  winnerId: string | null;
+  /** display name of winner; null when draw */
+  winnerName: string | null;
+  /** display names of non-winners in standings order */
+  loserNames: string[];
+  localHits: number;
+  localDistanceM: number;
+  /** pre-formatted date, e.g. "JUL 9 2026" */
+  date: string;
+}
+
+/**
+ * Build a personalized PrintPayload from a match outcome.
+ * Text is sanitized (uppercase, charset-restricted, length-clamped) via sanitizePayload.
+ */
+export function matchResultPayload(opts: MatchResultOptions): PrintPayload {
+  const { youWon, winnerId, winnerName, loserNames, localHits, localDistanceM, date } = opts;
+  const statPart = `${localHits} HITS · ${Math.round(localDistanceM)}M`;
+
+  let rawTitle: string;
+  let rawSub: string;
+
+  if (youWon) {
+    rawTitle = "ARENA CHAMPION";
+    const beaten = loserNames.slice(0, 2).join(" & ");
+    rawSub = beaten ? `I BEAT ${beaten} · ${statPart}` : statPart;
+  } else if (winnerId) {
+    rawTitle = "ELIMINATED WITH HONOR";
+    rawSub = winnerName ? `LOST TO ${winnerName} · ${statPart}` : statPart;
+  } else {
+    rawTitle = "MUTUAL DESTRUCTION";
+    rawSub = `${statPart} · ${date}`;
+  }
+
+  return sanitizePayload({ title: rawTitle, sub: rawSub });
+}
