@@ -36,6 +36,19 @@ amendments OVERRIDE the corresponding details in the tasks below:
 2. **Baseline numbers**: 201 tests at execution start (not 151); maze (P9) and the merch storefront (`/shop/*` pages) already exist — the Task 14 merch link should point at the LIVE funnel exactly as `Arena.tsx` does at HEAD (re-read it; if its buildShopUrl call changed products/params, mirror the new form).
 3. **Read files at HEAD before mirroring**: `session.ts`/`lobby.ts`/`protocol.ts`/`Arena.tsx`/`WarmupRoom.tsx` all changed after the plan's code excerpts were written. Where a task says "mirror the arena X", the CURRENT file wins over any stale detail in this plan's prose.
 
+## Plan amendment — GAME SEPARATION (added 2026-07-09, user directive; OVERRIDES task details below)
+
+Arena and Overrun must be two fully separate games. Binding rules for every remaining task:
+
+1. **No `src/game/arena/**` imports anywhere** under `src/game/overrun/**` or `src/components/game/overrun/**`. Wherever a task's code says `import ... from "../arena/types"` (or `../../arena/...`), use Overrun's own equivalents instead.
+2. `src/game/overrun/types.ts` defines its own primitives: `Vec2 {x,y}`, `InputState {up,down,left,right}`, `PlayerId = string` (a Task-8.5 decoupling commit retrofits Tasks 1–8).
+3. `purity.test.ts` additionally asserts no overrun file matches `from ["']\.\.?/.*arena` — the separation is test-enforced.
+4. **Task 9:** codec imports `PlayerId`/`Vec2` from `../types` (overrun), not arena.
+5. **Task 10:** the generic `SyncEngine`/`SyncAdapter` stays in `src/game/net/sync.ts` but `arenaSyncAdapter` moves to a NEW file `src/game/net/arenaAdapter.ts` (arena's `session.ts` imports it from there) so Overrun bundles never pull arena sim code. `sync.ts` must not import anything from `src/game/arena/**` when done.
+6. **Task 12:** OverrunSession does NOT reuse arena's `hello` or `lobby.ts` (they carry arena Shape/Weapon cosmetics). Add `{ t: "oHello"; name: string; hostId?: string | null }` to the protocol union; OverrunSession keeps its own `Record<PlayerId, { id; name }>` roster (upsert/remove inline — trivial), still reuses game-neutral `kick`/`host` message kinds, `electHost`, `roomLink`, `ice`, `transport`. `COUNTDOWN_S`: define `OVERRUN_COUNTDOWN_S = 3` in overrun constants; do not import game-pack constants.
+7. **Task 13:** copy the 3-line `screenDeltaToWorldAngle` into `src/game/overrun/render/aim.ts` (with its 2 assertions as a colocated test) instead of importing arena's; define local render constants (PX_PER_M etc.) in the overrun scene rather than importing `src/game/constants.ts`.
+8. **Task 14:** Overrun HUD components are all its own (already planned); use an Overrun-styled countdown (red theme) inside `src/components/game/overrun/hud/` instead of importing arena's `Countdown`. Game-neutral infra stays shared: `Sfx`, `roomLink`, `ice`, `joinedIds`-style helpers if game-neutral (roster-diff helper may be reimplemented in overrun's session), merch `print.ts` funnel.
+
 ## File Structure (all new unless marked Modify)
 
 ```
