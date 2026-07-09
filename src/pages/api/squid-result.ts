@@ -1,27 +1,14 @@
 import type { APIRoute } from "astro";
 import { auth } from "@wix/essentials";
-import { collections, items } from "@wix/data";
+import { items } from "@wix/data";
 import { mergeTopScores, parseTopJson, scoreRowId, validateSquidResult } from "../../lib/squid/scores";
 import type { ScoreEntry } from "../../lib/squid/scores";
+import { createAdminCollection, isMissingCollection, withCollection } from "../../lib/wix/wixData";
 
 const COLLECTION_ID = "GameScores";
 
-/** First write auto-creates the collection; writes stay server-only (elevated), so every role is ADMIN. */
-async function createScoresCollection(): Promise<void> {
-  const TEXT = collections.Type.TEXT;
-  const ADMIN = collections.Role.ADMIN;
-  await auth.elevate(collections.createDataCollection)({
-    _id: COLLECTION_ID,
-    displayName: "Game Scores",
-    fields: ["gameId", "stageId", "topJson"].map((key) => ({ key, type: TEXT })),
-    permissions: { insert: ADMIN, update: ADMIN, remove: ADMIN, read: ADMIN },
-  });
-}
-
-function isMissingCollection(e: unknown): boolean {
-  const text = `${(e as Error)?.message ?? ""} ${JSON.stringify((e as { details?: unknown })?.details ?? "")}`;
-  return /not[_ ]?found|does not exist|WDE0025/i.test(text);
-}
+const ensureCollection = () =>
+  createAdminCollection(COLLECTION_ID, "Game Scores", ["gameId", "stageId", "topJson"]);
 
 const bad = (status: number) => new Response(null, { status });
 
@@ -44,30 +31,30 @@ export const POST: APIRoute = async ({ request }) => {
   const entry: ScoreEntry = { timeMs: result.timeMs, names: result.names, at: new Date().toISOString() };
   const _id = scoreRowId(result.stageId);
 
-  const readTop = async (): Promise<ScoreEntry[]> => {
-    try {
-      const item = await auth.elevate(items.getDataItem)(_id, { dataCollectionId: COLLECTION_ID });
-      return parseTopJson(item?.data?.topJson);
-    } catch {
-      return []; // row (or collection) doesn't exist yet
-    }
-  };
-  const save = (top: ScoreEntry[]) =>
+  // A missing row is the legitimate "no scores yet" case (also covers the very first score,
+  // where the collection itself doesn't exist yet — isMissingCollection's "not found"-style
+  // pattern matches that too) and reads as []. Any OTHER read error (throttle, network, ...)
+  // must abort the POST below rather than let the merge silently overwrite the board with
+  // just this one entry.
+  let top: ScoreEntry[];
+  try {
+    const item = await auth.elevate(items.getDataItem)(_id, { dataCollectionId: COLLECTION_ID });
+    top = parseTopJson(item?.data?.topJson);
+  } catch (e) {
+    if (!isMissingCollection(e)) return bad(500);
+    top = [];
+  }
+
+  const save = (merged: ScoreEntry[]) =>
     auth.elevate(items.saveDataItem)({
       dataCollectionId: COLLECTION_ID,
-      dataItem: { _id, data: { _id, gameId: "squid", stageId: result.stageId, topJson: JSON.stringify(top) } },
+      dataItem: { _id, data: { _id, gameId: "squid", stageId: result.stageId, topJson: JSON.stringify(merged) } },
     });
 
   try {
-    await save(mergeTopScores(await readTop(), entry));
-  } catch (e) {
-    if (!isMissingCollection(e)) return bad(500);
-    try {
-      await createScoresCollection();
-      await save(mergeTopScores([], entry));
-    } catch {
-      return bad(500);
-    }
+    await withCollection(() => save(mergeTopScores(top, entry)), ensureCollection);
+  } catch {
+    return bad(500);
   }
   return new Response(null, { status: 204 });
 };
