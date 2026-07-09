@@ -480,11 +480,12 @@ rendered by a reusable `<LockedFeature hint=…>` badge/overlay.
 Goal: optional Wix-managed login (email + Google + social) on the headless Astro app, current-member available
 client + server, a members-area shell, and the locked-feature primitive. Anonymous play untouched.
 
-- [ ] Install `@wix/members` (+ identity); wire Wix **managed login** (email/password + Google + social) into the headless app; session + `currentMember` on client and in server routes
-- [ ] "Sign in" entry in the site chrome + a **members-area shell** (profile: display name, avatar slot, sign out)
-- [ ] Reusable `<LockedFeature hint>` overlay/badge + a `useCapability()` (anonymous | member | paid) hook
-- [ ] Anonymous P2P play verified unchanged (no login required to join/play)
-- [ ] **Wix-dashboard config** (needs the owner): enable Members + login, social providers (Google), OAuth/app setup — document steps
+- [x] login/logout wiring — Wix Astro integration's built-in `/api/auth/login` + `/api/auth/logout` (`returnUrl` supported); linked from the account page + `<LockedFeature>` (no OAuth/client code needed)
+- [x] **members-area shell** `src/pages/account.astro` (SSR: profile name/avatar + sign out, or a sign-in CTA) + "Account" entry on the home page
+- [x] pure capability model `src/lib/members/capability.ts` (`capabilityOf`/`meetsCapability`/`defaultLockHint`) — unit-tested (3); `<LockedFeature>` overlay + `useCapability()` hook + `/api/me` route
+- [x] anonymous P2P play unchanged (no login gate added; anonymous is the current state)
+- [ ] **BLOCKED — live member read** (`src/lib/wix/members.ts` stubbed to anonymous): needs `npm install @wix/members` (this env has no Wix-registry access) + swap in the inline real `members.getCurrentMember()` code
+- [ ] **BLOCKED — owner Wix-dashboard config:** install the **Members Area** app; add allowed **authorization redirect URIs** (deployed host + localhost); enable email + Google + social login; leave the Headless Settings login-URL field empty
 
 ### B1 — Avatar upload (first member feature; Arena) · `dependsOn: B0` — **absorbs F4**
 Goal: a signed-in member uploads one character photo; it's resized, stored, and shown on their character to
