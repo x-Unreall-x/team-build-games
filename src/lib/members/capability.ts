@@ -2,7 +2,7 @@
  * Pure capability model for the members area — decides what a player can do and which "locked"
  * hint to show. Framework-free so it can be unit-tested and reused by both server and client.
  *
- *   anonymous  — not signed in (P2P play with shape/color)
+ *   anonymous  — not signed in (P2P play with a fighter selection)
  *   member     — signed-in Wix member (custom avatar, saved progress)
  *   paid       — member with an active subscription (ads off, premium perks)  [Track B B3]
  */

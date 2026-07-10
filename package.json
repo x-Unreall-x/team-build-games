@@ -12,7 +12,11 @@
     "generate": "wix generate",
     "env": "wix env",
     "skills": "wix skills",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:arena": "vitest run --project arena",
+    "test:members": "vitest run --project members",
+    "test:merch": "vitest run --project merch",
+    "test:squid": "vitest run --project squid"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",

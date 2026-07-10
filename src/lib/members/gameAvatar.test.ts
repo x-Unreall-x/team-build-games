@@ -11,7 +11,7 @@ describe("resolveGameAvatar (per-game → global → none)", () => {
     expect(resolveGameAvatar(undefined, "https://cdn/global.png")).toBe("https://cdn/global.png");
   });
 
-  it("returns null when neither is set (caller falls back to shape/color)", () => {
+  it("returns null when neither is set (caller keeps the fighter artwork)", () => {
     expect(resolveGameAvatar(null, null)).toBeNull();
     expect(resolveGameAvatar(undefined, undefined)).toBeNull();
   });

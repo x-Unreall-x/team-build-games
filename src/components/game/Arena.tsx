@@ -16,6 +16,10 @@ import { Sfx } from "../../game/audio/sfx";
 import type { PlayerId } from "../../game/arena/types";
 import { DEFAULT_SHAPE, type Shape } from "../../game/arena/cosmetic";
 import { DEFAULT_WEAPON, type Weapon } from "../../game/arena/weapons";
+import { DEFAULT_MODE, type GameMode } from "../../game/arena/modes";
+import { buildShopUrl, matchResultPayload } from "../../lib/merch/print";
+import { BODY_ASSET } from "../../game/arena/cosmetic";
+import MerchPreviewInline from "../merch/MerchPreviewInline";
 import WarmupRoom from "./lobby/WarmupRoom";
 import Hearts from "./hud/Hearts";
 import CooldownBadge from "./hud/CooldownBadge";
@@ -48,8 +52,9 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const activeDriverRef = useRef<MatchDriver | null>(null);
   const lastHud = useRef<HudState | null>(null);
   const lastBotCount = useRef(0);
+  const lastRounds = useRef(1);
+  const lastMode = useRef<GameMode>(DEFAULT_MODE);
   const nameRef = useRef("Player");
-  const colorRef = useRef(0);
   const shapeRef = useRef<Shape>(DEFAULT_SHAPE);
   const weaponRef = useRef<Weapon>(DEFAULT_WEAPON);
   const avatarUrlRef = useRef<string | null>(avatarUrl); // resolved Arena avatar (SSR); static for the island's life
@@ -59,9 +64,9 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const [ready, setReady] = useState(false);
   const [roomId, setRoomId] = useState("");
   const [name, setName] = useState("Player");
-  const [colorIndex, setColorIndex] = useState(0);
   const [shape, setShape] = useState<Shape>(DEFAULT_SHAPE);
   const [weapon, setWeapon] = useState<Weapon>(DEFAULT_WEAPON);
+  const [mode, setMode] = useState<GameMode>(DEFAULT_MODE);
   const [practiceDriver, setPracticeDriver] = useState<SoloDriver | null>(null);
   const [practiceEpoch, setPracticeEpoch] = useState(0);
   const [hud, setHud] = useState<HudState>(FRESH_HUD);
@@ -81,7 +86,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
       const { createRtcTransport } = await import("../../game/net/rtc"); // client-only (WebRTC)
       if (cancelled) return;
       const transport = createRtcTransport({ roomId: id, iceServers: ICE_SERVERS });
-      session = new Session({ transport, name: nameRef.current, iconColor: colorRef.current, shape: shapeRef.current, weapon: weaponRef.current, avatarUrl: avatarUrlRef.current, isCreator: !existing, onChange: bump });
+      session = new Session({ transport, name: nameRef.current, shape: shapeRef.current, weapon: weaponRef.current, avatarUrl: avatarUrlRef.current, isCreator: !existing, onChange: bump });
       sessionRef.current = session;
       setReady(true);
     })();
@@ -186,27 +191,24 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const changeName = (n: string) => {
     setName(n);
     nameRef.current = n;
-    sessionRef.current?.setProfile(n, colorRef.current, shapeRef.current);
-  };
-  const changeColor = (i: number) => {
-    setColorIndex(i);
-    colorRef.current = i;
-    sessionRef.current?.setProfile(nameRef.current, i, shapeRef.current);
+    sessionRef.current?.setProfile(n, shapeRef.current);
   };
   const changeShape = (s: Shape) => {
     setShape(s);
     shapeRef.current = s;
-    sessionRef.current?.setProfile(nameRef.current, colorRef.current, s, weaponRef.current);
+    sessionRef.current?.setProfile(nameRef.current, s, weaponRef.current);
   };
   const changeWeapon = (w: Weapon) => {
     setWeapon(w);
     weaponRef.current = w;
-    sessionRef.current?.setProfile(nameRef.current, colorRef.current, shapeRef.current, w);
+    sessionRef.current?.setProfile(nameRef.current, shapeRef.current, w);
   };
-  const startMatch = (bots: number) => {
+  const startMatch = (bots: number, rounds = 1, selectedMode: GameMode = DEFAULT_MODE) => {
     sfxRef.current.resume();
     lastBotCount.current = bots;
-    sessionRef.current?.start(bots);
+    lastRounds.current = rounds;
+    lastMode.current = selectedMode;
+    sessionRef.current?.start(bots, rounds, selectedMode);
   };
   // Offline, zero-netcode solo warm-up vs bots. Currently has no UI entry point
   // (the "Practice vs bots" button was removed) — kept intact for future re-exposure.
@@ -220,7 +222,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
       setPracticeDriver(new SoloDriver(3));
       setPracticeEpoch((n) => n + 1);
     } else if (sessionState?.isHost) {
-      startMatch(lastBotCount.current);
+      startMatch(lastBotCount.current, lastRounds.current, lastMode.current);
     }
   };
   const backToLobby = () => {
@@ -238,6 +240,29 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const youWon = result?.winnerId === localId;
   const canRematch = !!practiceDriver || !!sessionState?.isHost;
 
+  // Netplay round overlays (P8): driven by the session phase + host-authoritative board.
+  const phase = sessionState?.phase ?? null;
+  const board = sessionState?.board ?? null;
+  const nameOf = (id: PlayerId) => sessionRef.current?.getMeta(id).name ?? id.slice(0, 6);
+  const roundWinnerId = result?.winnerId ?? null; // winner of the round that just ended
+  const matchWinnerId = board?.podium.find((p) => p.place === 1)?.players[0] ?? null;
+  const youWonMatch = board?.podium.some((p) => p.place === 1 && p.players.includes(localId)) ?? false;
+  const standingsOrder = board ? board.podium.flatMap((pl) => pl.players) : [];
+  const localStats = board?.stats[localId];
+  const loserNames = standingsOrder.filter((id) => id !== matchWinnerId).map(nameOf);
+  const matchPayload = matchResultPayload({
+    youWon: youWonMatch,
+    winnerId: matchWinnerId,
+    winnerName: matchWinnerId ? nameOf(matchWinnerId) : null,
+    loserNames,
+    localHits: localStats?.hits ?? 0,
+    localDistanceM: localStats?.distance ?? 0,
+    date: new Date()
+      .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      .toUpperCase(),
+  });
+  const warriorSrc = BODY_ASSET[shape];
+
   return (
     <div className="flex flex-col items-center gap-3">
       {!inMatch ? (
@@ -247,14 +272,14 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
           hostId={sessionState!.hostId}
           isHost={sessionState!.isHost}
           name={name}
-          colorIndex={colorIndex}
           shape={shape}
           weapon={weapon}
+          mode={mode}
           joinUrl={joinUrl}
           onName={changeName}
-          onColor={changeColor}
           onShape={changeShape}
           onWeapon={changeWeapon}
+          onMode={setMode}
           onStart={startMatch}
           onKick={(id) => sessionRef.current?.kick(id)}
           onMakeHost={(id) => sessionRef.current?.makeHost(id)}
@@ -284,7 +309,8 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
             <div style={{ position: "absolute", top: 12, right: 12, color: "#fca5a5", fontWeight: 600 }}>Spectating…</div>
           )}
 
-          {result && (
+          {/* Practice (solo) keeps the single-match result overlay. */}
+          {practiceDriver && result && (
             <Overlay>
               <h2 className="text-4xl font-bold">{youWon ? "You win! 🏆" : result.winnerId ? "You're out ☠️" : "Draw"}</h2>
               <div className="flex gap-3">
@@ -297,7 +323,159 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
                   Back to room
                 </button>
               </div>
+            </Overlay>
+          )}
+
+          {/* Netplay: between-rounds pause — host advances, everyone else waits. */}
+          {!practiceDriver && phase === "roundover" && (
+            <Overlay>
+              <h2 className="text-3xl font-bold">
+                {sessionState?.roundTiebreak
+                  ? "Sudden death"
+                  : `Round ${sessionState?.roundNumber} of ${sessionState?.roundsTotal} — complete`}
+              </h2>
+              <p className="text-lg">{roundWinnerId ? `${nameOf(roundWinnerId)} takes the round` : "Draw round"}</p>
+              {board && (
+                <div className="flex flex-col gap-1 text-sm text-neutral-200">
+                  {standingsOrder.map((id) => (
+                    <div key={id}>
+                      {nameOf(id)}
+                      {id === localId && " (you)"} — {board.wins[id] ?? 0} {(board.wins[id] ?? 0) === 1 ? "win" : "wins"}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {sessionState?.isHost ? (
+                <button
+                  onClick={() => sessionRef.current?.nextRoundAction()}
+                  className="rounded-lg bg-sky-500 px-5 py-2 font-semibold text-white hover:bg-sky-400"
+                >
+                  Next round →
+                </button>
+              ) : (
+                <p className="text-sm text-neutral-300">Waiting for the host to start the next round…</p>
+              )}
+            </Overlay>
+          )}
+
+          {/* Netplay: final scoreboard — scores, winner, and per-player stats. Stays connected. */}
+          {!practiceDriver && phase === "ended" && board && (
+            <Overlay>
+              {/* Outcome card: tee preview + rich result text */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.05)", borderRadius: 10, padding: "10px 14px", width: "100%", maxWidth: 420 }}>
+                <div style={{ width: 72, height: 72, flexShrink: 0 }}>
+                  <MerchPreviewInline
+                    product="tee"
+                    title={matchPayload.title}
+                    sub={matchPayload.sub}
+                    warriorSrc={warriorSrc}
+                    avatarUrl={avatarUrl}
+                  />
+                </div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <p style={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.3, color: youWonMatch ? "#fcd34d" : matchWinnerId ? "#fca5a5" : "#e2e8f0" }}>
+                    {youWonMatch
+                      ? "YOU WON!"
+                      : matchWinnerId
+                        ? `YOU LOST TO ${nameOf(matchWinnerId).toUpperCase()}`
+                        : "MUTUAL DESTRUCTION"}
+                  </p>
+                  {youWonMatch && loserNames.length > 0 && (
+                    <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: 4 }}>
+                      {"Defeated: " + loserNames.join(", ")}
+                    </p>
+                  )}
+                  {!youWonMatch && matchWinnerId && (
+                    <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: 4 }}>
+                      {"GG · " + nameOf(matchWinnerId) + " dominated"}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <table className="mt-1 border-separate border-spacing-x-4 text-sm text-neutral-200">
+                <thead className="text-xs uppercase tracking-wide text-neutral-400">
+                  <tr>
+                    <th className="text-left">#</th>
+                    <th className="text-left">Player</th>
+                    <th>Wins</th>
+                    <th>Hits</th>
+                    <th>Misses</th>
+                    <th>Distance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {board.podium.flatMap((pl) =>
+                    pl.players.map((id) => {
+                      const s = board.stats[id];
+                      return (
+                        <tr key={id} className={id === localId ? "font-semibold text-white" : ""}>
+                          <td>{pl.place}</td>
+                          <td className="text-left">
+                            {nameOf(id)}
+                            {id === localId && " (you)"}
+                          </td>
+                          <td className="text-center">{board.wins[id] ?? 0}</td>
+                          <td className="text-center">{s?.hits ?? 0}</td>
+                          <td className="text-center">{s?.misses ?? 0}</td>
+                          <td className="text-center">{Math.round(s?.distance ?? 0)} m</td>
+                        </tr>
+                      );
+                    }),
+                  )}
+                </tbody>
+              </table>
+              <div className="mt-1 flex gap-3">
+                {canRematch && (
+                  <button onClick={playAgain} className="rounded-lg bg-sky-500 px-5 py-2 font-semibold text-white hover:bg-sky-400">
+                    Play again
+                  </button>
+                )}
+                <button onClick={backToLobby} className="rounded-lg border border-white/40 px-5 py-2 font-semibold text-white hover:bg-white/10">
+                  Back to room
+                </button>
+              </div>
               {!canRematch && <p className="text-sm text-neutral-300">Waiting for the host to restart…</p>}
+              <div className="w-full">
+                <p className="mb-2 text-center font-display text-[9px] uppercase tracking-widest text-neutral-500">
+                  Immortalise your result
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {(["tee", "mug", "keychain", "poster"] as const).map((slug) => (
+                    <a
+                      key={slug}
+                      href={buildShopUrl(slug, matchPayload, { warriorSrc, avatarUrl })}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex flex-col items-center gap-1 rounded-lg border border-white/10 p-2 text-neutral-300 no-underline transition hover:border-cyan-400/50 hover:bg-white/5"
+                      style={{ width: 90 }}
+                    >
+                      <div style={{ width: 80, height: 80 }}>
+                        <MerchPreviewInline
+                          product={slug}
+                          title={matchPayload.title}
+                          sub={matchPayload.sub}
+                          warriorSrc={warriorSrc}
+                          avatarUrl={avatarUrl}
+                        />
+                      </div>
+                      <span className="text-center font-display text-[8px] leading-tight text-neutral-300">
+                        {slug === "tee"
+                          ? "Score Tee"
+                          : slug === "mug"
+                            ? "Victory Mug"
+                            : slug === "keychain"
+                              ? "Fighter Key"
+                              : "Match Poster"}
+                      </span>
+                      <span className="font-display text-[8px] text-cyan-400">Shop →</span>
+                    </a>
+                  ))}
+                </div>
+                <p className="mt-2 text-center text-xs text-neutral-500">
+                  Test-mode store — nothing is charged or shipped.
+                </p>
+              </div>
             </Overlay>
           )}
         </div>

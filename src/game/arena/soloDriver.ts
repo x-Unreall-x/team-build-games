@@ -26,13 +26,13 @@ export class SoloDriver implements MatchDriver {
     const ids = [LOCAL, ...Array.from({ length: botCount }, (_, i) => `bot:${i + 1}`)];
     this.botIds = ids.slice(1);
     this.meta = Object.fromEntries(
-      ids.map((id, i) => [id, { name: id === LOCAL ? "You" : `Bot ${i}`, colorIndex: i, shape: DEFAULT_SHAPE }]),
+      ids.map((id, i) => [id, { name: id === LOCAL ? "You" : `Bot ${i}`, shape: DEFAULT_SHAPE }]),
     );
     this.world = createWorld(evenSpawns(ids), "playing");
   }
 
   getMeta(id: PlayerId): PlayerMeta {
-    return this.meta[id] ?? { name: id, colorIndex: 0, shape: DEFAULT_SHAPE };
+    return this.meta[id] ?? { name: id, shape: DEFAULT_SHAPE };
   }
 
   frame(dt: number, input: RawInput): FramePacket {

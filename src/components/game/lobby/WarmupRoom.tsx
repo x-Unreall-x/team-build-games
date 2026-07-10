@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { PALETTE } from "../../../game/arena/render/scene";
 import type { LobbyPlayer } from "../../../game/net/lobby";
 import type { PlayerId } from "../../../game/arena/types";
 import { SHAPES, type Shape } from "../../../game/arena/cosmetic";
@@ -7,9 +6,12 @@ import { WEAPON_LIST, type Weapon } from "../../../game/arena/weapons";
 import { MAX_PLAYERS } from "../../../game/constants";
 import AvatarUploader from "../../members/AvatarUploader";
 
-const hex = (i: number) => `#${(PALETTE[i % PALETTE.length] ?? 0).toString(16).padStart(6, "0")}`;
-
-const SHAPE_GLYPH: Record<Shape, string> = { circle: "●", square: "■", triangle: "▲", diamond: "◆" };
+const FIGHTER: Record<Shape, { label: string; src: string }> = {
+  circle: { label: "Swordsman", src: "/assets/arena/warriors/swordsman.png" },
+  square: { label: "Spearman", src: "/assets/arena/warriors/spearman.png" },
+  triangle: { label: "Knife fighter", src: "/assets/arena/warriors/knife-fighter.png" },
+  diamond: { label: "Archer", src: "/assets/arena/warriors/archer.png" },
+};
 
 const PICKABLE_WEAPONS: Weapon[] = WEAPON_LIST; // sword/spear/knife (melee) + bow (ranged)
 const WEAPON_LABEL: Record<Weapon, string> = { sword: "Sword", spear: "Spear", knife: "Knife", bow: "Bow" };
@@ -20,24 +22,25 @@ interface Props {
   hostId: PlayerId | null;
   isHost: boolean;
   name: string;
-  colorIndex: number;
   shape: Shape;
   weapon: Weapon;
   joinUrl: string;
   onName: (n: string) => void;
-  onColor: (i: number) => void;
   onShape: (s: Shape) => void;
   onWeapon: (w: Weapon) => void;
-  onStart: (botCount: number) => void;
+  onStart: (botCount: number, rounds: number) => void;
   onKick: (id: PlayerId) => void;
   onMakeHost: (id: PlayerId) => void;
-  /** Signed-in members can set a per-game character photo; anonymous players see a locked hint. */
+  /** Signed-in members can set a per-game face photo; anonymous players see a locked hint. */
   isMember: boolean;
   avatarUrl: string | null;
 }
 
+const ROUND_OPTIONS = [1, 3, 5, 7];
+
 export default function WarmupRoom(props: Props) {
   const [bots, setBots] = useState(2);
+  const [rounds, setRounds] = useState(1);
   const [copied, setCopied] = useState(false);
 
   // A match needs at least 2 participants — humans in the roster plus host-driven bots.
@@ -83,50 +86,34 @@ export default function WarmupRoom(props: Props) {
         </label>
 
         <div className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Your musa color</span>
-          <div className="flex flex-wrap gap-2">
-            {PALETTE.map((_, i) => (
-              <button
-                key={i}
-                aria-label={`color ${i + 1}`}
-                onClick={() => props.onColor(i)}
-                style={{ background: hex(i) }}
-                className={`h-8 w-8 rounded-full transition ${
-                  i === props.colorIndex ? "ring-2 ring-offset-2 ring-black dark:ring-white" : "opacity-80"
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Your musa shape</span>
+          <span className="text-neutral-500">Your fighter</span>
           <div className="flex flex-wrap gap-2">
             {SHAPES.map((s) => (
               <button
                 key={s}
-                aria-label={s}
+                aria-label={FIGHTER[s].label}
+                title={FIGHTER[s].label}
                 onClick={() => props.onShape(s)}
-                className={`flex h-8 w-8 items-center justify-center rounded-md border text-lg leading-none transition ${
+                className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border p-1 transition ${
                   s === props.shape
-                    ? "border-black bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-                    : "border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    ? "border-black bg-neutral-200 ring-2 ring-black dark:border-white dark:bg-neutral-800 dark:ring-white"
+                    : "border-neutral-300 bg-neutral-100 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
                 }`}
               >
-                {SHAPE_GLYPH[s]}
+                <img src={FIGHTER[s].src} alt="" className="h-full w-full object-contain" />
               </button>
             ))}
           </div>
         </div>
 
         <div className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-500">Your character photo</span>
+          <span className="text-neutral-500">Your face photo</span>
           {props.isMember ? (
             <AvatarUploader gameId="arena" currentUrl={props.avatarUrl} />
           ) : (
             <div className="flex items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-700">
               <span aria-hidden>🔒</span>
-              <span>Sign in to use a photo — everyone else picks a shape.</span>
+              <span>Sign in to place your photo on your fighter.</span>
               <a
                 href={`/api/auth/login?returnToUrl=${encodeURIComponent(
                   typeof window !== "undefined" ? window.location.pathname + window.location.search : "/games/arena",
@@ -192,9 +179,23 @@ export default function WarmupRoom(props: Props) {
                   ))}
                 </select>
               </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-500">
+                Rounds
+                <select
+                  value={rounds}
+                  onChange={(e) => setRounds(Number(e.target.value))}
+                  className="rounded-md border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
+                >
+                  {ROUND_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n === 1 ? "1 (single)" : `Best of ${n}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="group relative inline-block">
                 <button
-                  onClick={() => canStart && props.onStart(bots)}
+                  onClick={() => canStart && props.onStart(bots, rounds)}
                   aria-disabled={!canStart}
                   className={`rounded-lg px-5 py-2 font-semibold text-white ${
                     canStart ? "bg-sky-500 hover:bg-sky-400" : "cursor-not-allowed bg-sky-500/50"
@@ -223,7 +224,7 @@ export default function WarmupRoom(props: Props) {
         <ul className="flex flex-col gap-2">
           {props.roster.map((p) => (
             <li key={p.id} className="flex items-center gap-2">
-              <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: hex(p.iconColor) }} />
+              <img src={FIGHTER[p.shape].src} alt="" className="h-6 w-6 shrink-0 object-contain" />
               <span className="flex-1 truncate text-sm">
                 {p.name}
                 {p.id === props.localId && " (you)"}

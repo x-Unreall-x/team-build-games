@@ -12,10 +12,9 @@ import { MAX_PLAYERS } from "../constants";
 export interface LobbyPlayer {
   id: PlayerId;
   name: string;
-  iconColor: number; // palette index
-  shape: Shape; // cosmetic body shape (render-only)
+  shape: Shape; // cosmetic fighter selection (render-only)
   weapon: Weapon; // equipped weapon (sim-relevant)
-  avatarUrl?: string | null; // signed-in member's photo (render-only); absent → shape/color
+  avatarUrl?: string | null; // signed-in member's face photo (render-only)
 }
 
 export type Roster = Record<PlayerId, LobbyPlayer>;

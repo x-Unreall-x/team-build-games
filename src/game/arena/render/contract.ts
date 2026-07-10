@@ -5,9 +5,8 @@ import type { Shape } from "../cosmetic";
 
 export interface PlayerMeta {
   name: string;
-  colorIndex: number;
   shape: Shape;
-  /** Signed-in member's photo (render-only). Absent/null → draw the shape/color body. */
+  /** Signed-in member's photo (render-only), drawn over the illustrated fighter's head. */
   avatarUrl?: string | null;
 }
 

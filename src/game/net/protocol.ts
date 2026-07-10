@@ -4,18 +4,17 @@
  * input through it so a peer can only ever send well-formed *intent bits*, never positions/health.
  */
 
-import type { Direction, Intent, PlayerId, Projectile, World } from "../arena/types";
+import type { Direction, Intent, PlayerId, PlayerStats, Projectile, World } from "../arena/types";
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 import type { Placement } from "../arena/rounds";
 import type { SquidIntent, SquidWorld, StageId } from "../squid/types";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export interface RosterEntry {
   id: PlayerId;
   name: string;
-  iconColor: number;
   shape: Shape;
   weapon: Weapon;
   avatarUrl?: string | null;
@@ -26,7 +25,6 @@ export interface RosterEntry {
 export interface StartPlayer {
   id: PlayerId;
   name: string;
-  iconColor: number;
   shape: Shape;
   weapon: Weapon;
   avatarUrl?: string | null;
@@ -42,15 +40,24 @@ export interface SquidStartPlayer {
 }
 
 export type NetMessage =
-  | { t: "hello"; name: string; iconColor: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
+  | { t: "hello"; name: string; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
   | { t: "kick"; targetId: PlayerId }
   // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.
   | { t: "host"; hostId: PlayerId }
   // P8 round fields are optional so a plain single-match `start` (rounds=1, today's behaviour) still validates.
   | { t: "start"; countdownMs: number; players: StartPlayer[]; rounds?: number; roundNumber?: number; tiebreak?: boolean }
-  // Host → peers at each round's end: the running tally + phase. `podium` is set on the final board.
-  | { t: "standings"; wins: Record<PlayerId, number>; roundNumber: number; rounds: number; phase: "intermission" | "scoreboard"; podium?: Placement[] }
+  // Host → peers at each round's end: running tally + standings/stats. `phase` is "roundover"
+  // (host will advance) or "ended" (final scoreboard). `podium` + `stats` drive the overlays.
+  | {
+      t: "standings";
+      wins: Record<PlayerId, number>;
+      roundNumber: number;
+      rounds: number;
+      phase: "roundover" | "ended";
+      podium?: Placement[];
+      stats?: Record<PlayerId, PlayerStats>;
+    }
   | { t: "input"; tick: number; intent: Intent }
   | {
       t: "snapshot";

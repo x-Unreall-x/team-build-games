@@ -9,12 +9,13 @@
  * the SyncEngine takes over.
  */
 
-import type { Intent, PlayerId, RawInput, World } from "../arena/types";
+import type { Intent, PlayerId, PlayerStats, RawInput, World } from "../arena/types";
 import type { Transport } from "./transport";
 import { coerceAvatarUrl, decode, encode, type StartPlayer } from "./protocol";
 import { arenaSyncAdapter, SyncEngine } from "./sync";
 import { electHost } from "./election";
 import { createWorld, evenSpawns } from "../arena/match";
+import { createRounds, nextRound, recordRoundWin, recordTiebreakWin, standings, type NextRound, type Placement, type RoundsState } from "../arena/rounds";
 import { initialMemory, inputToIntent } from "../arena/intent";
 import { botIntent } from "../arena/bot";
 import { COUNTDOWN_S } from "../constants";
@@ -24,12 +25,22 @@ import { remove, rosterList, upsert } from "./lobby";
 import { coerceShape, DEFAULT_SHAPE, type Shape } from "../arena/cosmetic";
 import { coerceWeapon, DEFAULT_WEAPON, type Weapon } from "../arena/weapons";
 
-export type SessionPhase = "lobby" | "countdown" | "playing" | "ended";
+// "roundover" = a round finished and the host hasn't advanced yet (others wait); "ended" = final scoreboard.
+export type SessionPhase = "lobby" | "countdown" | "playing" | "roundover" | "ended";
+
+/** Snapshot of standings shown on the round-over / finished overlays (host-authoritative). */
+export interface Board {
+  wins: Record<PlayerId, number>;
+  roundNumber: number;
+  rounds: number;
+  final: boolean;
+  podium: Placement[];
+  stats: Record<PlayerId, PlayerStats>;
+}
 
 export interface SessionOptions {
   transport: Transport;
   name: string;
-  iconColor: number;
   shape: Shape;
   weapon: Weapon;
   /** Signed-in member's resolved Arena avatar (render-only); null for anonymous players. */
@@ -66,10 +77,20 @@ export class Session implements MatchDriver {
   private mem = initialMemory();
   private pendingRaw: RawInput = NO_INPUT;
 
+  // ---- rounds (P8) — host owns the authoritative RoundsState; clients mirror via `standings` ----
+  private rounds: RoundsState | null = null; // host-only
+  private matchPlayers: StartPlayer[] = []; // full match roster, to rebuild sudden-death subsets
+  private roundsTotal = 1;
+  private roundNumber = 1;
+  private roundTiebreak = false;
+  private pendingNext: NextRound | null = null; // host: what "Next round" will do
+  private cumulativeStats: Record<PlayerId, PlayerStats> = {}; // summed across rounds (host)
+  private board: Board | null = null; // populated at each round's end (both host + clients)
+
   constructor(private readonly opts: SessionOptions) {
     this.t = opts.transport;
     this.localId = this.t.selfId;
-    this.profile = { id: this.localId, name: opts.name, iconColor: opts.iconColor, shape: opts.shape, weapon: opts.weapon, avatarUrl: opts.avatarUrl ?? null };
+    this.profile = { id: this.localId, name: opts.name, shape: opts.shape, weapon: opts.weapon, avatarUrl: opts.avatarUrl ?? null };
     this.roster = upsert({}, this.profile);
     if (opts.isCreator) this.explicitHostId = this.localId; // the creator owns host until it transfers/leaves
 
@@ -91,6 +112,10 @@ export class Session implements MatchDriver {
       hostId,
       isHost: hostId === this.localId,
       winnerId: this.engine?.getWorld().winnerId ?? null,
+      roundNumber: this.roundNumber,
+      roundsTotal: this.roundsTotal,
+      roundTiebreak: this.roundTiebreak,
+      board: this.board,
     };
   }
 
@@ -99,23 +124,26 @@ export class Session implements MatchDriver {
     this.phase = "lobby";
     this.engine = null;
     this.initialWorld = null;
+    this.rounds = null;
+    this.board = null;
+    this.pendingNext = null;
+    this.cumulativeStats = {};
     this.opts.onChange();
   }
 
-  setProfile(name: string, iconColor: number, shape: Shape = this.profile.shape, weapon: Weapon = this.profile.weapon): void {
-    this.profile = { id: this.localId, name, iconColor, shape, weapon, avatarUrl: this.profile.avatarUrl };
+  setProfile(name: string, shape: Shape = this.profile.shape, weapon: Weapon = this.profile.weapon): void {
+    this.profile = { id: this.localId, name, shape, weapon, avatarUrl: this.profile.avatarUrl };
     this.roster = upsert(this.roster, this.profile);
     this.sendHello();
     this.opts.onChange();
   }
 
-  /** Host-only: start a match with the current roster plus `botCount` host-driven bots. */
-  start(botCount = 0): void {
+  /** Host-only: start a best-of-`rounds` match with the current roster plus `botCount` bots. */
+  start(botCount = 0, rounds = 1): void {
     if (this.hostId() !== this.localId) return;
     const humans: StartPlayer[] = rosterList(this.roster).map((p) => ({
       id: p.id,
       name: p.name,
-      iconColor: p.iconColor,
       shape: p.shape,
       weapon: p.weapon,
       avatarUrl: p.avatarUrl ?? null,
@@ -124,14 +152,38 @@ export class Session implements MatchDriver {
     const bots: StartPlayer[] = Array.from({ length: botCount }, (_, i) => ({
       id: `bot:${i + 1}`,
       name: `Bot ${i + 1}`,
-      iconColor: (humans.length + i) % 8,
       shape: DEFAULT_SHAPE,
       weapon: DEFAULT_WEAPON,
       isBot: true,
     }));
     const players = [...humans, ...bots];
-    this.t.send(encode({ t: "start", countdownMs: COUNTDOWN_S * 1000, players }));
-    this.beginMatch(players);
+    this.matchPlayers = players;
+    this.roundsTotal = Math.max(1, Math.floor(rounds));
+    this.rounds = createRounds(players.map((p) => p.id), this.roundsTotal);
+    this.cumulativeStats = {};
+    this.board = null;
+    this.startRound(players, 1, false);
+  }
+
+  /** Host-only: advance to the next regular round or sudden-death decider after a round ends. */
+  nextRoundAction(): void {
+    if (this.hostId() !== this.localId || this.phase !== "roundover" || !this.pendingNext) return;
+    const nxt = this.pendingNext;
+    this.pendingNext = null;
+    if (nxt.kind === "tiebreak") {
+      const tied = new Set(nxt.players);
+      this.startRound(this.matchPlayers.filter((p) => tied.has(p.id)), this.roundNumber, true);
+    } else if (nxt.kind === "play") {
+      this.startRound(this.matchPlayers, nxt.roundNumber, false);
+    }
+  }
+
+  /** Host: broadcast the round's start (so peers build the same world) and begin it locally. */
+  private startRound(players: StartPlayer[], roundNumber: number, tiebreak: boolean): void {
+    this.t.send(
+      encode({ t: "start", countdownMs: COUNTDOWN_S * 1000, players, rounds: this.roundsTotal, roundNumber, tiebreak }),
+    );
+    this.beginMatch(players, roundNumber, tiebreak);
   }
 
   kick(targetId: PlayerId): void {
@@ -148,7 +200,7 @@ export class Session implements MatchDriver {
   // ---- MatchDriver (renderer) --------------------------------------------------
 
   getMeta(id: PlayerId): PlayerMeta {
-    return this.meta[id] ?? { name: id.slice(0, 6), colorIndex: 0, shape: DEFAULT_SHAPE };
+    return this.meta[id] ?? { name: id.slice(0, 6), shape: DEFAULT_SHAPE };
   }
 
   frame(dt: number, input: RawInput): FramePacket {
@@ -163,17 +215,68 @@ export class Session implements MatchDriver {
       return { world: this.initialWorld ?? EMPTY_WORLD, countdown: Math.ceil(this.countdownLeft) };
     }
 
-    if ((this.phase === "playing" || this.phase === "ended") && this.engine) {
+    if ((this.phase === "playing" || this.phase === "roundover" || this.phase === "ended") && this.engine) {
       this.engine.tick(dt);
       const world = this.engine.getWorld();
-      if (world.phase === "ended" && this.phase !== "ended") {
-        this.phase = "ended";
-        this.opts.onChange();
-      }
+      // The tick a round resolves: host tallies + decides; clients wait for the host's standings.
+      if (world.phase === "ended" && this.phase === "playing") this.onRoundEnd();
       return { world, countdown: 0 };
     }
 
     return { world: this.initialWorld ?? EMPTY_WORLD, countdown: 0 };
+  }
+
+  // ---- rounds lifecycle --------------------------------------------------------
+
+  private onRoundEnd(): void {
+    if (this.hostId() === this.localId) this.handleRoundEndHost();
+    else {
+      // Client: freeze on the result and wait for the host's `standings` (which sets the real phase).
+      this.phase = "roundover";
+      this.opts.onChange();
+    }
+  }
+
+  /** Host: fold in this round's stats, record the win, then either wait (roundover) or finish (ended). */
+  private handleRoundEndHost(): void {
+    const w = this.engine!.getWorld();
+    for (const p of Object.values(w.players)) {
+      const c = this.cumulativeStats[p.id] ?? { hits: 0, misses: 0, distance: 0 };
+      this.cumulativeStats[p.id] = {
+        hits: c.hits + p.stats.hits,
+        misses: c.misses + p.stats.misses,
+        distance: c.distance + p.stats.distance,
+      };
+    }
+    if (this.rounds) {
+      this.rounds = this.roundTiebreak
+        ? recordTiebreakWin(this.rounds, w.winnerId)
+        : recordRoundWin(this.rounds, w.winnerId);
+    }
+    const nxt: NextRound = this.rounds ? nextRound(this.rounds) : { kind: "done", podium: [] };
+    const final = nxt.kind === "done";
+    this.pendingNext = final ? null : nxt;
+    this.board = {
+      wins: this.rounds ? { ...this.rounds.wins } : {},
+      roundNumber: this.roundNumber,
+      rounds: this.roundsTotal,
+      final,
+      podium: nxt.kind === "done" ? nxt.podium : this.rounds ? standings(this.rounds) : [],
+      stats: { ...this.cumulativeStats },
+    };
+    this.phase = final ? "ended" : "roundover";
+    this.t.send(
+      encode({
+        t: "standings",
+        wins: this.board.wins,
+        roundNumber: this.roundNumber,
+        rounds: this.roundsTotal,
+        phase: final ? "ended" : "roundover",
+        podium: this.board.podium,
+        stats: this.board.stats,
+      }),
+    );
+    this.opts.onChange();
   }
 
   // ---- internals ---------------------------------------------------------------
@@ -211,7 +314,7 @@ export class Session implements MatchDriver {
   }
 
   private sendHello(): void {
-    this.t.send(encode({ t: "hello", name: this.profile.name, iconColor: this.profile.iconColor, shape: this.profile.shape, weapon: this.profile.weapon, avatarUrl: this.profile.avatarUrl, hostId: this.explicitHostId }));
+    this.t.send(encode({ t: "hello", name: this.profile.name, shape: this.profile.shape, weapon: this.profile.weapon, avatarUrl: this.profile.avatarUrl, hostId: this.explicitHostId }));
   }
 
   private onMessage(data: string, from: PlayerId): void {
@@ -220,7 +323,7 @@ export class Session implements MatchDriver {
     switch (m.t) {
       case "hello": {
         const isNew = !(from in this.roster);
-        this.roster = upsert(this.roster, { id: from, name: m.name, iconColor: m.iconColor, shape: coerceShape(m.shape), weapon: coerceWeapon(m.weapon), avatarUrl: coerceAvatarUrl(m.avatarUrl) });
+        this.roster = upsert(this.roster, { id: from, name: m.name, shape: coerceShape(m.shape), weapon: coerceWeapon(m.weapon), avatarUrl: coerceAvatarUrl(m.avatarUrl) });
         // A joiner with no host yet adopts the sender's claimed host (creator/host propagation).
         if (this.explicitHostId == null && m.hostId != null) this.explicitHostId = m.hostId;
         if (isNew) this.sendHello(); // reply so the newcomer learns us + our host (bounded: first sight)
@@ -239,16 +342,35 @@ export class Session implements MatchDriver {
         }
         break;
       case "start":
-        this.beginMatch(m.players);
+        // Client mirrors each round the host starts (host-authoritative RoundsState stays host-side).
+        this.matchPlayers = m.players;
+        this.roundsTotal = m.rounds ?? 1;
+        this.board = null;
+        this.beginMatch(m.players, m.roundNumber ?? 1, m.tiebreak ?? false);
+        break;
+      case "standings":
+        // Client mirror of the host's round-end board (tally + podium + stats).
+        this.board = {
+          wins: m.wins,
+          roundNumber: m.roundNumber,
+          rounds: m.rounds,
+          final: m.phase === "ended",
+          podium: m.podium ?? [],
+          stats: m.stats ?? {},
+        };
+        this.phase = m.phase; // "roundover" | "ended"
+        this.opts.onChange();
         break;
       default:
         break; // input/snapshot are consumed by the SyncEngine's own handler
     }
   }
 
-  private beginMatch(players: StartPlayer[]): void {
+  private beginMatch(players: StartPlayer[], roundNumber = 1, tiebreak = false): void {
+    this.roundNumber = roundNumber;
+    this.roundTiebreak = tiebreak;
     const ids = players.map((p) => p.id);
-    this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, colorIndex: p.iconColor, shape: p.shape, avatarUrl: p.avatarUrl ?? null }]));
+    this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, shape: p.shape, avatarUrl: p.avatarUrl ?? null }]));
     this.botIds = players.filter((p) => p.isBot).map((p) => p.id);
     // Zip the deterministic spawn ring with each player's equipped weapon (same order as ids).
     const spawns = evenSpawns(ids).map((s, i) => ({ ...s, weapon: players[i]!.weapon }));
