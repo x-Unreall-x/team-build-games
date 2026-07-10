@@ -1,0 +1,281 @@
+/**
+ * Coop Survival step reducer (P-A3 integration): the pure, deterministic per-tick heart of the
+ * survival mode, assembling the isolated cores — player kinematics (shared with versus), Hittable
+ * combat (players attack enemies), enemy AI (chase + contact), wave spawning, and the campaign state
+ * machine. No engine/DOM/clock/RNG; `dt` is injected and all iteration is sorted-id, so the host
+ * runs it authoritatively and every peer reconstructs the same world from a snapshot.
+ *
+ * Kept OFF the shared versus `World`/`stepWorld` on purpose: survival owns its own `SurvivalWorld`
+ * (players + enemies + run) so this whole feature stays independently testable. The `stepWorld`
+ * mode-branch + snapshot wiring is a later, separate slice.
+ */
+
+import type { Intent, PlayerId, PlayerState, Projectile, Vec2 } from "../types";
+import { clampToField, directionAngle, directionFromInput, directionVector } from "../logic";
+import { consumeDashDistance, dashSpeedMultiplier, tickDashCooldown, tryStartDash } from "../dash";
+import { resolveAttack } from "../combat";
+import { advanceProjectile, projectileTarget, spawnArrow } from "../projectile";
+import { createPlayer } from "../match";
+import { WEAPONS } from "../weapons";
+import { ATTACK_TTL_S, FIELD_M, FIGURE_RADIUS_M, RUN_SPEED_MS, START_HEALTH } from "../../constants";
+import { createEnemy, type EnemyState } from "./enemy";
+import { stepEnemies, type EnemyTarget } from "./enemyStep";
+import { enemySpawnPoint } from "./spawn";
+import { wavePlan } from "./waves";
+import { clearWave, createRun, wipe, type SurvivalRun } from "./campaign";
+
+export type SurvivalOutcome = "won" | "lost" | null;
+
+export interface SurvivalWorld {
+  phase: "playing" | "ended";
+  /** Set when phase === "ended": how the run finished. */
+  outcome: SurvivalOutcome;
+  tick: number;
+  /** Deterministic RNG seed shared by every peer (drives the wave plans). */
+  seed: number;
+  fieldM: number;
+  players: Record<PlayerId, PlayerState>;
+  enemies: EnemyState[];
+  run: SurvivalRun;
+  /** Tick at which the current wave began emitting spawns. */
+  waveStartTick: number;
+  /** How many of the current wave plan's spawns have been emitted so far. */
+  spawnCursor: number;
+  /** In-flight projectiles (bow arrows), host-owned — shared shape with versus. */
+  projectiles: Projectile[];
+}
+
+const NO_INPUT = { up: false, down: false, left: false, right: false } as const;
+
+export interface SurvivalOpts {
+  seed?: number;
+  fieldM?: number;
+  wavesPerLevel?: number;
+  campaignLevels?: number;
+  endless?: boolean;
+}
+
+/** Deterministic cluster of allies near the field centre (they defend the middle). */
+function centerSpawns(ids: PlayerId[], fieldM: number): Record<PlayerId, PlayerState> {
+  const c = fieldM / 2;
+  const radius = ids.length > 1 ? 2 : 0;
+  const players: Record<PlayerId, PlayerState> = {};
+  ids.forEach((id, i) => {
+    const angle = (i / Math.max(1, ids.length)) * Math.PI * 2;
+    players[id] = createPlayer(id, { x: c + radius * Math.cos(angle), y: c + radius * Math.sin(angle) });
+  });
+  return players;
+}
+
+/** A fresh survival run: full party at the centre, no enemies, campaign at level 1 / wave 1. */
+export function createSurvivalWorld(ids: PlayerId[], opts: SurvivalOpts = {}): SurvivalWorld {
+  const fieldM = opts.fieldM ?? FIELD_M;
+  return {
+    phase: "playing",
+    outcome: null,
+    tick: 0,
+    seed: opts.seed ?? 1,
+    fieldM,
+    players: centerSpawns(ids, fieldM),
+    enemies: [],
+    run: createRun(opts),
+    waveStartTick: 0,
+    spawnCursor: 0,
+    projectiles: [],
+  };
+}
+
+interface MovedPlayer {
+  player: PlayerState;
+  /** True when the player initiated a melee swing this tick (resolve against enemies). */
+  swung: boolean;
+  /** An arrow loosed this tick by a ranged weapon, if any. */
+  projectile: Projectile | null;
+}
+
+/**
+ * Player kinematics for one tick — movement, dash, facing/aim, and attack-state update. Mirrors the
+ * versus mover (same feel), but a swing is reported for the caller to resolve against enemies rather
+ * than other players.
+ */
+function stepPlayer(p: PlayerState, intent: Intent | undefined, dt: number, tick: number): MovedPlayer {
+  const it: Intent = intent ?? {
+    move: { ...NO_INPUT },
+    facing: p.facing,
+    dash: false,
+    attack: false,
+    block: false,
+  };
+  const facing = it.facing;
+  const aim = it.aim ?? directionAngle(facing);
+
+  let dash = tickDashCooldown(p.dash, dt);
+  if (it.dash) dash = tryStartDash(dash);
+
+  let moveDir = directionFromInput(it.move);
+  if (dash.dashing && moveDir.x === 0 && moveDir.y === 0) moveDir = directionVector(facing);
+  const speed = RUN_SPEED_MS * dashSpeedMultiplier(dash);
+  const stepLen = speed * dt;
+  const moveLen = dash.dashing ? Math.min(stepLen, dash.distRemaining) : stepLen;
+  const rawPos: Vec2 = { x: p.pos.x + moveDir.x * moveLen, y: p.pos.y + moveDir.y * moveLen };
+  const pos = clampToField(rawPos, FIELD_M, FIGURE_RADIUS_M);
+  const distance = p.stats.distance + Math.hypot(pos.x - p.pos.x, pos.y - p.pos.y);
+  dash = consumeDashDistance(dash, moveLen);
+
+  let attackCooldownRemaining = Math.max(0, p.attackCooldownRemaining - dt);
+  let attack = p.attack;
+  let swung = false;
+  let projectile: Projectile | null = null;
+  if (it.attack && attackCooldownRemaining <= 0) {
+    const weap = WEAPONS[p.weapon];
+    attack = { aim, ttl: ATTACK_TTL_S };
+    attackCooldownRemaining = weap.cooldown;
+    if (weap.ranged) {
+      projectile = spawnArrow({
+        ownerId: p.id,
+        pos,
+        aim,
+        tick,
+        speed: weap.ranged.speed,
+        range: weap.ranged.range,
+        damage: 1,
+        knockback: weap.knockback,
+      });
+    } else {
+      swung = true;
+    }
+  } else if (attack) {
+    const ttl = attack.ttl - dt;
+    attack = ttl > 0 ? { ...attack, ttl } : null;
+  }
+
+  return {
+    player: { ...p, pos, facing, aim, dash, attack, attackCooldownRemaining, stats: { ...p.stats, distance } },
+    swung,
+    projectile,
+  };
+}
+
+/** Emit any planned spawns of the current wave whose relative atTick has elapsed. */
+function spawnDueEnemies(world: SurvivalWorld): { enemies: EnemyState[]; spawnCursor: number } {
+  const partySize = Object.keys(world.players).length;
+  const plan = wavePlan(world.seed, world.run.level, world.run.wave, partySize);
+  const relTick = world.tick - world.waveStartTick;
+  const enemies = [...world.enemies];
+  let cursor = world.spawnCursor;
+  while (cursor < plan.spawns.length && plan.spawns[cursor]!.atTick <= relTick) {
+    const s = plan.spawns[cursor]!;
+    enemies.push(createEnemy(s.id, s.kind, enemySpawnPoint(s.angle, world.fieldM), world.tick));
+    cursor++;
+  }
+  return { enemies, spawnCursor: cursor };
+}
+
+/** Advance a survival world by one tick. Only simulates while phase === "playing". */
+export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, Intent>, dt: number): SurvivalWorld {
+  if (world.phase !== "playing") return world;
+
+  // 1) Move players; collect melee swings + any arrows.
+  const players: Record<PlayerId, PlayerState> = {};
+  const swungIds: PlayerId[] = [];
+  const newProjectiles: Projectile[] = [];
+  for (const p of Object.values(world.players)) {
+    if (p.status !== "alive") {
+      players[p.id] = p;
+      continue;
+    }
+    const moved = stepPlayer(p, intentsById[p.id], dt, world.tick);
+    players[p.id] = moved.player;
+    if (moved.swung) swungIds.push(p.id);
+    if (moved.projectile) newProjectiles.push(moved.projectile);
+  }
+
+  // 2) Spawn any due enemies (post-movement positions are what combat resolves against).
+  const spawned = spawnDueEnemies({ ...world, players });
+  let enemies = spawned.enemies;
+
+  // 3) Resolve player attacks (melee cones + arrows) against enemies → damage per enemy.
+  const dmgByEnemy: Record<string, number> = {};
+  for (const id of swungIds) {
+    for (const ev of resolveAttack(players[id]!, enemies)) {
+      dmgByEnemy[ev.targetId] = (dmgByEnemy[ev.targetId] ?? 0) + 1;
+    }
+  }
+  const projectiles: Projectile[] = [];
+  for (const proj of [...world.projectiles, ...newProjectiles]) {
+    const moved = advanceProjectile(proj, dt);
+    const hitId = projectileTarget(moved, enemies);
+    if (hitId) {
+      dmgByEnemy[hitId] = (dmgByEnemy[hitId] ?? 0) + moved.damage;
+      continue;
+    }
+    if (moved.distRemaining <= 0) continue;
+    if (moved.pos.x < 0 || moved.pos.x > world.fieldM || moved.pos.y < 0 || moved.pos.y > world.fieldM) continue;
+    projectiles.push(moved);
+  }
+  if (Object.keys(dmgByEnemy).length > 0) {
+    enemies = enemies.map((e) => {
+      const dmg = dmgByEnemy[e.id];
+      if (!dmg || e.status !== "alive") return e;
+      const health = Math.max(0, e.health - dmg);
+      return health <= 0 ? { ...e, health: 0, status: "dead" } : { ...e, health };
+    });
+  }
+
+  // 4) Enemy AI: chase the nearest ally, emit contacts; apply contact damage → player deaths.
+  const targets: EnemyTarget[] = Object.values(players).map((p) => ({ id: p.id, pos: p.pos, status: p.status }));
+  const enemyStep = stepEnemies(enemies, targets, dt);
+  enemies = enemyStep.enemies;
+  const dmgByPlayer: Record<string, number> = {};
+  for (const c of enemyStep.contacts) dmgByPlayer[c.playerId] = (dmgByPlayer[c.playerId] ?? 0) + c.damage;
+  for (const [id, dmg] of Object.entries(dmgByPlayer)) {
+    const p = players[id]!;
+    const health = Math.max(0, p.health - dmg);
+    players[id] = health <= 0 ? { ...p, health: 0, status: "dead", attack: null } : { ...p, health };
+  }
+
+  // 5) Progression. A full-party wipe fails the run; otherwise a fully-spawned, fully-cleared wave
+  //    advances the campaign (and revives downed allies on a level-up).
+  let { run, waveStartTick, spawnCursor } = { run: world.run, waveStartTick: world.waveStartTick, spawnCursor: spawned.spawnCursor };
+  let outcome: SurvivalOutcome = null;
+  let phase: SurvivalWorld["phase"] = "playing";
+  const anyAlive = Object.values(players).some((p) => p.status === "alive");
+
+  if (!anyAlive) {
+    run = wipe(run);
+    phase = "ended";
+    outcome = "lost";
+  } else {
+    const allSpawned = spawnCursor >= wavePlan(world.seed, run.level, run.wave, Object.keys(players).length).spawns.length;
+    const noneAlive = !enemies.some((e) => e.status === "alive");
+    if (allSpawned && noneAlive) {
+      const cleared = clearWave(run);
+      run = cleared.run;
+      waveStartTick = world.tick + 1;
+      spawnCursor = 0;
+      enemies = [];
+      if (cleared.leveled) {
+        for (const id of Object.keys(players)) {
+          players[id] = { ...players[id]!, health: START_HEALTH, status: "alive", attack: null };
+        }
+      }
+      if (run.phase === "won") {
+        phase = "ended";
+        outcome = "won";
+      }
+    }
+  }
+
+  return {
+    ...world,
+    phase,
+    outcome,
+    players,
+    enemies,
+    projectiles,
+    run,
+    waveStartTick,
+    spawnCursor,
+    tick: world.tick + 1,
+  };
+}
