@@ -134,4 +134,12 @@ describe("resolveAttack", () => {
     const clear = player("C", { x: 3, y: 0 });
     expect(resolveAttack(attacker, [attacker, clear]).length).toBe(0);
   });
+
+  it("resolves against generic Hittable targets, not just players (survival: attacks hit enemies)", () => {
+    const attacker = player("A", { x: 0, y: 0 }, "right");
+    // an enemy-shaped Hittable (id/pos/status only) in front, in range → hit
+    const enemy = { id: "e1-0", pos: { x: 1, y: 0 }, status: "alive" as const };
+    const deadEnemy = { id: "e1-1", pos: { x: 0.5, y: 0 }, status: "dead" as const };
+    expect(resolveAttack(attacker, [enemy, deadEnemy])).toEqual([{ fromId: "A", targetId: "e1-0" }]);
+  });
 });

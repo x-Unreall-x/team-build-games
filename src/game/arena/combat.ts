@@ -16,6 +16,17 @@ export interface DamageEvent {
   targetId: PlayerId;
 }
 
+/**
+ * Anything an attack can land on — a player OR a survival enemy. Only id/pos/status are needed to
+ * resolve a hit, so the same cone/line geometry serves both modes (players-vs-players in versus,
+ * players-vs-enemies in survival). `PlayerState` and `EnemyState` are both structurally `Hittable`.
+ */
+export interface Hittable {
+  id: PlayerId;
+  pos: Vec2;
+  status: "alive" | "dead";
+}
+
 /** Attack recharge progress in [0,1]: 0 just after a swing → 1 when ready (UI sweep). */
 export function attackCooldownFraction(remainingS: number, total = ATTACK_COOLDOWN_S): number {
   return Math.max(0, Math.min(1, 1 - remainingS / total));
@@ -70,7 +81,7 @@ export function inAttackLine(
  * alive, non-self target hit. The hit shape comes from the attacker's weapon: a widening cone
  * (sword/knife) or a straight forward band (thrust weapons, e.g. spear). Self is skipped.
  */
-export function resolveAttack(attacker: PlayerState, candidates: PlayerState[]): DamageEvent[] {
+export function resolveAttack(attacker: PlayerState, candidates: readonly Hittable[]): DamageEvent[] {
   const stats = WEAPONS[attacker.weapon];
   // The whole body is hittable: a target is hit once its body (radius FIGURE_RADIUS_M) overlaps
   // the weapon's reach — not only when its center is in range.
