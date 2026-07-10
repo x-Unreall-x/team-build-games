@@ -57,8 +57,9 @@ New constants:
 
 - `STAND_HEAD_Y_M = 0.75` — target ride height (slight crouch below the 1.1 m spawn).
 - `SUPPORT_PER_LEG_MPS2 = 2.5` — max upward acceleration contributed per planted leg.
-- `STAND_GAIN = 10` — spring gain `K` in (m/s²) per meter of height deficit; starting value,
-  playtest-tunable. The per-leg cap is what bounds the force, not the gain.
+- `STAND_GAIN = 30` — spring gain `K` in (m/s²) per meter of height deficit; starting value,
+  playtest-tunable. (Gravity is 9 m/s²; a gain of 10 could never overcome it within a 0.75 m
+  deficit.) The per-leg cap is what bounds the force, not the gain.
 
 Each physics substep, before `solve`:
 
