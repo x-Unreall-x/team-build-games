@@ -54,7 +54,10 @@ export type OverrunEvent =
   | { type: "levelup" }
   | { type: "downed"; local: boolean }
   | { type: "revived" }
-  | { type: "gameover" };
+  | { type: "gameover" }
+  | { type: "enemyHit" }
+  | { type: "playerHit"; local: boolean }
+  | { type: "reload" };
 
 export interface OverrunConfig {
   driver: OverrunDriver;

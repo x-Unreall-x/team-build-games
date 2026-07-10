@@ -9,9 +9,12 @@
 
 import { hash01 } from "./rng";
 import { ENEMIES } from "./enemies";
+import { ENEMY_HIT_KNOCKBACK_M, ENEMY_HIT_STUN_S, OVERRUN_FIELD_M } from "./constants";
 import type { EffectiveStats } from "./perks";
 import { freshAmmo, GUNS, hasReserve } from "./weapons";
 import type { Enemy, ShooterEvent, ShooterPlayer } from "./types";
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** Advance cooldowns/reload by dt; a finished reload fills the mag from reserve. */
 export function tickAmmo(p: ShooterPlayer, dt: number, _eff: EffectiveStats): ShooterPlayer {
@@ -60,6 +63,9 @@ export function fireTick(
   const events: ShooterEvent[] = [];
   let landed = false;
   const spreadRad = (def.spreadDeg * Math.PI) / 180;
+  // Dedupe knockback per enemy per fireTick call: a shotgun blast must knock an
+  // enemy back once (0.5m), not once per pellet that lands on it (up to 8×0.5m).
+  const knockedBack = new Set<string>();
 
   for (let pellet = 0; pellet < def.pellets; pellet++) {
     const a = p.aim + (hash01(seed, tick, p.id, "spread", pellet) * 2 - 1) * spreadRad;
@@ -78,8 +84,19 @@ export function fireTick(
     hits.sort((h1, h2) => h1.t - h2.t || (out[h1.idx]!.id < out[h2.idx]!.id ? -1 : 1));
     const taken = hits.slice(0, def.pierce + 1);
     for (const h of taken) {
-      out[h.idx]!.health -= def.damage * eff.damageMult;
+      const hitEnemy = out[h.idx]!;
+      hitEnemy.health -= def.damage * eff.damageMult;
       landed = true;
+      hitEnemy.stunRemaining = ENEMY_HIT_STUN_S;
+      if (!knockedBack.has(hitEnemy.id)) {
+        knockedBack.add(hitEnemy.id);
+        const kindDef = ENEMIES[hitEnemy.kind];
+        hitEnemy.pos = {
+          x: clamp(hitEnemy.pos.x + dir.x * ENEMY_HIT_KNOCKBACK_M, kindDef.radius, OVERRUN_FIELD_M - kindDef.radius),
+          y: clamp(hitEnemy.pos.y + dir.y * ENEMY_HIT_KNOCKBACK_M, kindDef.radius, OVERRUN_FIELD_M - kindDef.radius),
+        };
+        events.push({ tick, kind: "hit", pos: { x: hitEnemy.pos.x, y: hitEnemy.pos.y } });
+      }
     }
     const endT = taken.length > 0 ? taken[taken.length - 1]!.t : def.range;
     events.push({

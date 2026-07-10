@@ -32,6 +32,14 @@ export const EVENT_TTL_TICKS = 6;
 // --- waves ---
 export const SPAWNS_PER_TICK = 2;
 export const INTERMISSION_S = 3;
+/** Wave-1 enemies move at this fraction of their base speed (onboarding-friendly ramp). */
+export const WAVE1_SPEED_MULT = 0.85;
+
+// --- bullet-hit feedback ---
+/** Seconds an enemy can't move after taking a hit. */
+export const ENEMY_HIT_STUN_S = 0.3;
+/** Meters an enemy is shoved along the pellet's ray on its first damaging pellet per fireTick. */
+export const ENEMY_HIT_KNOCKBACK_M = 0.5;
 
 // --- downed / revive ---
 export const REVIVE_RANGE_M = 2;

@@ -70,6 +70,8 @@ export interface Enemy {
   health: number;
   /** Seconds until this enemy may deal contact damage again. */
   attackCooldown: number;
+  /** Seconds left of a bullet-hit micro-stun (0 = free to move). */
+  stunRemaining: number;
 }
 
 export interface Pickup {
@@ -88,7 +90,9 @@ export type ShooterEvent =
   | { tick: number; kind: "pickup"; pos: Vec2; item: PickupKind }
   | { tick: number; kind: "levelup"; playerId: PlayerId }
   | { tick: number; kind: "downed"; playerId: PlayerId }
-  | { tick: number; kind: "revived"; playerId: PlayerId };
+  | { tick: number; kind: "revived"; playerId: PlayerId }
+  | { tick: number; kind: "hit"; pos: Vec2 }
+  | { tick: number; kind: "playerHit"; playerId: PlayerId };
 
 /** What a client sends per tick — never positions/health/enemies. */
 export interface ShooterIntent {

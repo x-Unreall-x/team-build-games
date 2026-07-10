@@ -34,7 +34,7 @@ const PICKUP_KINDS = ["shotgun", "rifle", "medkit"] as const satisfies readonly 
 type AssertAllPickupKind = PickupKind extends (typeof PICKUP_KINDS)[number] ? true : never;
 const _assertAllPickupKind: AssertAllPickupKind = true;
 
-const EVENT_KINDS = ["shot", "kill", "pickup", "levelup", "downed", "revived"] as const satisfies readonly ShooterEvent["kind"][];
+const EVENT_KINDS = ["shot", "kill", "pickup", "levelup", "downed", "revived", "hit", "playerHit"] as const satisfies readonly ShooterEvent["kind"][];
 type AssertAllEventKind = ShooterEvent["kind"] extends (typeof EVENT_KINDS)[number] ? true : never;
 const _assertAllEventKind: AssertAllEventKind = true;
 
@@ -45,7 +45,7 @@ interface QPlayer {
   xp: number; lv: number; pk: string; of: number[][]; sh: [number, number, number]; // shots,hits,kills
   rv: number; gd: number;
 }
-type QEnemy = [string, number, number, number, number, number]; // id, kind, xcm, ycm, health, cdCs
+type QEnemy = [string, number, number, number, number, number, number]; // id, kind, xcm, ycm, health, cdCs, stunCs
 type QPickup = [string, number, number, number, number]; // id, kind, xcm, ycm, ttlCs
 type QEvent = (number | string)[]; // [tick, kindIdx, ...payload]
 
@@ -61,7 +61,7 @@ export interface ODelta {
   t: number;
   ph: number;
   pl: QPlayer[]; // players always ship in full (≤8)
-  en: { a: QEnemy[]; u: [string, number, number, number, number][]; d: string[] }; // add / update(id,x,y,h,cd) / delete
+  en: { a: QEnemy[]; u: [string, number, number, number, number, number][]; d: string[] }; // add / update(id,x,y,h,cd,stun) / delete
   pk: QPickup[]; // full pickup list (≤24 small tuples — ttls tick every step, diffing buys nothing)
   ev: QEvent[]; // events newer than the base tick
   s: [number, number, number, number, number]; // wave, partySize, intermissionCs, score, pity
@@ -98,8 +98,8 @@ function unqPlayer(q: QPlayer): ShooterPlayer {
   };
 }
 
-const qEnemy = (e: Enemy): QEnemy => [e.id, ENEMY_KINDS.indexOf(e.kind), cm(e.pos.x), cm(e.pos.y), Math.round(e.health), cs(e.attackCooldown)];
-const unqEnemy = (q: QEnemy): Enemy => ({ id: q[0], kind: ENEMY_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, health: q[4], attackCooldown: s(q[5]) });
+const qEnemy = (e: Enemy): QEnemy => [e.id, ENEMY_KINDS.indexOf(e.kind), cm(e.pos.x), cm(e.pos.y), Math.round(e.health), cs(e.attackCooldown), cs(e.stunRemaining)];
+const unqEnemy = (q: QEnemy): Enemy => ({ id: q[0], kind: ENEMY_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, health: q[4], attackCooldown: s(q[5]), stunRemaining: s(q[6]) });
 const qPickup = (k: Pickup): QPickup => [k.id, PICKUP_KINDS.indexOf(k.kind), cm(k.pos.x), cm(k.pos.y), cs(k.ttl)];
 const unqPickup = (q: QPickup): Pickup => ({ id: q[0], kind: PICKUP_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, ttl: s(q[4]) });
 
@@ -108,6 +108,7 @@ function qEvent(e: ShooterEvent): QEvent {
   if (e.kind === "shot") return [e.tick, k, GUN_IDS.indexOf(e.gun), ...qVec(e.from), ...qVec(e.to)];
   if (e.kind === "kill") return [e.tick, k, ENEMY_KINDS.indexOf(e.enemy), ...qVec(e.pos)];
   if (e.kind === "pickup") return [e.tick, k, PICKUP_KINDS.indexOf(e.item), ...qVec(e.pos)];
+  if (e.kind === "hit") return [e.tick, k, ...qVec(e.pos)];
   return [e.tick, k, e.playerId];
 }
 
@@ -117,6 +118,7 @@ function unqEvent(q: QEvent): ShooterEvent {
   if (kind === "shot") return { tick, kind, gun: GUN_IDS[q[2] as number]!, from: { x: m(q[3] as number), y: m(q[4] as number) }, to: { x: m(q[5] as number), y: m(q[6] as number) } };
   if (kind === "kill") return { tick, kind, enemy: ENEMY_KINDS[q[2] as number]!, pos: { x: m(q[3] as number), y: m(q[4] as number) } };
   if (kind === "pickup") return { tick, kind, item: PICKUP_KINDS[q[2] as number]!, pos: { x: m(q[3] as number), y: m(q[4] as number) } };
+  if (kind === "hit") return { tick, kind, pos: { x: m(q[2] as number), y: m(q[3] as number) } };
   return { tick, kind, playerId: q[2] as string };
 }
 
@@ -152,7 +154,7 @@ export function diffWorld(prevQ: QWorld, curQ: QWorld): ODelta {
   for (const e of curQ.en) {
     const p = prevEn.get(e[0]);
     if (!p) en.a.push(e);
-    else if (p[2] !== e[2] || p[3] !== e[3] || p[4] !== e[4] || p[5] !== e[5]) en.u.push([e[0], e[2], e[3], e[4], e[5]]);
+    else if (p[2] !== e[2] || p[3] !== e[3] || p[4] !== e[4] || p[5] !== e[5] || p[6] !== e[6]) en.u.push([e[0], e[2], e[3], e[4], e[5], e[6]]);
   }
   for (const e of prevQ.en) if (!curEnIds.has(e[0])) en.d.push(e[0]);
 
@@ -188,7 +190,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
   for (const e of prev.enemies) {
     if (removed.has(e.id)) continue;
     const u = updated.get(e.id);
-    enemies.push(u ? { ...e, pos: { x: m(u[1]), y: m(u[2]) }, health: u[3], attackCooldown: s(u[4]) } : e);
+    enemies.push(u ? { ...e, pos: { x: m(u[1]), y: m(u[2]) }, health: u[3], attackCooldown: s(u[4]), stunRemaining: s(u[5]) } : e);
   }
   enemies.push(...d.en.a.map(unqEnemy));
 

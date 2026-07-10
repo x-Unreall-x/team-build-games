@@ -75,6 +75,8 @@ export class OverrunScene extends Phaser.Scene {
   private lastCountdown = 99;
   private lastProcessedTick = -1;
   private ended = false;
+  /** Caps a shotgun blast's up-to-8 "hit" events to one enemyHit SFX per render frame. */
+  private enemyHitEmittedThisFrame = false;
 
   constructor() {
     super("overrun");
@@ -93,6 +95,8 @@ export class OverrunScene extends Phaser.Scene {
     const { world, countdown } = this.cfg.driver.frame(dt, input);
 
     this.fireCountdownSfx(countdown);
+    this.enemyHitEmittedThisFrame = false;
+    this.detectReload(world);
     this.processEvents(world);
     this.renderPlayers(world);
     this.renderEnemies(world);
@@ -168,7 +172,28 @@ export class OverrunScene extends Phaser.Scene {
       case "revived":
         this.cfg.onEvent({ type: "revived" });
         break;
+      case "hit":
+        // Up to 8 of these can land in a single tick (shotgun blast) — one SFX per frame.
+        if (!this.enemyHitEmittedThisFrame) {
+          this.enemyHitEmittedThisFrame = true;
+          this.cfg.onEvent({ type: "enemyHit" });
+        }
+        break;
+      case "playerHit":
+        this.cfg.onEvent({ type: "playerHit", local: ev.playerId === localId });
+        break;
     }
+  }
+
+  /**
+   * Render-side reload detection: no sim event exists for this — watch the LOCAL
+   * player's ammo.reloadRemaining for a 0 → >0 transition (fires for both manual
+   * R and auto-reload-on-empty-mag).
+   */
+  private detectReload(world: ShooterWorld): void {
+    const prevR = this.prev?.players[this.cfg.driver.localId]?.ammo.reloadRemaining ?? 0;
+    const curR = world.players[this.cfg.driver.localId]?.ammo.reloadRemaining ?? 0;
+    if (prevR === 0 && curR > 0) this.cfg.onEvent({ type: "reload" });
   }
 
   /** Shot events carry no playerId — attribute by whichever player is nearest the muzzle. */

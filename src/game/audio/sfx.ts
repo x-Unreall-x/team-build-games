@@ -12,7 +12,9 @@ export type SfxName =
   | "gameover"
   | "win"
   | "join"
-  | "shoot";
+  | "shoot"
+  | "hurt"
+  | "reload";
 
 type Ctx = AudioContext;
 
@@ -74,6 +76,17 @@ export class Sfx {
         // bow twang: a quick downward pitch slide + a soft string noise
         this.tone(720, t, 0.12, "triangle", 0.5, 240);
         this.noise(t, 0.06, 0.18, 2200);
+        break;
+      case "hurt":
+        // low short thud — deliberately lower/duller than "hit" so a player getting
+        // clipped reads differently from a bullet landing on an enemy.
+        this.tone(110, t, 0.11, "sawtooth", 0.9, 45);
+        this.noise(t, 0.07, 0.3, 280);
+        break;
+      case "reload":
+        // two quick mechanical clicks ~60ms apart (mag-out / mag-in)
+        this.tone(950, t, 0.03, "square", 0.5);
+        this.tone(950, t + 0.06, 0.03, "square", 0.5);
         break;
     }
   }

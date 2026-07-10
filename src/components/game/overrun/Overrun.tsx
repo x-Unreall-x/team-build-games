@@ -161,6 +161,15 @@ export default function Overrun() {
       case "gameover":
         s.play("gameover");
         break;
+      case "enemyHit":
+        s.play("hit");
+        break;
+      case "playerHit":
+        if (e.local) s.play("hurt");
+        break;
+      case "reload":
+        s.play("reload");
+        break;
     }
   }, []);
 

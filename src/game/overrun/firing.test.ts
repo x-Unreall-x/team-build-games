@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fireTick, tickAmmo, tryStartReload } from "./firing";
 import { effectiveStats } from "./perks";
+import { ENEMY_HIT_KNOCKBACK_M, ENEMY_HIT_STUN_S } from "./constants";
 import { freshAmmo, GUNS } from "./weapons";
 import { createShooterWorld } from "./match";
 import type { Enemy, ShooterPlayer } from "./types";
@@ -11,7 +12,7 @@ const player = (over: Partial<ShooterPlayer> = {}): ShooterPlayer => ({
   pos: { x: 5, y: 15 }, aim: 0, ...over,
 });
 const enemy = (id: string, x: number, over: Partial<Enemy> = {}): Enemy => ({
-  id, kind: "rusher", pos: { x, y: 15 }, health: 20, attackCooldown: 0, ...over,
+  id, kind: "rusher", pos: { x, y: 15 }, health: 20, attackCooldown: 0, stunRemaining: 0, ...over,
 });
 
 describe("fireTick", () => {
@@ -89,6 +90,60 @@ describe("fireTick", () => {
   it("downed players and idle triggers don't fire", () => {
     expect(fireTick(player({ status: "downed" }), [], true, 1, 0, EFF).events).toEqual([]);
     expect(fireTick(player(), [], false, 1, 0, EFF).player.ammo.mag).toBe(12);
+  });
+});
+
+describe("bullet-hit stun + knockback", () => {
+  it("a single hit sets stunRemaining and knocks the enemy back exactly 0.5m along the shot direction", () => {
+    const p = player(); // aiming +x (± pistol spread) from (5,15)
+    const e = enemy("e1", 8, { health: 1000 });
+    const r = fireTick(p, [e], true, 1, 0, EFF);
+    const hit = r.enemies.find((x) => x.id === "e1")!;
+    expect(hit.stunRemaining).toBeCloseTo(ENEMY_HIT_STUN_S, 5);
+    const dist = Math.hypot(hit.pos.x - e.pos.x, hit.pos.y - e.pos.y);
+    expect(dist).toBeCloseTo(ENEMY_HIT_KNOCKBACK_M, 4); // pistol has a small spread, so allow for it
+    expect(hit.pos.x).toBeGreaterThan(e.pos.x); // still net knocked away from the shooter (+x)
+  });
+
+  it("a point-blank shotgun blast knocks back once (0.5m), not once per pellet (4m)", () => {
+    const p = player({ gun: "shotgun", ammo: freshAmmo("shotgun") });
+    const e = enemy("e1", 5.8, { health: 1000 }); // point blank — every pellet should hit
+    const r = fireTick(p, [e], true, 42, 7, EFF);
+    const hit = r.enemies.find((x) => x.id === "e1")!;
+    const dist = Math.hypot(hit.pos.x - e.pos.x, hit.pos.y - e.pos.y);
+    expect(dist).toBeCloseTo(ENEMY_HIT_KNOCKBACK_M, 4);
+    expect(hit.stunRemaining).toBeCloseTo(ENEMY_HIT_STUN_S, 5);
+  });
+
+  it("emits one hit event per damaged enemy per fireTick, at the post-knockback position", () => {
+    const p = player();
+    const e = enemy("e1", 8, { health: 1000 });
+    const r = fireTick(p, [e], true, 1, 0, EFF);
+    const hitEvents = r.events.filter((ev) => ev.kind === "hit");
+    expect(hitEvents.length).toBe(1);
+    const hit = r.enemies.find((x) => x.id === "e1")!;
+    const ev = hitEvents[0]!;
+    expect(ev.kind === "hit" && ev.pos).toEqual(hit.pos);
+  });
+
+  it("a shotgun blast hitting two enemies emits exactly one hit event per enemy", () => {
+    const p = player({ gun: "shotgun", ammo: freshAmmo("shotgun"), pos: { x: 5, y: 15 } });
+    const r = fireTick(p, [enemy("e1", 6, { health: 1000 }), enemy("e2", 6.3, { health: 1000 })], true, 42, 7, EFF);
+    const hitEvents = r.events.filter((ev) => ev.kind === "hit");
+    const ids = new Set(hitEvents.map((_, i) => i)); // just count distinct events
+    expect(hitEvents.length).toBeGreaterThan(0);
+    expect(hitEvents.length).toBeLessThanOrEqual(2); // never more than one per distinct enemy hit
+    expect(ids.size).toBe(hitEvents.length);
+  });
+
+  it("a miss does not stun or knock back anything", () => {
+    const p = player();
+    const e = enemy("e1", 26); // out of pistol range
+    const r = fireTick(p, [e], true, 1, 0, EFF);
+    const untouched = r.enemies.find((x) => x.id === "e1")!;
+    expect(untouched.stunRemaining).toBe(0);
+    expect(untouched.pos).toEqual(e.pos);
+    expect(r.events.some((ev) => ev.kind === "hit")).toBe(false);
   });
 });
 

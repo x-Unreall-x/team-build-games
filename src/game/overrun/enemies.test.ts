@@ -3,7 +3,7 @@ import { ENEMIES, ENEMY_KINDS, nearestAlive, stepEnemy } from "./enemies";
 import { createShooterWorld, alivePlayers } from "./match";
 import type { Enemy } from "./types";
 
-const enemy = (over: Partial<Enemy> = {}): Enemy => ({ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 20, attackCooldown: 0, ...over });
+const enemy = (over: Partial<Enemy> = {}): Enemy => ({ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 20, attackCooldown: 0, stunRemaining: 0, ...over });
 
 describe("enemy defs", () => {
   it("defines rusher (fast/fragile) and tank (slow/beefy) with wave gating", () => {
@@ -42,5 +42,23 @@ describe("stepEnemy", () => {
     const e = stepEnemy(enemy({ attackCooldown: 0.5 }), null, 0.1);
     expect(e.attackCooldown).toBeCloseTo(0.4, 5);
     expect(e.pos).toEqual({ x: 5, y: 5 });
+  });
+
+  it("scales speed by the optional speedMult (wave-1 slowdown)", () => {
+    const full = stepEnemy(enemy(), { x: 15, y: 5 }, 0.1);
+    const slowed = stepEnemy(enemy(), { x: 15, y: 5 }, 0.1, 0.85);
+    expect(slowed.pos.x - 5).toBeCloseTo((full.pos.x - 5) * 0.85, 5);
+  });
+
+  it("a stunned enemy does not move but still ticks stunRemaining and attackCooldown down", () => {
+    const e = stepEnemy(enemy({ attackCooldown: 0.5, stunRemaining: 0.3 }), { x: 15, y: 5 }, 0.1);
+    expect(e.pos).toEqual({ x: 5, y: 5 }); // no movement while stunned
+    expect(e.stunRemaining).toBeCloseTo(0.2, 5);
+    expect(e.attackCooldown).toBeCloseTo(0.4, 5); // cooldown still ticks while stunned
+  });
+
+  it("stunRemaining floors at 0 and never goes negative", () => {
+    const e = stepEnemy(enemy({ stunRemaining: 0.05 }), { x: 15, y: 5 }, 0.1);
+    expect(e.stunRemaining).toBe(0);
   });
 });

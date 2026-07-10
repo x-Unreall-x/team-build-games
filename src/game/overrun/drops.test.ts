@@ -3,7 +3,7 @@ import { rollDrop } from "./drops";
 import { MAX_PICKUPS, PICKUP_TTL_S, PITY_LIMIT } from "./constants";
 import type { Enemy } from "./types";
 
-const enemy = (id = "e5"): Enemy => ({ id, kind: "rusher", pos: { x: 3, y: 4 }, health: 0, attackCooldown: 0 });
+const enemy = (id = "e5"): Enemy => ({ id, kind: "rusher", pos: { x: 3, y: 4 }, health: 0, attackCooldown: 0, stunRemaining: 0 });
 
 describe("rollDrop", () => {
   it("is deterministic and reproducible for the same coordinates", () => {

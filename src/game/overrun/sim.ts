@@ -12,7 +12,7 @@
 import {
   EVENT_TTL_TICKS, INTERMISSION_S, MAX_ENEMIES, MAX_EVENTS, OVERRUN_FIELD_M,
   PLAYER_RADIUS_M, PLAYER_SPEED_MS, REVIVE_HEALTH, REVIVE_RANGE_M, REVIVE_S,
-  MEDKIT_HEAL, SPAWNS_PER_TICK, SWAP_GUARD_S,
+  MEDKIT_HEAL, SPAWNS_PER_TICK, SWAP_GUARD_S, WAVE1_SPEED_MULT,
 } from "./constants";
 import { ENEMIES, nearestAlive, stepEnemy } from "./enemies";
 import { fireTick, tickAmmo, tryStartReload } from "./firing";
@@ -120,13 +120,14 @@ export function stepShooter(
   // this same tick still counts as having helped revive (actions within a tick
   // are conceptually simultaneous — see the "revive-before-wipe, same tick" case).
   const preCombatAliveIds = new Set(aliveSorted().map((p) => p.id));
+  const speedMult = wave === 1 ? WAVE1_SPEED_MULT : 1;
   enemies = enemies.map((e) => {
     const target = nearestAlive(e.pos, aliveSorted());
-    let stepped = stepEnemy(e, target ? target.pos : null, dt);
+    let stepped = stepEnemy(e, target ? target.pos : null, dt, speedMult);
     if (target) {
       const def = ENEMIES[e.kind];
       const d = Math.hypot(target.pos.x - stepped.pos.x, target.pos.y - stepped.pos.y);
-      if (d <= def.radius + PLAYER_RADIUS_M + 1e-6 && stepped.attackCooldown === 0) {
+      if (d <= def.radius + PLAYER_RADIUS_M + 1e-6 && stepped.attackCooldown === 0 && stepped.stunRemaining <= 0) {
         const t = players[target.id]!;
         const health = Math.max(0, t.health - def.damage);
         players[target.id] =
@@ -134,6 +135,7 @@ export function stepShooter(
             ? { ...t, health: 0, status: "downed", reviveProgress: 0 }
             : { ...t, health };
         if (health === 0) events.push({ tick, kind: "downed", playerId: t.id });
+        else events.push({ tick, kind: "playerHit", playerId: t.id });
         stepped = { ...stepped, attackCooldown: def.attackInterval };
       }
     }
@@ -231,7 +233,7 @@ export function stepShooter(
       while (spawned.length < SPAWNS_PER_TICK && queue.length > 0 && enemies.length + spawned.length < MAX_ENEMIES) {
         const kind = queue[0]!;
         queue = queue.slice(1);
-        spawned.push({ id: `e${spawnSeq}`, kind, pos: spawnPos(seed, spawnSeq), health: ENEMIES[kind].health, attackCooldown: 0 });
+        spawned.push({ id: `e${spawnSeq}`, kind, pos: spawnPos(seed, spawnSeq), health: ENEMIES[kind].health, attackCooldown: 0, stunRemaining: 0 });
         spawnSeq += 1;
       }
       pending = queue;

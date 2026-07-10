@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { stepShooter } from "./sim";
 import { createShooterWorld } from "./match";
 import { ENEMIES } from "./enemies";
-import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT } from "./constants";
+import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT, WAVE1_SPEED_MULT } from "./constants";
 import { waveBudget } from "./waves";
 import { xpToNext } from "./perks";
 import type { Enemy, ShooterIntent, ShooterWorld } from "./types";
@@ -14,7 +14,7 @@ const intents = (w: ShooterWorld, over: Record<string, Partial<ShooterIntent>> =
 const step = (w: ShooterWorld, over: Record<string, Partial<ShooterIntent>> = {}) =>
   stepShooter(w, intents(w, over), SHOOTER_DT);
 const enemyAt = (id: string, x: number, y: number, over: Partial<Enemy> = {}): Enemy =>
-  ({ id, kind: "rusher", pos: { x, y }, health: 20, attackCooldown: 0, ...over });
+  ({ id, kind: "rusher", pos: { x, y }, health: 20, attackCooldown: 0, stunRemaining: 0, ...over });
 
 describe("determinism", () => {
   it("same seed + same intent script → identical worlds over 600 ticks", () => {
@@ -100,11 +100,40 @@ describe("combat + kills", () => {
     const hit = step(w);
     expect(hit.players.a!.health).toBe(p.health - ENEMIES.rusher.damage);
     expect(hit.enemies[0]!.attackCooldown).toBeCloseTo(ENEMIES.rusher.attackInterval, 5);
+    // surviving contact damage emits playerHit (not downed)
+    expect(hit.events.some((e) => e.kind === "playerHit" && e.playerId === "a")).toBe(true);
+    expect(hit.events.some((e) => e.kind === "downed")).toBe(false);
     // burn the player down → downed, not dead
     let burn = { ...w, players: { ...w.players, a: { ...p, health: ENEMIES.rusher.damage } } };
     const downed = step(burn);
     expect(downed.players.a!.status).toBe("downed");
     expect(downed.events.some((e) => e.kind === "downed")).toBe(true);
+    // the downed case does NOT also emit playerHit (it has its own event)
+    expect(downed.events.some((e) => e.kind === "playerHit")).toBe(false);
+  });
+
+  it("a stunned enemy in contact range cannot attack", () => {
+    let w = step(createShooterWorld(["a"], 7));
+    const p = w.players.a!;
+    w = { ...w, pending: [], enemies: [enemyAt("e0", p.pos.x + 1.0, p.pos.y, { health: 1000, stunRemaining: 0.3 })] };
+    const out = step(w);
+    expect(out.players.a!.health).toBe(p.health); // no contact damage while stunned
+    expect(out.events.some((e) => e.kind === "playerHit")).toBe(false);
+    expect(out.events.some((e) => e.kind === "downed")).toBe(false);
+  });
+});
+
+describe("wave-1 slowdown", () => {
+  it("a wave-1 enemy covers 0.85x the distance of the same enemy at a later wave, per tick", () => {
+    const base = createShooterWorld(["a"], 9);
+    const p = base.players.a!;
+    const enemy = enemyAt("e0", p.pos.x + 10, p.pos.y, { health: 1000 });
+    const wave1 = stepShooter({ ...base, wave: 1, enemies: [enemy] }, intents(base), SHOOTER_DT);
+    const wave2 = stepShooter({ ...base, wave: 2, enemies: [enemy] }, intents(base), SHOOTER_DT);
+    const d1 = Math.abs(wave1.enemies[0]!.pos.x - enemy.pos.x);
+    const d2 = Math.abs(wave2.enemies[0]!.pos.x - enemy.pos.x);
+    expect(d1).toBeGreaterThan(0);
+    expect(d1).toBeCloseTo(d2 * WAVE1_SPEED_MULT, 5);
   });
 });
 

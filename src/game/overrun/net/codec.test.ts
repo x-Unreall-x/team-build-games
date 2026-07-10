@@ -25,7 +25,7 @@ function fatWorld(): ShooterWorld {
   w = stepShooter(w, idle(w), SHOOTER_DT);
   const enemies = Array.from({ length: MAX_ENEMIES }, (_, i) => ({
     id: `e${i}`, kind: i % 4 === 0 ? ("tank" as const) : ("rusher" as const),
-    pos: { x: (i % 30) + 0.123, y: Math.floor(i / 3) + 0.456 }, health: 20 + i, attackCooldown: 0.25,
+    pos: { x: (i % 30) + 0.123, y: Math.floor(i / 3) + 0.456 }, health: 20 + i, attackCooldown: 0.25, stunRemaining: 0.1,
   }));
   const pickups = Array.from({ length: MAX_PICKUPS }, (_, i) => ({
     id: `pk:e${i}`, kind: (["shotgun", "rifle", "medkit"] as const)[i % 3]!,
@@ -50,6 +50,31 @@ describe("quantized round-trip", () => {
     expect(r.pending).toEqual(w.pending);
     // idempotent: quantizing an already-quantized world is lossless
     expect(unqWorld(qWorld(r))).toEqual(r);
+  });
+
+  it("round-trips the hit and playerHit event kinds", () => {
+    const w = fatWorld();
+    const withEvents: ShooterWorld = {
+      ...w,
+      events: [
+        ...w.events,
+        { tick: w.tick, kind: "hit", pos: { x: 4.5, y: 6.25 } },
+        { tick: w.tick, kind: "playerHit", playerId: "p2" },
+      ],
+    };
+    const r = unqWorld(qWorld(withEvents));
+    const hit = r.events.find((e) => e.kind === "hit");
+    const playerHit = r.events.find((e) => e.kind === "playerHit");
+    expect(hit).toMatchObject({ kind: "hit", pos: { x: 4.5, y: 6.25 } });
+    expect(playerHit).toMatchObject({ kind: "playerHit", playerId: "p2" });
+  });
+
+  it("preserves an enemy's stunRemaining through a quantized round-trip and a delta update", () => {
+    const prev = unqWorld(qWorld(fatWorld()));
+    const stunnedEnemy = { ...prev.enemies[0]!, stunRemaining: 0.2 };
+    const cur: ShooterWorld = { ...prev, tick: prev.tick + 1, enemies: [stunnedEnemy, ...prev.enemies.slice(1)] };
+    const rebuilt = applyDelta(prev, diffWorld(qWorld(prev), qWorld(cur)));
+    expect(rebuilt.enemies[0]!.stunRemaining).toBeCloseTo(0.2, 2);
   });
 
   it("preserves perks/offers/stats/ammo exactly (migration needs them)", () => {
@@ -86,7 +111,7 @@ describe("delta encode/apply", () => {
     const prev = unqWorld(qWorld(fatWorld()));
     const cur: ShooterWorld = {
       ...prev, tick: prev.tick + 3,
-      enemies: [...prev.enemies.slice(2), { id: "e999", kind: "tank", pos: { x: 1, y: 2 }, health: 120, attackCooldown: 0 }],
+      enemies: [...prev.enemies.slice(2), { id: "e999", kind: "tank", pos: { x: 1, y: 2 }, health: 120, attackCooldown: 0, stunRemaining: 0 }],
       pickups: prev.pickups.slice(1),
     };
     const rebuilt = applyDelta(prev, diffWorld(qWorld(prev), qWorld(cur)));

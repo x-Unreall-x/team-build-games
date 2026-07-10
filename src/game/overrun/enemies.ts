@@ -46,21 +46,28 @@ export function nearestAlive(pos: Vec2, players: ShooterPlayer[]): ShooterPlayer
   return best;
 }
 
-/** Chase the target, stopping at contact range; always tick the attack cooldown. */
-export function stepEnemy(e: Enemy, target: Vec2 | null, dt: number): Enemy {
+/**
+ * Chase the target, stopping at contact range; always tick the attack cooldown (and the
+ * bullet-hit micro-stun). `speedMult` scales the kind's base speed (wave-1 slowdown). While
+ * stunned (stunRemaining > 0 at the START of this tick) the enemy does not move at all — but
+ * cooldowns still tick, so a stun-locked enemy isn't also attack-locked past its own timer.
+ */
+export function stepEnemy(e: Enemy, target: Vec2 | null, dt: number, speedMult = 1): Enemy {
   const def = ENEMIES[e.kind];
   const cooled = Math.max(0, e.attackCooldown - dt);
-  if (!target) return { ...e, attackCooldown: cooled };
+  const stunRemaining = Math.max(0, e.stunRemaining - dt);
+  if (e.stunRemaining > 0) return { ...e, attackCooldown: cooled, stunRemaining };
+  if (!target) return { ...e, attackCooldown: cooled, stunRemaining };
   const dx = target.x - e.pos.x;
   const dy = target.y - e.pos.y;
   const dist = Math.hypot(dx, dy);
   const contact = def.radius + PLAYER_RADIUS_M;
 
-  if (dist < 1e-9) return { ...e, attackCooldown: cooled };
+  if (dist < 1e-9) return { ...e, attackCooldown: cooled, stunRemaining };
 
   // Adjust distance to reach contact range (positive = too close, negative = too far)
   const desiredMove = contact - dist;
-  const maxMove = def.speed * dt;
+  const maxMove = def.speed * speedMult * dt;
   const clampedMove = Math.max(-maxMove, Math.min(maxMove, desiredMove));
 
   const dirX = dx / dist;
@@ -70,7 +77,7 @@ export function stepEnemy(e: Enemy, target: Vec2 | null, dt: number): Enemy {
     x: clamp(e.pos.x - dirX * clampedMove, def.radius, OVERRUN_FIELD_M - def.radius),
     y: clamp(e.pos.y - dirY * clampedMove, def.radius, OVERRUN_FIELD_M - def.radius),
   };
-  return { ...e, pos, attackCooldown: cooled };
+  return { ...e, pos, attackCooldown: cooled, stunRemaining };
 }
 
 function clamp(v: number, lo: number, hi: number): number {

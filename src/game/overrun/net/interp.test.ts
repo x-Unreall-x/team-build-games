@@ -14,10 +14,10 @@ describe("lerpWorlds", () => {
   it("lerps player + enemy positions between snapshots; everything else comes from b", () => {
     const a = createShooterWorld(["p"], 1);
     a.players.p = { ...a.players.p!, pos: { x: 10, y: 10 }, aim: 0 };
-    a.enemies = [{ id: "e0", kind: "rusher", pos: { x: 0, y: 0 }, health: 20, attackCooldown: 0 }];
+    a.enemies = [{ id: "e0", kind: "rusher", pos: { x: 0, y: 0 }, health: 20, attackCooldown: 0, stunRemaining: 0 }];
     const b = { ...a, tick: a.tick + 3, score: 50 };
     b.players = { p: { ...a.players.p!, pos: { x: 12, y: 10 }, aim: 1 } };
-    b.enemies = [{ id: "e0", kind: "rusher", pos: { x: 2, y: 0 }, health: 15, attackCooldown: 0 }];
+    b.enemies = [{ id: "e0", kind: "rusher", pos: { x: 2, y: 0 }, health: 15, attackCooldown: 0, stunRemaining: 0 }];
     const out = lerpWorlds(a, b, 0.5);
     expect(out.players.p!.pos.x).toBeCloseTo(11);
     expect(out.players.p!.aim).toBeCloseTo(0.5);
@@ -28,7 +28,7 @@ describe("lerpWorlds", () => {
 
   it("entities new in b (no counterpart in a) render at b's position", () => {
     const a = createShooterWorld(["p"], 1);
-    const b = { ...a, tick: a.tick + 3, enemies: [{ id: "e9", kind: "tank" as const, pos: { x: 5, y: 5 }, health: 120, attackCooldown: 0 }] };
+    const b = { ...a, tick: a.tick + 3, enemies: [{ id: "e9", kind: "tank" as const, pos: { x: 5, y: 5 }, health: 120, attackCooldown: 0, stunRemaining: 0 }] };
     expect(lerpWorlds(a, b, 0.2).enemies[0]!.pos).toEqual({ x: 5, y: 5 });
   });
 
