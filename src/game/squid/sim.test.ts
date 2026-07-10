@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createSquidWorld, timeMsOf } from "./match";
 import { stepSquid } from "./sim";
 import { HEAD } from "./octopus";
-import { FINISH_X_M, HEAD_DROP_FAIL_M, LEG_COUNT } from "./constants";
+import { FINISH_X_M, HEAD_DROP_FAIL_M, LEG_COUNT, STAND_HEAD_Y_M } from "./constants";
 import type { SquidIntent, SquidWorld } from "./types";
 
 const DT = 1 / 20;
@@ -29,10 +29,12 @@ describe("stepSquid — determinism & lifecycle", () => {
     expect(timeMsOf(w)).toBe(1000);
   });
 
-  it("stands stable when idle (planted legs support the head)", () => {
+  it("actively stands on planted legs: head holds a standing band, not a collapse", () => {
     const w0 = createSquidWorld("stage1", ["A"]);
-    const w = run(w0, { A: idle }, 60);
-    expect(w.points[HEAD]!.pos.y).toBeGreaterThan(0.4);
+    const w = run(w0, { A: idle }, 120); // 6 s — long past any transient
+    const y = w.points[HEAD]!.pos.y;
+    expect(y).toBeGreaterThan(0.55); // was collapsing toward ~0.4 before the stance spring
+    expect(y).toBeLessThan(STAND_HEAD_Y_M + 0.2); // capped spring — no balloon float
     expect(w.result).toBeNull();
   });
 });
@@ -80,6 +82,16 @@ describe("stepSquid — locomotion (the core mechanic)", () => {
   });
 
   it("lifting all legs makes the body sag toward the ground", () => {
+    const ids = Array.from({ length: LEG_COUNT }, (_, i) => `P${i}`);
+    const intents: Record<string, SquidIntent> = {};
+    for (let i = 0; i < LEG_COUNT; i++) intents[`P${i}`] = { ...idle, grabLeg: i, lift: true };
+    const w0 = createSquidWorld("stage1", ids);
+    const y0 = w0.points[HEAD]!.pos.y;
+    const w = run(w0, intents, 30);
+    expect(w.points[HEAD]!.pos.y).toBeLessThan(y0 - 0.2);
+  });
+
+  it("stance force needs planted legs: all-lifted still sags (no anti-gravity)", () => {
     const ids = Array.from({ length: LEG_COUNT }, (_, i) => `P${i}`);
     const intents: Record<string, SquidIntent> = {};
     for (let i = 0; i < LEG_COUNT; i++) intents[`P${i}`] = { ...idle, grabLeg: i, lift: true };

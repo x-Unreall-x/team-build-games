@@ -14,7 +14,7 @@ export const LEG_SEGMENT_M = 0.45;
 /** Head hub spawn position. */
 export const HEAD_START_X_M = 0.6;
 export const BODY_HEIGHT_M = 1.1;
-/** Head visual/collision radius (small enough to fit the 0.5 m hole). */
+/** Head visual/collision radius (small enough to fit the 0.9 m hole). */
 export const HEAD_R_M = 0.35;
 
 // --- physics ---
@@ -39,6 +39,14 @@ export const SWING_LIFTED_MPS = 0.5;
 export const LIFT_MPS = 2.5;
 /** A lifted tip may not rise closer to the head than this (tentacles can't go above the shoulder). */
 export const LIFT_TIP_BELOW_HEAD_M = 0.2;
+
+// --- active stance (the octopus tries to stand on planted legs) ---
+/** Target head ride height the stance spring aims for (slight crouch below the 1.1 m spawn). */
+export const STAND_HEAD_Y_M = 0.75;
+/** Max upward acceleration each PLANTED leg contributes — zero planted legs ⇒ zero support. */
+export const SUPPORT_PER_LEG_MPS2 = 2.5;
+/** Stance spring gain: m/s² per meter of height deficit (gravity is 9 — must exceed it within the deficit range). */
+export const STAND_GAIN = 50;
 
 /** Head center below -this ⇒ round failed (only reachable over the hole). */
 export const HEAD_DROP_FAIL_M = 0.5;

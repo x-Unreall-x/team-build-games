@@ -11,7 +11,10 @@ import {
   LIFT_MPS,
   LIFT_TIP_BELOW_HEAD_M,
   PLANT_EPS_M,
+  STAND_GAIN,
+  STAND_HEAD_Y_M,
   SUBSTEPS,
+  SUPPORT_PER_LEG_MPS2,
   SWING_LIFTED_MPS,
   SWING_PLANTED_MPS,
 } from "./constants";
@@ -99,8 +102,27 @@ export function stepSquid(
   const pinned: boolean[] = Array(points.length).fill(false);
   for (const leg of legs) if (leg.planted) pinned[leg.pts[2]] = true;
   let pts = points;
+  const sdt = dt / SUBSTEPS;
+  const plantedCount = legs.reduce((n, l) => n + (l.planted ? 1 : 0), 0);
   for (let s = 0; s < SUBSTEPS; s++) {
-    pts = solve(integrate(pts, dt / SUBSTEPS), RIG_CONSTRAINTS, pinned, groundAt);
+    pts = integrate(pts, sdt);
+    // active stance: capped support spring through planted legs — upward only, never a winch.
+    // Lifting HEAD alone gets almost entirely cancelled by solve(): HEAD is shared by all
+    // LEG_COUNT head-root constraints, and each one's Gauss-Seidel correction pulls HEAD
+    // straight back toward its (unmoved) legs before any lift can stick. Instead, nudge
+    // HEAD *and* every PLANTED leg's root point together (unplanted/lifted legs are left
+    // alone so they still sag and re-plant normally) — moving head + planted roots as one
+    // keeps relative distances intact, so solve() has nothing to correct away.
+    const deficit = STAND_HEAD_Y_M - pts[HEAD]!.pos.y;
+    if (plantedCount > 0 && deficit > 0) {
+      const accel = Math.min(STAND_GAIN * deficit, plantedCount * SUPPORT_PER_LEG_MPS2);
+      const dy = accel * sdt * sdt; // position nudge, same style as gravity in integrate()
+      pts[HEAD]!.pos.y += dy;
+      for (const leg of legs) {
+        if (leg.planted) pts[leg.pts[0]]!.pos.y += dy;
+      }
+    }
+    pts = solve(pts, RIG_CONSTRAINTS, pinned, groundAt);
   }
   // pinned tips must not drift (integrate moves everything): restore them
   for (const leg of legs) {
