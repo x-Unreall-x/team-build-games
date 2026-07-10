@@ -12,7 +12,7 @@ import { attackCooldownFraction } from "../combat";
 import { directionVector } from "../logic";
 import { createKeyboard, type KeyboardReader } from "../input/keyboard";
 import { screenDeltaToWorldAngle } from "../input/mouse";
-import { BODY_ASSET, type Shape } from "../cosmetic";
+import { SHAPES, type Shape } from "../cosmetic";
 import type { ArenaEvent, HudState, MatchDriver } from "./contract";
 
 export type { ArenaEvent, HudState, PlayerMeta, MatchDriver } from "./contract";
@@ -24,7 +24,18 @@ const WEAPON_ASSET: Record<Weapon, string> = {
   bow: "/assets/arena/weapons/bow.png",
 };
 
-const bodyTexture = (shape: Shape) => `fighter-${shape}`;
+type RigPart = "body" | "weapon-arm" | "off-arm" | "left-leg" | "right-leg";
+
+const RIG_FIGHTER: Record<Shape, string> = {
+  circle: "swordsman",
+  square: "spearman",
+  triangle: "knife-fighter",
+  diamond: "archer",
+};
+
+const rigTexture = (shape: Shape, part: RigPart) => `fighter-rig-${shape}-${part}`;
+const rigAsset = (shape: Shape, part: RigPart) =>
+  `/assets/arena/warriors-rigged/${RIG_FIGHTER[shape]}/${part}.png`;
 const weaponTexture = (weapon: Weapon) => `weapon-${weapon}`;
 const TERRAIN_TEXTURE = "arena-terrain";
 const ARROW_TEXTURE = "arrow";
@@ -39,17 +50,56 @@ const Y_SCALE = 0.62;
 const VIS_R = FIGURE_RADIUS_M * RENDER_PX_PER_M; // drawn body == physical body
 const FIELD_PX = FIELD_M * RENDER_PX_PER_M;
 const BODY_HEIGHT = VIS_R * 3.2;
+const BODY_CORE_HEIGHT = BODY_HEIGHT * 0.66;
+const BODY_CORE_Y = -BODY_HEIGHT * 0.18;
+const HIP_Y = BODY_HEIGHT * 0.06;
 const AVATAR_TEXTURE_SIZE = 128;
-const LEG_LENGTH = 23 * DISPLAY_SCALE;
-const LEG_THICKNESS = 7 * DISPLAY_SCALE;
-const ARM_THICKNESS = 6 * DISPLAY_SCALE;
-const HAND_RADIUS = 3.2 * DISPLAY_SCALE;
+
+interface RigEndpoints {
+  joint: { x: number; y: number };
+  end: { x: number; y: number };
+}
+
+interface RigPose {
+  weaponArm: RigEndpoints;
+  offArm: RigEndpoints;
+  leftLeg: RigEndpoints;
+  rightLeg: RigEndpoints;
+}
+
+/** Normalized attachment points measured from the generated, tightly-cropped rig parts. */
+const RIG_POSE: Record<Shape, RigPose> = {
+  circle: {
+    weaponArm: { joint: { x: 0.5, y: 0.04 }, end: { x: 0.52, y: 0.92 } },
+    offArm: { joint: { x: 0.5, y: 0.04 }, end: { x: 0.48, y: 0.92 } },
+    leftLeg: { joint: { x: 0.48, y: 0.03 }, end: { x: 0.56, y: 0.94 } },
+    rightLeg: { joint: { x: 0.52, y: 0.03 }, end: { x: 0.44, y: 0.94 } },
+  },
+  square: {
+    weaponArm: { joint: { x: 0.2, y: 0.08 }, end: { x: 0.82, y: 0.88 } },
+    offArm: { joint: { x: 0.8, y: 0.05 }, end: { x: 0.18, y: 0.9 } },
+    leftLeg: { joint: { x: 0.46, y: 0.03 }, end: { x: 0.58, y: 0.93 } },
+    rightLeg: { joint: { x: 0.54, y: 0.03 }, end: { x: 0.42, y: 0.93 } },
+  },
+  triangle: {
+    weaponArm: { joint: { x: 0.27, y: 0.05 }, end: { x: 0.76, y: 0.9 } },
+    offArm: { joint: { x: 0.73, y: 0.05 }, end: { x: 0.22, y: 0.88 } },
+    leftLeg: { joint: { x: 0.5, y: 0.03 }, end: { x: 0.54, y: 0.94 } },
+    rightLeg: { joint: { x: 0.5, y: 0.03 }, end: { x: 0.46, y: 0.94 } },
+  },
+  diamond: {
+    weaponArm: { joint: { x: 0.08, y: 0.4 }, end: { x: 0.92, y: 0.6 } },
+    offArm: { joint: { x: 0.92, y: 0.25 }, end: { x: 0.08, y: 0.52 } },
+    leftLeg: { joint: { x: 0.24, y: 0.05 }, end: { x: 0.64, y: 0.92 } },
+    rightLeg: { joint: { x: 0.68, y: 0.05 }, end: { x: 0.36, y: 0.92 } },
+  },
+};
 
 const WEAPON_HEIGHT: Record<Weapon, number> = {
   sword: 15 * DISPLAY_SCALE,
   spear: 12 * DISPLAY_SCALE,
   knife: 9 * DISPLAY_SCALE,
-  bow: 14 * DISPLAY_SCALE,
+  bow: 22 * DISPLAY_SCALE,
 };
 
 /** Head placement in container pixels for each fighter illustration. */
@@ -74,16 +124,14 @@ interface PlayerView {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Image;
   shadow: Phaser.GameObjects.Ellipse;
-  leftLeg: Phaser.GameObjects.Rectangle;
-  rightLeg: Phaser.GameObjects.Rectangle;
-  leftBoot: Phaser.GameObjects.Ellipse;
-  rightBoot: Phaser.GameObjects.Ellipse;
+  leftLeg: Phaser.GameObjects.Image;
+  rightLeg: Phaser.GameObjects.Image;
   shape: Shape;
   /** Weapon sprite (detailed per-weapon texture), drawn above the body so it's always visible. */
   sword: Phaser.GameObjects.Image;
-  upperArm: Phaser.GameObjects.Rectangle;
-  forearm: Phaser.GameObjects.Rectangle;
-  weaponHand: Phaser.GameObjects.Arc;
+  weaponArm: Phaser.GameObjects.Image;
+  offArm: Phaser.GameObjects.Image;
+  rigScale: number;
   pips: Phaser.GameObjects.Rectangle[];
   /** Signed-in member's circular photo, layered over the illustrated fighter's head. */
   avatar?: Phaser.GameObjects.Image;
@@ -110,8 +158,10 @@ export class ArenaScene extends Phaser.Scene {
   preload(): void {
     this.load.image(TERRAIN_TEXTURE, "/assets/arena/terrain.png");
     this.load.image(ARROW_TEXTURE, "/assets/arena/weapons/arrow.png");
-    for (const [shape, url] of Object.entries(BODY_ASSET) as [Shape, string][]) {
-      this.load.image(bodyTexture(shape), url);
+    for (const shape of SHAPES) {
+      for (const part of ["body", "weapon-arm", "off-arm", "left-leg", "right-leg"] as RigPart[]) {
+        this.load.image(rigTexture(shape, part), rigAsset(shape, part));
+      }
     }
     for (const weapon of WEAPON_LIST) {
       this.load.image(weaponTexture(weapon), WEAPON_ASSET[weapon]);
@@ -204,10 +254,24 @@ export class ArenaScene extends Phaser.Scene {
       const bodyTilt = moving ? stride * 0.025 * facingSign : 0;
 
       v.body.setFlipX(facingSign < 0);
-      v.body.setPosition(0, bodyBob);
+      v.body.setPosition(0, BODY_CORE_Y + bodyBob);
       v.body.setRotation(bodyTilt);
-      this.poseLeg(v.leftLeg, v.leftBoot, -6 * DISPLAY_SCALE, bodyBob + 5 * DISPLAY_SCALE, legSwing);
-      this.poseLeg(v.rightLeg, v.rightBoot, 6 * DISPLAY_SCALE, bodyBob + 5 * DISPLAY_SCALE, -legSwing);
+      this.poseRigLeg(
+        v.leftLeg,
+        RIG_POSE[v.shape].rightLeg,
+        -5 * DISPLAY_SCALE,
+        HIP_Y + bodyBob,
+        Math.PI / 2 + legSwing,
+        v.rigScale,
+      );
+      this.poseRigLeg(
+        v.rightLeg,
+        RIG_POSE[v.shape].leftLeg,
+        5 * DISPLAY_SCALE,
+        HIP_Y + bodyBob,
+        Math.PI / 2 - legSwing,
+        v.rigScale,
+      );
       v.shadow.setScale(moving ? 0.94 + Math.abs(stride) * 0.06 : 1, 1);
       if (v.avatar) {
         const placement = AVATAR_PLACEMENT[v.shape];
@@ -220,11 +284,28 @@ export class ArenaScene extends Phaser.Scene {
       const stats = WEAPONS[p.weapon];
       const atk = p.attack;
       const ready = p.attackCooldownRemaining <= 0;
+      const shoulderOffset = Math.min(v.body.displayWidth * 0.28, 13 * DISPLAY_SCALE);
+      const shoulderY = BODY_CORE_Y - 1 * DISPLAY_SCALE + bodyBob;
+      const weaponShoulderX = shoulderOffset * facingSign;
+      const offShoulderX = -shoulderOffset * facingSign;
       if (!atk && !ready) {
         v.sword.setVisible(false);
-        v.upperArm.setVisible(false);
-        v.forearm.setVisible(false);
-        v.weaponHand.setVisible(false);
+        this.poseRigArm(
+          v.weaponArm,
+          RIG_POSE[v.shape].weaponArm,
+          weaponShoulderX,
+          shoulderY,
+          10 * DISPLAY_SCALE * facingSign,
+          bodyBob + 10 * DISPLAY_SCALE,
+        );
+        this.poseRigArm(
+          v.offArm,
+          RIG_POSE[v.shape].offArm,
+          offShoulderX,
+          shoulderY + DISPLAY_SCALE,
+          -10 * DISPLAY_SCALE * facingSign,
+          bodyBob + 12 * DISPLAY_SCALE,
+        );
       } else {
         const aim = atk ? atk.aim : p.aim;
         const alpha = atk ? 1 : 0.5;
@@ -233,23 +314,30 @@ export class ArenaScene extends Phaser.Scene {
         v.sword.setVisible(true);
         v.sword.setAlpha(alpha);
         v.sword.setTexture(weaponTexture(p.weapon));
-        v.weaponHand.setVisible(true).setAlpha(alpha);
         const weaponBob = bodyBob * 0.65;
         let gripX = 0;
         let gripY = -2 * DISPLAY_SCALE + weaponBob;
+        let offGripX = -10 * DISPLAY_SCALE * facingSign;
+        let offGripY = bodyBob + 12 * DISPLAY_SCALE;
         if (stats.ranged) {
-          // Bow: pull the held bow slightly back before release; the hand stays on its centre grip.
-          const L = 1.1; // meters — drawn bow length (reach is 0; damage is carried by the arrow)
+          // Bow: the weapon hand owns the centre grip while the off hand pulls back near the face.
+          const L = 1.8; // meters — damage is carried by the arrow, so this is purely visual
           const pull = atk ? Math.sin(progress * Math.PI) : 0;
           const tipX = Math.cos(aim) * L * RENDER_PX_PER_M;
           const tipY = Math.sin(aim) * L * RENDER_PX_PER_M * Y_SCALE;
-          const baseX = -Math.cos(aim) * pull * 5 * DISPLAY_SCALE;
-          const baseY = -2 * DISPLAY_SCALE + weaponBob - Math.sin(aim) * pull * 5 * DISPLAY_SCALE * Y_SCALE;
+          const projectedLength = Math.max(1, Math.hypot(tipX, tipY));
+          const ux = tipX / projectedLength;
+          const uy = tipY / projectedLength;
+          const armReach = BODY_CORE_HEIGHT * 0.58;
+          gripX = weaponShoulderX + ux * armReach;
+          gripY = shoulderY + uy * armReach;
+          const baseX = gripX - tipX * 0.5;
+          const baseY = gripY - tipY * 0.5;
           v.sword.setPosition(baseX, baseY);
           v.sword.setRotation(Math.atan2(tipY, tipX));
-          v.sword.setDisplaySize(Math.hypot(tipX, tipY), WEAPON_HEIGHT[p.weapon] * (1 + pull * 0.12));
-          gripX = baseX + tipX * 0.5;
-          gripY = baseY + tipY * 0.5;
+          v.sword.setDisplaySize(projectedLength, WEAPON_HEIGHT[p.weapon] * (1 + pull * 0.12));
+          offGripX = -Math.cos(aim) * (6 + pull * 4) * DISPLAY_SCALE;
+          offGripY = shoulderY - Math.sin(aim) * (6 + pull * 4) * DISPLAY_SCALE * Y_SCALE;
         } else if (stats.thrust) {
           // Spear held mid-shaft: at rest 40% of its length sits BEHIND the player; a strike
           // jabs it forward (out-and-back) so the tip reaches full reach at the peak.
@@ -268,6 +356,8 @@ export class ArenaScene extends Phaser.Scene {
           v.sword.setDisplaySize(Math.hypot(tipX - baseX, tipY - baseY), WEAPON_HEIGHT[p.weapon]);
           gripX = baseX + (tipX - baseX) * 0.42;
           gripY = baseY - 2 * DISPLAY_SCALE + weaponBob + (tipY - baseY) * 0.42;
+          offGripX = baseX + (tipX - baseX) * 0.57;
+          offGripY = baseY - 2 * DISPLAY_SCALE + weaponBob + (tipY - baseY) * 0.57;
         } else {
           // Sword/knife: sweep the cone from the player center (rest pose points along the aim).
           const half = stats.coneHalfAngle;
@@ -275,16 +365,41 @@ export class ArenaScene extends Phaser.Scene {
           // Project onto the foreshortened ground plane (y * Y_SCALE) so on-screen reach matches.
           const tipX = Math.cos(ang) * stats.reach * RENDER_PX_PER_M;
           const tipY = Math.sin(ang) * stats.reach * RENDER_PX_PER_M * Y_SCALE;
-          v.sword.setPosition(0, -2 * DISPLAY_SCALE + weaponBob);
+          const projectedLength = Math.max(1, Math.hypot(tipX, tipY));
+          const ux = tipX / projectedLength;
+          const uy = tipY / projectedLength;
+          const armReach = BODY_CORE_HEIGHT * (p.weapon === "knife" ? 0.34 : 0.46);
+          const gripFraction = p.weapon === "knife" ? 0.22 : 0.14;
+          const weaponCenterY = -2 * DISPLAY_SCALE + weaponBob;
+
+          gripX = weaponShoulderX + ux * armReach;
+          gripY = shoulderY + uy * armReach;
+          const gripAlongAim = gripX * ux + (gripY - weaponCenterY) * uy;
+          const fittedLength = (projectedLength - gripAlongAim) / (1 - gripFraction);
+          const weaponLength = Math.max(projectedLength * 0.55, fittedLength);
+          const baseX = gripX - ux * weaponLength * gripFraction;
+          const baseY = gripY - uy * weaponLength * gripFraction;
+
+          v.sword.setPosition(baseX, baseY);
           v.sword.setRotation(Math.atan2(tipY, tipX));
-          v.sword.setDisplaySize(Math.hypot(tipX, tipY), WEAPON_HEIGHT[p.weapon]);
-          gripX = tipX * 0.14;
-          gripY = -2 * DISPLAY_SCALE + weaponBob + tipY * 0.14;
+          v.sword.setDisplaySize(weaponLength, WEAPON_HEIGHT[p.weapon]);
         }
-        const shoulderX = Math.cos(aim) * 4 * DISPLAY_SCALE;
-        const shoulderY = bodyBob - 6 * DISPLAY_SCALE;
-        this.poseWeaponArm(v, shoulderX, shoulderY, gripX, gripY, p.weapon, progress, alpha);
-        v.weaponHand.setPosition(gripX, gripY);
+        this.poseRigArm(
+          v.weaponArm,
+          RIG_POSE[v.shape].weaponArm,
+          weaponShoulderX,
+          shoulderY,
+          gripX,
+          gripY,
+        );
+        this.poseRigArm(
+          v.offArm,
+          RIG_POSE[v.shape].offArm,
+          offShoulderX,
+          shoulderY + DISPLAY_SCALE,
+          offGripX,
+          offGripY,
+        );
       }
 
       v.pips.forEach((pip, i) => pip.setFillStyle(i < p.health ? 0xff5570 : 0x3a3a44));
@@ -353,93 +468,69 @@ export class ArenaScene extends Phaser.Scene {
 
   // ---- setup ------------------------------------------------------------------
 
-  private poseLeg(
-    leg: Phaser.GameObjects.Rectangle,
-    boot: Phaser.GameObjects.Ellipse,
+  private poseRigLeg(
+    leg: Phaser.GameObjects.Image,
+    endpoints: RigEndpoints,
     hipX: number,
     hipY: number,
-    angle: number,
+    targetAngle: number,
+    scale: number,
   ): void {
-    leg.setPosition(hipX, hipY).setRotation(angle);
-    const footX = hipX - Math.sin(angle) * LEG_LENGTH;
-    const footY = hipY + Math.cos(angle) * LEG_LENGTH;
-    boot.setPosition(footX, footY).setRotation(angle * 0.45);
+    const sourceAngle = Math.atan2(
+      (endpoints.end.y - endpoints.joint.y) * leg.height,
+      (endpoints.end.x - endpoints.joint.x) * leg.width,
+    );
+    leg
+      .setOrigin(endpoints.joint.x, endpoints.joint.y)
+      .setPosition(hipX, hipY)
+      .setScale(scale)
+      .setRotation(targetAngle - sourceAngle);
   }
 
-  private poseWeaponArm(
-    view: PlayerView,
+  private poseRigArm(
+    arm: Phaser.GameObjects.Image,
+    endpoints: RigEndpoints,
     shoulderX: number,
     shoulderY: number,
-    gripX: number,
-    gripY: number,
-    weapon: Weapon,
-    progress: number,
-    alpha: number,
+    handX: number,
+    handY: number,
   ): void {
-    const dx = gripX - shoulderX;
-    const dy = gripY - shoulderY;
-    const length = Math.max(1, Math.hypot(dx, dy));
-    const bend = (weapon === "bow" ? 7 : weapon === "spear" ? 4 : 5) * DISPLAY_SCALE;
-    const attackBend = weapon === "bow" ? Math.sin(progress * Math.PI) * 3 * DISPLAY_SCALE : 0;
-    const elbowX = shoulderX + dx * 0.5 - (dy / length) * (bend + attackBend);
-    const elbowY = shoulderY + dy * 0.5 + (dx / length) * (bend + attackBend);
+    const sourceDx = (endpoints.end.x - endpoints.joint.x) * arm.width;
+    const sourceDy = (endpoints.end.y - endpoints.joint.y) * arm.height;
+    const targetDx = handX - shoulderX;
+    const targetDy = handY - shoulderY;
+    const sourceLength = Math.max(1, Math.hypot(sourceDx, sourceDy));
+    const targetLength = Math.max(1, Math.hypot(targetDx, targetDy));
 
-    this.poseLimbSegment(view.upperArm, shoulderX, shoulderY, elbowX, elbowY);
-    this.poseLimbSegment(view.forearm, elbowX, elbowY, gripX, gripY);
-    view.upperArm.setVisible(true).setAlpha(alpha);
-    view.forearm.setVisible(true).setAlpha(alpha);
-  }
-
-  private poseLimbSegment(
-    limb: Phaser.GameObjects.Rectangle,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-  ): void {
-    limb
-      .setPosition((x1 + x2) / 2, (y1 + y2) / 2)
-      .setDisplaySize(Math.max(1, Math.hypot(x2 - x1, y2 - y1)), ARM_THICKNESS)
-      .setRotation(Math.atan2(y2 - y1, x2 - x1));
+    arm
+      .setOrigin(endpoints.joint.x, endpoints.joint.y)
+      .setPosition(shoulderX, shoulderY)
+      .setScale(targetLength / sourceLength)
+      .setRotation(Math.atan2(targetDy, targetDx) - Math.atan2(sourceDy, sourceDx));
   }
 
   private makeView(id: PlayerId): PlayerView {
     const meta = this.cfg.driver.getMeta(id);
-    const shadow = this.add.ellipse(0, VIS_R - 1, VIS_R * 2.1, VIS_R * 0.8, 0x000000, 0.28);
-    const body = this.add.image(0, 0, bodyTexture(meta.shape));
-    const scale = BODY_HEIGHT / body.height;
-    body.setDisplaySize(body.width * scale, BODY_HEIGHT);
-    const leftLeg = this.add
-      .rectangle(-6 * DISPLAY_SCALE, 5 * DISPLAY_SCALE, LEG_THICKNESS, LEG_LENGTH, 0x312a28, 1)
-      .setOrigin(0.5, 0)
-      .setStrokeStyle(1.5 * DISPLAY_SCALE, 0xa47a4d, 0.9);
-    const rightLeg = this.add
-      .rectangle(6 * DISPLAY_SCALE, 5 * DISPLAY_SCALE, LEG_THICKNESS, LEG_LENGTH, 0x312a28, 1)
-      .setOrigin(0.5, 0)
-      .setStrokeStyle(1.5 * DISPLAY_SCALE, 0xa47a4d, 0.9);
-    const leftBoot = this.add
-      .ellipse(-6 * DISPLAY_SCALE, VIS_R, 11 * DISPLAY_SCALE, 6 * DISPLAY_SCALE, 0x211b19, 1)
-      .setStrokeStyle(1.2 * DISPLAY_SCALE, 0x8b6b46, 0.9);
-    const rightBoot = this.add
-      .ellipse(6 * DISPLAY_SCALE, VIS_R, 11 * DISPLAY_SCALE, 6 * DISPLAY_SCALE, 0x211b19, 1)
-      .setStrokeStyle(1.2 * DISPLAY_SCALE, 0x8b6b46, 0.9);
+    const shadow = this.add.ellipse(
+      0,
+      BODY_HEIGHT * 0.48,
+      VIS_R * 2.1,
+      VIS_R * 0.8,
+      0x000000,
+      0.28,
+    );
+    const body = this.add.image(0, BODY_CORE_Y, rigTexture(meta.shape, "body"));
+    const rigScale = BODY_CORE_HEIGHT / body.height;
+    body.setScale(rigScale);
+    const leftLeg = this.add.image(0, 0, rigTexture(meta.shape, "right-leg")).setScale(rigScale);
+    const rightLeg = this.add.image(0, 0, rigTexture(meta.shape, "left-leg")).setScale(rigScale);
+    const weaponArm = this.add.image(0, 0, rigTexture(meta.shape, "weapon-arm")).setScale(rigScale);
+    const offArm = this.add.image(0, 0, rigTexture(meta.shape, "off-arm")).setScale(rigScale);
     // Weapon: a detailed sprite whose handle pivots at the player center; stretched to reach and
     // rotated to the aim each frame. Its texture is set per-weapon in render().
     const sword = this.add
       .image(0, 0, weaponTexture("sword"))
       .setOrigin(0, 0.5)
-      .setVisible(false);
-    const upperArm = this.add
-      .rectangle(0, 0, 1, ARM_THICKNESS, 0x55443c, 1)
-      .setStrokeStyle(1.2 * DISPLAY_SCALE, 0xc69a63, 0.9)
-      .setVisible(false);
-    const forearm = this.add
-      .rectangle(0, 0, 1, ARM_THICKNESS, 0x3b2a24, 1)
-      .setStrokeStyle(1.2 * DISPLAY_SCALE, 0xc69a63, 0.9)
-      .setVisible(false);
-    const weaponHand = this.add
-      .circle(0, 0, HAND_RADIUS, 0x3b2a24, 1)
-      .setStrokeStyle(1.2 * DISPLAY_SCALE, 0xc69a63, 0.9)
       .setVisible(false);
     const name = this.add
       .text(0, -BODY_HEIGHT / 2 - 14 * DISPLAY_SCALE, meta.name, {
@@ -464,19 +555,15 @@ export class ArenaScene extends Phaser.Scene {
         )
         .setOrigin(0.5),
     );
-    // Draw order (back→front): shadow, body, weapon, then floating HUD.
-    // then the name + health pips floating on top.
+    // Limbs are independent sprites: legs sit behind the torso, while arms cover the weapon grip.
     const container = this.add.container(0, 0, [
       shadow,
-      body,
       leftLeg,
       rightLeg,
-      leftBoot,
-      rightBoot,
-      upperArm,
-      forearm,
+      body,
+      offArm,
       sword,
-      weaponHand,
+      weaponArm,
       name,
       ...pips,
     ]);
@@ -486,13 +573,11 @@ export class ArenaScene extends Phaser.Scene {
       shadow,
       leftLeg,
       rightLeg,
-      leftBoot,
-      rightBoot,
       shape: meta.shape,
       sword,
-      upperArm,
-      forearm,
-      weaponHand,
+      weaponArm,
+      offArm,
+      rigScale,
       pips,
       walkPhase: 0,
       deadAnimated: false,
@@ -540,7 +625,7 @@ export class ArenaScene extends Phaser.Scene {
         const avatar = this.add
           .image(placement.x, placement.y, cirKey)
           .setDisplaySize(placement.size, placement.size);
-        view.container.addAt(avatar, view.container.getIndex(view.sword));
+        view.container.addAt(avatar, view.container.getIndex(view.weaponArm) + 1);
         view.avatar = avatar;
       } catch {
         /* CORS-tainted or draw error → the illustrated fighter stays. */

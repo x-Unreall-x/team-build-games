@@ -179,6 +179,12 @@ from a **seed broadcast in `start`** and injected into the core, never read from
 inside it. Player customization (shape, avatar image) is **cosmetic only** and must **not** enter the
 sim core. (Each feature has a stable id `F1…F7` for cross-referencing.)
 
+**Canonical Arena modes:**
+- **Free For All** — open-field last-player-standing; live.
+- **Labyrinth** — last-player-standing in a generated maze; planned.
+- **Coop Survival** — allied players against escalating creature waves; in development.
+- **Team Versus** — waiting-room team selection and team combat; future.
+
 ### P6 — Lobby feel & death juice · `dependsOn: P4 (lobby), P1 (death tween)`
 Goal: cheap, high-value feel wins — audible lobby presence and a readable death moment.
 
@@ -385,18 +391,19 @@ and Overrun (Track D).
 - [ ] **Quantized entity encoding** in `protocol.ts`: Int16 positions (cm), Uint8 kind/status/health, Uint8 brad angle — Trystero data channels are binary-capable; keep JSON for lobby/control msgs
 - [ ] **Delta snapshots**: full keyframe on join + every N ticks; per-tick diffs otherwise; `sync.ts` sends a keyframe to a newly-joined/promoted peer
 - [ ] **Entity snapshot rate = 10 Hz** with client-side position interpolation; inputs stay 20 Hz — measured, tunable
-- [ ] **Coordinate-hash RNG** `src/game/arena/survival/rng.ts`: `hash(seed, tick, entityId, salt)` (mulberry32/splitmix32) — replaces any shared advancing cursor so draw-order can't fork; colocated `rng.test.ts` (same input → same output, distribution sanity)
+- [x] **Coordinate-hash RNG** `src/game/arena/survival/rng.ts`: `hash(seed, tick, entityId, salt)` — replaces any shared advancing cursor so draw-order can't fork; colocated `rng.test.ts` (same input → same output, distribution sanity)
 - [ ] `worldFromSnapshot` extended to reconstruct EVERYTHING host-mutated (see P-A3); **guard test**: hydrate a fresh engine from ONE snapshot on a different localId, step both, assert byte-identical for many ticks
 - [ ] **RISK gate**: measure real snapshot bytes at 8 players + full horde; assert under the data-channel budget before P-A5
 
-### P-A1 — Mode plumbing + `versus` rename (zero behavior change) · `dependsOn: P-A0`
-Goal: introduce `mode:'versus'|'survival'` end-to-end and rename shipped FFA to **versus** with ZERO logic
-change, so later phases have a discriminator to branch on. Versus tests stay green untouched.
+### P-A1 — Named mode plumbing (zero behavior change) · `dependsOn: P-A0`
+Goal: carry the player-facing `GameMode` end-to-end so future reducers have a safe discriminator.
+Only **Free For All** is startable until each other mode owns its rules; existing FFA tests stay green.
 
-- [ ] `mode: MatchMode` on `World` (types.ts); `createWorld` defaults `'versus'`; `stepWorld` guards existing logic behind `world.mode==='versus'` — existing `sim.test.ts` passes unchanged
-- [ ] `protocol.ts`: add `mode` + `seed:number` to `start`; **additive/back-compat decode** (old versus clients ignore new optional fields) to avoid stranding open tabs on deploy; if a hard version bump is unavoidable, surface a "refresh to update" via the `hello` version rather than a silent drop
+- [x] `modes.ts`: canonical `Free For All | Labyrinth | Coop Survival | Team Versus` registry, rule/arena metadata, availability, and wire coercion — unit-tested
+- [x] `mode: GameMode` on `World` (`types.ts`); `createWorld` defaults to `'ffa'`; existing `sim.test.ts` passes unchanged
+- [x] `protocol.ts`: additive optional `mode` on `start` and snapshots; `worldFromSnapshot` defaults old payloads to FFA
+- [x] `session.ts`: host validates availability, carries mode through rounds/start, clients coerce it, and unavailable modes fall back to FFA rather than running the wrong rules
 - [ ] `session.ts start()`: host generates `seed` ONCE (`Math.random` outside the core), broadcasts in `start`, threads into `beginMatch`
-- [ ] Rename user-facing "FFA / last man standing" → **Versus** in `WarmupRoom.tsx`, `Arena.tsx` result overlay, `index.astro`
 - [ ] `match.ts`: extract `resolveEnd(world)` (versus path = current `soleSurvivor`); `sim.ts` calls it instead of the inline check — versus tests unchanged
 
 ### P-A2 — Enemy model + wave plan + one archetype end-to-end (pure, TDD) · `dependsOn: P-A1`
@@ -406,7 +413,8 @@ Goal: prove the whole pipeline (data-on-World → host sim → snapshot → clie
 - [ ] `src/game/arena/survival/enemy.ts`: `EnemyState{id,kind,pos,facing,aim,health,maxHealth,status,speed,contactDamage,hitCooldownRemaining,target,spawnTick}` + `coerceEnemy` wire-trust boundary; `enemies` on World with **deterministic ids** `e{level}-{seq}` (seq lives IN world, never a host-local counter)
 - [ ] `enemyKinds.ts`: per-kind stat table (pure data) `ant|zombie|bat|dino|clawed`
 - [ ] `steering.ts`: `nearestPlayer` (generalize `bot.ts nearestEnemy`), `stepToward`, separation + one-way boundary clamp (enemies exempt until they enter the field); colocated tests
-- [ ] `waves.ts`: pure `wavePlan(seed,level,wave)` + `spawnsDueAt(level,tick,seed,partySize)` (kind/angle/count from coordinate-hash); colocated tests (determinism + monotonic escalation)
+- [x] `waves.ts`: pure capped `wavePlan(seed,level,wave,partySize)` with sub-linear frozen-party scaling, deterministic ids/angles/timing, and monotonic-escalation tests
+- [ ] `spawnsDueAt(level,tick,seed,partySize)` consumes the plan once enemy/world state exists
 - [ ] `centerSpawns(ids)` in `match.ts` (cluster near center) + `createSurvivalWorld(spawns,seed,{endless})`; colocated tests
 - [ ] **Sorted-id iteration** mandated for every per-enemy loop; tie-breaks by lowest EnemyId; test two insertion orders → identical stepped output
 - [ ] Enemy contact damage reuses the −1-health + knockback model, gated by per-kind `hitCooldown`; render enemy as a procedural placeholder (real art = Track E), y-sorted, death tween
@@ -437,7 +445,8 @@ Goal: five archetypes mapped to creatures, and the full campaign→endless run w
 ### P-A5 — Survival UX: WarmupRoom, HUD, revive/pause, art + SFX, playtest · `dependsOn: P-A4, E/AP3`
 Goal: mode picker, mode-aware shell/HUD, revive UX, and the real sprite-sheet enemies wired in.
 
-- [ ] `WarmupRoom.tsx`: Mode toggle (Versus | Survival); survival hides bots, shows Campaign|Endless + player-count note; `canStart` in survival = ≥1 player; `onStart` carries mode+endless
+- [x] `WarmupRoom.tsx`: four-mode selector with Live / In development / Future statuses; only available modes can start; host choice carries through `onStart`
+- [ ] Enable Coop Survival after P-A2/P-A3; hide bots, show Campaign|Endless + player-count note; `canStart` in survival = ≥1 player; `onStart` carries endless
 - [ ] `Arena.tsx` + HudState: mode-aware result copy ("Campaign cleared!" / "Wiped out — reached Level X"); new `SurvivalHud` (level/wave, enemies remaining, per-ally downed + revive indicator); "Spectating…" → "Downed — revive at wave clear"
 - [ ] Enemy rendering via Track E atlases (per-kind idle/walk/attack/die), y-sorted; boss HP bar + screen-shake on slam; procedural fallback still active
 - [ ] `audio/sfx.ts`: enemy spawn/hit/death (oscillator, asset-free); boss slam sting

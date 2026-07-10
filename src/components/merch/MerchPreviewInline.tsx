@@ -4,6 +4,8 @@
  * The server-rendered MerchPreview.astro (shop page) is separate — no session data there.
  */
 
+import { useId } from "react";
+
 type Product = "tee" | "mug" | "keychain" | "poster";
 
 interface MerchPreviewInlineProps {
@@ -53,7 +55,8 @@ export default function MerchPreviewInline({
   const gColor = garmentColor ?? DEFAULT_GARMENT[product];
   const wr = WARRIOR[product];
   const av = AVATAR[product];
-  const clipId = `merch-av-${product}`;
+  // useId keeps the clip unique when several previews (e.g. the grid + hero tee) share the page.
+  const clipId = `merch-av-${product}-${useId()}`;
 
   const defs = avatarUrl ? (
     <defs>

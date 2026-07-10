@@ -5,9 +5,11 @@ import {
   formatPrice,
   normalizeSelection,
   productBySlug,
+  selectionColors,
   unitPriceCents,
 } from "../../lib/merch/catalog";
 import { sanitizePayload } from "../../lib/merch/print";
+import { sanitizeVisual } from "../../lib/merch/visual";
 import { submitToPrintful } from "../../lib/merch/printfulStub";
 import { insertMerchOrder } from "../../lib/wix/merchOrders";
 import { getSessionMember } from "../../lib/wix/members";
@@ -36,12 +38,14 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     Object.fromEntries(product.options.map((o) => [o.key, read(o.key) || undefined])),
   );
   const payload = sanitizePayload({ title: read("title"), sub: read("sub") });
+  const { warriorSrc, avatarUrl } = sanitizeVisual({ warrior: read("warrior"), avatar: read("avatar") });
   const qty = clampQty(read("qty"));
   const buyerName = read("name").slice(0, 80) || "Anonymous player";
   const buyerEmail = read("email").slice(0, 120);
   if (!selection) return redirect(`/shop/${product.slug}?error=input`, 303);
 
   const member = await getSessionMember();
+  const { garmentColor, printColor } = selectionColors(product, selection);
   const unit = unitPriceCents(product, selection);
   const orderNumber = `TBG-${Date.now().toString(36).toUpperCase()}`;
   const pod = submitToPrintful(orderNumber);
@@ -54,6 +58,10 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       optionsSummary: describeSelection(product, selection),
       printTitle: payload.title,
       printSub: payload.sub,
+      printWarrior: warriorSrc ?? "",
+      printAvatar: avatarUrl ?? "",
+      garmentColor,
+      printColor,
       qty: String(qty),
       unitPrice: formatPrice(unit),
       total: formatPrice(unit * qty),

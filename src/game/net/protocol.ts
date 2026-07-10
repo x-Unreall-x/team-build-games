@@ -8,6 +8,8 @@ import type { Direction, Intent, PlayerId, PlayerStats, Projectile, World } from
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 import type { Placement } from "../arena/rounds";
+import type { GameMode } from "../arena/modes";
+import { DEFAULT_MODE } from "../arena/modes";
 
 export const PROTOCOL_VERSION = 2;
 
@@ -37,7 +39,7 @@ export type NetMessage =
   // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.
   | { t: "host"; hostId: PlayerId }
   // P8 round fields are optional so a plain single-match `start` (rounds=1, today's behaviour) still validates.
-  | { t: "start"; countdownMs: number; players: StartPlayer[]; rounds?: number; roundNumber?: number; tiebreak?: boolean }
+  | { t: "start"; countdownMs: number; players: StartPlayer[]; mode?: GameMode; rounds?: number; roundNumber?: number; tiebreak?: boolean }
   // Host → peers at each round's end: running tally + standings/stats. `phase` is "roundover"
   // (host will advance) or "ended" (final scoreboard). `podium` + `stats` drive the overlays.
   | {
@@ -55,6 +57,7 @@ export type NetMessage =
       tick: number;
       phase: World["phase"];
       winnerId: PlayerId | null;
+      mode?: GameMode;
       players: World["players"];
       projectiles: Projectile[];
     }
@@ -113,5 +116,12 @@ export function coerceIntent(raw: unknown): Intent {
 
 /** Build a World from a snapshot message. */
 export function worldFromSnapshot(m: Extract<NetMessage, { t: "snapshot" }>): World {
-  return { players: m.players, projectiles: m.projectiles, phase: m.phase, tick: m.tick, winnerId: m.winnerId };
+  return {
+    mode: m.mode ?? DEFAULT_MODE,
+    players: m.players,
+    projectiles: m.projectiles,
+    phase: m.phase,
+    tick: m.tick,
+    winnerId: m.winnerId,
+  };
 }

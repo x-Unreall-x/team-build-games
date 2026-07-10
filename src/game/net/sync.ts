@@ -79,6 +79,7 @@ export class SyncEngine {
           tick: this.world.tick,
           phase: this.world.phase,
           winnerId: this.world.winnerId,
+          mode: this.world.mode,
           players: this.world.players,
           projectiles: this.world.projectiles,
         }),

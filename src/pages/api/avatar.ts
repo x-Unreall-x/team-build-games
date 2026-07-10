@@ -4,7 +4,7 @@ import { files } from "@wix/media";
 import { members } from "@wix/members";
 import { isKnownGameId } from "../../lib/members/games";
 import { getMemberId } from "../../lib/wix/members";
-import { setGameAvatarUrl } from "../../lib/wix/playerAvatars";
+import { disableGameAvatar, setGameAvatarUrl } from "../../lib/wix/playerAvatars";
 
 const MAX_BYTES = 400_000; // client sends a 256×256 png — comfortably under this
 
@@ -87,4 +87,26 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   return json({ avatarUrl }, 200);
+};
+
+/** Disable a per-game face photo without deleting or changing the member's global profile photo. */
+export const DELETE: APIRoute = async ({ request }) => {
+  const memberId = await getMemberId();
+  if (!memberId) return json({ error: "Sign in to remove an avatar." }, 401);
+
+  let gameId: unknown;
+  try {
+    ({ gameId } = await request.json());
+  } catch {
+    return json({ error: "Malformed request." }, 400);
+  }
+  if (!isKnownGameId(gameId)) return json({ error: "Unknown game." }, 400);
+
+  try {
+    await disableGameAvatar(memberId, gameId);
+  } catch {
+    return json({ error: "Could not remove the game avatar." }, 500);
+  }
+
+  return json({ avatarUrl: null }, 200);
 };

@@ -36,12 +36,30 @@ describe("encode / decode", () => {
   });
 
   it("round-trips a snapshot and rebuilds a usable World", () => {
-    const w = createWorld([{ id: "A", pos: { x: 1, y: 2 } }, { id: "B", pos: { x: 3, y: 4 } }]);
-    const m: NetMessage = { t: "snapshot", tick: w.tick, phase: w.phase, winnerId: w.winnerId, players: w.players, projectiles: w.projectiles };
+    const w = createWorld(
+      [{ id: "A", pos: { x: 1, y: 2 } }, { id: "B", pos: { x: 3, y: 4 } }],
+      "playing",
+      "coop-survival",
+    );
+    const m: NetMessage = { t: "snapshot", tick: w.tick, phase: w.phase, winnerId: w.winnerId, mode: w.mode, players: w.players, projectiles: w.projectiles };
     const back = decode(encode(m)) as Extract<NetMessage, { t: "snapshot" }>;
     const world = worldFromSnapshot(back);
     expect(world.players.A.pos).toEqual({ x: 1, y: 2 });
     expect(world.phase).toBe("playing");
+    expect(world.mode).toBe("coop-survival");
+  });
+
+  it("defaults snapshots from older senders to Free For All", () => {
+    const w = createWorld([{ id: "A", pos: { x: 1, y: 2 } }]);
+    const world = worldFromSnapshot({
+      t: "snapshot",
+      tick: w.tick,
+      phase: w.phase,
+      winnerId: w.winnerId,
+      players: w.players,
+      projectiles: w.projectiles,
+    });
+    expect(world.mode).toBe("ffa");
   });
 
   it("returns null for garbage or wrong version", () => {

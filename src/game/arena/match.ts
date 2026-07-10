@@ -7,6 +7,7 @@ import type { Direction, MatchPhase, PlayerId, PlayerState, Vec2, World } from "
 import { initialDash } from "./dash";
 import { directionAngle } from "./logic";
 import { DEFAULT_WEAPON, type Weapon } from "./weapons";
+import { DEFAULT_MODE, type GameMode } from "./modes";
 import { FIELD_M, START_HEALTH } from "../constants";
 
 export interface SpawnSpec {
@@ -34,10 +35,14 @@ export function createPlayer(id: PlayerId, pos: Vec2, facing: Direction = "down"
 }
 
 /** Build a World from spawn specs, in the given phase (defaults to "playing"). */
-export function createWorld(spawns: SpawnSpec[], phase: MatchPhase = "playing"): World {
+export function createWorld(
+  spawns: SpawnSpec[],
+  phase: MatchPhase = "playing",
+  mode: GameMode = DEFAULT_MODE,
+): World {
   const players: Record<PlayerId, PlayerState> = {};
   for (const s of spawns) players[s.id] = createPlayer(s.id, s.pos, s.facing, s.weapon);
-  return { players, projectiles: [], phase, tick: 0, winnerId: null };
+  return { mode, players, projectiles: [], phase, tick: 0, winnerId: null };
 }
 
 export function alivePlayers(world: World): PlayerState[] {

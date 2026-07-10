@@ -36,15 +36,28 @@ async function toSquarePng(file: File): Promise<string> {
 export default function AvatarUploader({
   currentUrl,
   gameId,
+  allowRemove = false,
+  reloadAfterChange = true,
+  onChange,
 }: {
   currentUrl: string | null;
   /** When set, the upload is stored as a per-game override rather than the global profile photo. */
   gameId?: string;
+  /** Per-game avatars can be explicitly disabled while leaving the global profile photo untouched. */
+  allowRemove?: boolean;
+  reloadAfterChange?: boolean;
+  onChange?: (url: string | null) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(currentUrl);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"upload" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function commitUrl(nextUrl: string | null) {
+    setUrl(nextUrl);
+    onChange?.(nextUrl);
+    if (reloadAfterChange) setTimeout(() => window.location.reload(), 400);
+  }
 
   async function handleFile(file: File) {
     setError(null);
@@ -52,7 +65,7 @@ export default function AvatarUploader({
       setError("Please choose a JPG or PNG image.");
       return;
     }
-    setBusy(true);
+    setBusy("upload");
     try {
       const dataUrl = await toSquarePng(file);
       const res = await fetch("/api/avatar", {
@@ -62,13 +75,31 @@ export default function AvatarUploader({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error ?? "Upload failed.");
-      setUrl(body.avatarUrl ?? null);
-      // Re-render the rest of the app (header, etc.) which reads the member server-side.
-      setTimeout(() => window.location.reload(), 400);
+      commitUrl(body.avatarUrl ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function handleRemove() {
+    if (!gameId) return;
+    setError(null);
+    setBusy("remove");
+    try {
+      const res = await fetch("/api/avatar", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Could not remove the photo.");
+      commitUrl(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove the photo.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -93,14 +124,26 @@ export default function AvatarUploader({
         </span>
       )}
       <div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => inputRef.current?.click()}
-          className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-        >
-          {busy ? "Uploading…" : url ? "Change photo" : "Upload photo"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => inputRef.current?.click()}
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {busy === "upload" ? "Uploading…" : url ? "Change photo" : "Upload photo"}
+          </button>
+          {allowRemove && gameId && url && (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void handleRemove()}
+              className="rounded-lg border border-red-400/60 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300"
+            >
+              {busy === "remove" ? "Removing…" : "Remove photo"}
+            </button>
+          )}
+        </div>
         <input
           ref={inputRef}
           type="file"
