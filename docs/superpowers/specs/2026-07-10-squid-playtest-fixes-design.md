@@ -113,3 +113,14 @@ Vitest, colocated:
 
 More stages; retry button on fail; carrying a cumulative timer across levels; touch controls;
 other ROADMAP Track F items not listed above.
+
+## As built (2026-07-10)
+
+§3's sketch nudges only `head.pos.y`; measured, that plateaus at 0.444 m regardless of `K` —
+the constraint solver's rigid leg chains cancel a head-only push back out. Fix: apply the same
+capped nudge to the head **and** to each planted leg's root point, so the lift is shared through
+the chain instead of fought by it. Final constants: `STAND_HEAD_Y_M=0.75`,
+`SUPPORT_PER_LEG_MPS2=2.5`, `STAND_GAIN=50` (raised from the sketch's 30 to compensate for the
+force now being split across more points). Measured equilibrium ≈0.575 m head height with all 8
+legs planted; sags monotonically as fewer legs are planted; exactly zero net force with zero
+planted, preserving the "legs as base, not a balloon" property.

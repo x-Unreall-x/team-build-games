@@ -787,7 +787,7 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 holds ONE leg at a time (click to grab, Space to cycle; ←/→ swing, hold ↑ to lift/replant). Planted
 legs are the base that propels the body (QWOP-style, emergent from pinned tips + rigid chains).
 Rounds are timed; the host posts finish times to a per-stage **team highscore board** shown in the
-waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.5 m hole at 3 m — head in ⇒ game over).
+waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.9 m hole at 3 m — head in ⇒ game over).
 
 - **Module map:** pure core `src/game/squid/{constants,stage,types,verlet,octopus,control,intent,sim,match}.ts`
   (fully unit-tested, no clock/RNG/engine imports; clock accumulates injected `dt`); net
@@ -801,18 +801,35 @@ waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.5 m hole at 3 
 - **Live-verified (headless Playwright):** lobby → stage select → countdown → grab (click + Space) →
   walk → **Finish! 3:27.1** → score saved → dashboard row; API bounds all 400; two-tab roster sync
   over live Nostr relays. Playtest caught + fixed a real clock bug (timer counted frames, not dt).
-- **Open follow-ups (feel, next playtest):** collapsed stance (3-segment legs buckle — head drags;
-  consider joint stiffness / head↔tip struts); solo progress walls at The Gap's edge (rear pinned
-  anchors + lead tips can't plant — fail state hard to reach solo; tune hole/stance or embrace as
-  co-op challenge); sticky-lifted abandoned legs dangle below the floor (clip or auto-replant);
-  `SWING_LIFTED_MPS=0.5` is deliberate but sluggish (raising it is capped by the <0.15 m head-drift
-  test); more stages; per-member stats via Track B; touch controls; SFX polish; WASD aliases in the
-  controls legend.
+- **Fixed 2026-07-10 (playtest-fixes round,
+  `docs/superpowers/specs/2026-07-10-squid-playtest-fixes-design.md`):** collapsed stance — added a
+  capped support spring (`STAND_HEAD_Y_M=0.75`, `SUPPORT_PER_LEG_MPS2=2.5`, `STAND_GAIN=50`; applied
+  to the head **and** each planted leg's root, since a head-only push was cancelled by the solver;
+  equilibrium ≈0.575 m head height with all 8 planted, sags with fewer, exactly zero with none);
+  sticky-lifted abandoned legs dangling below the floor — legs with no controller are force-unlifted
+  every tick (they drop and re-plant) and `solve()` no longer skips ground clamping for lifted points.
+  Also landed this round: The Gap widened 0.5 m → 0.9 m (span 3.0–3.9); host-only "Next level ▶" on
+  the finish overlay chains stage1 → stage2 via the normal `squidStart` broadcast (no button on
+  stage2 or after a fail; each stage still scores separately).
+- **Open follow-ups (feel, next playtest):** solo progress walls at The Gap's edge — re-evaluate now
+  that stance + the wider hole have landed; `SWING_LIFTED_MPS=0.5` is deliberate but sluggish
+  (raising it is capped by the <0.15 m head-drift test); more stages; per-member stats via Track B;
+  touch controls; SFX polish; WASD aliases in the controls legend.
 
 ---
 
 ## Progress log
 
+- **2026-07-10** — **Track F: Squid playtest-fixes round shipped.** Per
+  `docs/superpowers/specs/2026-07-10-squid-playtest-fixes-design.md`: force-unlift legs with no
+  controller each tick and dropped `skipGround` from `solve()` so no point ever ends a tick below
+  the floor (fixes the sticky-lifted-leg bug); widened The Gap 0.5 m → 0.9 m (span 3.0–3.9); added
+  a capped support spring for an active stance (`STAND_HEAD_Y_M=0.75`,
+  `SUPPORT_PER_LEG_MPS2=2.5`, `STAND_GAIN=50`) — applied to the head *and* each planted leg's root
+  (a head-only nudge is cancelled by the solver), measured equilibrium ≈0.575 m head height with
+  all 8 planted, sagging with fewer, zero force with none; and a host-only "Next level ▶" button
+  on the finish overlay that chains stage1 → stage2 via the normal `squidStart` broadcast, each
+  stage still scoring separately. 456 tests green, tsc clean.
 - **2026-07-10** — **merge-reconcile(overrun): netcode made per-game.** Merging `main` (which had landed
   Squid's own "netcode per game" resolution — `1fffecb`) into `game/overrun-slice` surfaced the same
   architectural fork on the Overrun side: this branch had made the shared `net/sync.ts` a generic
