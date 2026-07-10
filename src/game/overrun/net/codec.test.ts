@@ -4,7 +4,17 @@ import { applyDelta, diffWorld, qWorld, unqWorld } from "./codec";
 import { createShooterWorld } from "../match";
 import { stepShooter } from "../sim";
 import { SHOOTER_DT, MAX_ENEMIES, MAX_PICKUPS, MAX_EVENTS } from "../constants";
-import type { ShooterIntent, ShooterWorld } from "../types";
+import { MAX_PENDING } from "../waves";
+import { ENEMY_KINDS } from "../enemies";
+import { PERK_IDS } from "../perks";
+import type { EnemyKind, ShooterIntent, ShooterWorld } from "../types";
+
+describe("digit-string wire encoding guard", () => {
+  it("PERK_IDS and ENEMY_KINDS each stay under 10 entries (qPlayer's `pk` and qWorld's `pd` encode indices as single decimal DIGITS via join(''); a 10th entry would silently corrupt the wire)", () => {
+    expect(PERK_IDS.length).toBeLessThan(10);
+    expect(ENEMY_KINDS.length).toBeLessThan(10);
+  });
+});
 
 const IDLE: ShooterIntent = { move: { up: false, down: false, left: false, right: false }, fire: false, reload: false, perkPick: null };
 const idle = (w: ShooterWorld) => Object.fromEntries(Object.keys(w.players).map((id) => [id, IDLE]));
@@ -90,6 +100,41 @@ describe("delta encode/apply", () => {
     const stale = { ...prev, tick: prev.tick - 3 };
     expect(applyDelta(stale, d)).toBe(stale);
   });
+
+  it("a draining pending queue delta-encodes as a drop count (pdo), not the full digit-string", () => {
+    const prev = unqWorld(qWorld(fatWorld()));
+    const prevPending: EnemyKind[] = ["rusher", "rusher", "tank", "rusher", "rusher"];
+    const prevWithPending: ShooterWorld = { ...prev, pending: prevPending };
+    const curWithPending: ShooterWorld = { ...prevWithPending, tick: prev.tick + 1, pending: prevPending.slice(2) };
+    const d = diffWorld(qWorld(prevWithPending), qWorld(curWithPending));
+    expect(d.pdo).toBe(2);
+    expect(d.pd).toBeUndefined();
+    const rebuilt = applyDelta(prevWithPending, d);
+    expect(rebuilt).toEqual(unqWorld(qWorld(curWithPending)));
+  });
+
+  it("a non-drain pending change (wave start: queue replaced wholesale) still ships the full pd string", () => {
+    const prev = unqWorld(qWorld(fatWorld()));
+    const prevWithPending: ShooterWorld = { ...prev, pending: ["rusher"] as EnemyKind[] };
+    const curWithPending: ShooterWorld = {
+      ...prevWithPending, tick: prev.tick + 1,
+      pending: ["tank", "rusher", "tank"] as EnemyKind[], // NOT a suffix of prev's queue
+    };
+    const d = diffWorld(qWorld(prevWithPending), qWorld(curWithPending));
+    expect(d.pd).toBeDefined();
+    expect(d.pdo).toBeUndefined();
+    const rebuilt = applyDelta(prevWithPending, d);
+    expect(rebuilt).toEqual(unqWorld(qWorld(curWithPending)));
+  });
+
+  it("an unchanged pending queue ships neither pd nor pdo", () => {
+    const prev = unqWorld(qWorld(fatWorld()));
+    const cur: ShooterWorld = { ...prev, tick: prev.tick + 1 };
+    const d = diffWorld(qWorld(prev), qWorld(cur));
+    expect(d.pd).toBeUndefined();
+    expect(d.pdo).toBeUndefined();
+    expect(applyDelta(prev, d)).toEqual(unqWorld(qWorld(cur)));
+  });
 });
 
 describe("byte budget (the P-A0 guarantee)", () => {
@@ -102,6 +147,17 @@ describe("byte budget (the P-A0 guarantee)", () => {
     let cur = w;
     for (let t = 0; t < 3; t++) cur = stepShooter(cur, idle(cur), SHOOTER_DT);
     const delta = JSON.stringify({ v: 1, m: { t: "oDelta", d: diffWorld(qWorld(w), qWorld(cur)) } });
+    expect(delta.length).toBeLessThanOrEqual(4096);
+  });
+
+  it("endless-run high-stress: pending at MAX_PENDING + 60 enemies + 8 players — keyframe ≤ 6144, draining delta ≤ 4096", () => {
+    const bigPending: EnemyKind[] = Array.from({ length: MAX_PENDING }, (_, i) => (i % 4 === 0 ? "tank" : "rusher"));
+    const w: ShooterWorld = { ...fatWorld(), pending: bigPending };
+    const key = JSON.stringify({ v: 1, m: { t: "oSnap", w: qWorld(w) } });
+    expect(key.length).toBeLessThanOrEqual(6144);
+
+    const drained: ShooterWorld = { ...w, tick: w.tick + 1, pending: bigPending.slice(3) };
+    const delta = JSON.stringify({ v: 1, m: { t: "oDelta", d: diffWorld(qWorld(w), qWorld(drained)) } });
     expect(delta.length).toBeLessThanOrEqual(4096);
   });
 });

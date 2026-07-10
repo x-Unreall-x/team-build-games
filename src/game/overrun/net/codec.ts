@@ -66,7 +66,8 @@ export interface ODelta {
   ev: QEvent[]; // events newer than the base tick
   s: [number, number, number, number, number]; // wave, partySize, intermissionCs, score, pity
   sq: number;
-  pd?: string; // pending — only when changed
+  pd?: string; // pending — full digit-string, only on a non-drain change (e.g. wave start)
+  pdo?: number; // pending drained by N from the front (draining is the only in-wave mutation) — cheap alternative to `pd`
 }
 
 const qVec = (v: Vec2): [number, number] => [cm(v.x), cm(v.y)];
@@ -160,7 +161,18 @@ export function diffWorld(prevQ: QWorld, curQ: QWorld): ODelta {
     ev: curQ.ev.filter((e) => (e[0] as number) > prevQ.t),
     s: [curQ.wv, curQ.ps, curQ.im, curQ.sc, curQ.py], sq: curQ.sq,
   };
-  if (curQ.pd !== prevQ.pd) d.pd = curQ.pd;
+  if (curQ.pd !== prevQ.pd) {
+    // Draining (spawning from the front of the queue) is the only in-wave mutation
+    // `pending` ever undergoes, and it always leaves curQ.pd as a strict SUFFIX of
+    // prevQ.pd. Ship just the drop count then — a wave-50/8-player queue at
+    // MAX_PENDING would otherwise re-ship its full digit-string on every delta.
+    const dropCount = prevQ.pd.length - curQ.pd.length;
+    if (dropCount > 0 && prevQ.pd.slice(dropCount) === curQ.pd) {
+      d.pdo = dropCount;
+    } else {
+      d.pd = curQ.pd; // any other change (wave start: queue replaced wholesale)
+    }
+  }
   return d;
 }
 
@@ -190,7 +202,8 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
   return {
     tick: d.t, phase: d.ph === 1 ? "ended" : "playing", seed: prev.seed,
     wave: d.s[0], partySize: d.s[1], intermission: s(d.s[2]),
-    pending: d.pd !== undefined ? unqPending(d.pd) : prev.pending,
+    pending:
+      d.pdo !== undefined ? prev.pending.slice(d.pdo) : d.pd !== undefined ? unqPending(d.pd) : prev.pending,
     players, enemies, pickups, events: capped, score: d.s[3], spawnSeq: d.sq, pity: d.s[4],
   };
 }

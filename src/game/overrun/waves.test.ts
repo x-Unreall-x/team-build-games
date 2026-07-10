@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeWave, spawnPos, waveBudget } from "./waves";
+import { composeWave, MAX_PENDING, spawnPos, waveBudget } from "./waves";
 import { ENEMIES } from "./enemies";
 import { OVERRUN_FIELD_M } from "./constants";
 
@@ -31,6 +31,19 @@ describe("composeWave", () => {
   it("mixes tanks in from wave 3 (probabilistically, over several seeds)", () => {
     const kinds = new Set([1, 2, 3, 4, 5].flatMap((seed) => composeWave(seed, 6, 4)));
     expect(kinds.has("tank")).toBe(true);
+  });
+
+  it("under the MAX_PENDING cap, behavior is unchanged: spends the whole budget", () => {
+    const q = composeWave(42, 4, 3);
+    expect(q.length).toBeLessThan(MAX_PENDING);
+    const cost = q.reduce((s, k) => s + ENEMIES[k].cost, 0);
+    expect(cost).toBe(waveBudget(4, 3));
+  });
+
+  it("endless-run guard: a huge budget (wave 50, 8 players) is capped at exactly MAX_PENDING", () => {
+    expect(waveBudget(50, 8)).toBeGreaterThan(MAX_PENDING * ENEMIES.tank.cost); // budget dwarfs the cap even in tank-cost terms
+    const q = composeWave(42, 50, 8);
+    expect(q.length).toBe(MAX_PENDING);
   });
 });
 
