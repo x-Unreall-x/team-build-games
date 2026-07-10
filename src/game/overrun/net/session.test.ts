@@ -120,4 +120,26 @@ describe("OverrunSession lifecycle", () => {
     sessions[0]!.start();
     expect(sessions.every((s) => s.phase === "lobby")).toBe(true);
   });
+
+  it("wipe reaches the client too: a host-side wipe must be broadcast even off the snapshot cadence (CRITICAL-1 regression)", () => {
+    // 2 idle players never fight back, so wave enemies eventually wipe the party.
+    // Without the adapter fix, if the wipe tick doesn't land on a snapshot-cadence
+    // boundary the "ended" world is never broadcast and the client hangs in
+    // "playing" forever.
+    const { sessions } = makeParty(2);
+    sessions[0]!.start();
+    run(sessions, 3.1); // countdown -> playing
+    expect(sessions.every((s) => s.phase === "playing")).toBe(true);
+
+    const MAX_TICKS = 1800; // 60 sim-seconds bound (rushers: 5 dmg/0.5s contact, 100 HP — a wipe lands well inside this)
+    for (let i = 0; i < MAX_TICKS && sessions[0]!.phase !== "ended"; i++) {
+      for (const s of sessions) s.frame(SHOOTER_DT, RAW);
+    }
+    expect(sessions[0]!.phase).toBe("ended"); // host wiped within the bound
+
+    // Run a few more frames so the client's engine receives the broadcast carrying
+    // the phase transition (a delta or forced keyframe, depending on cadence).
+    for (let i = 0; i < 10; i++) for (const s of sessions) s.frame(SHOOTER_DT, RAW);
+    expect(sessions[1]!.phase).toBe("ended"); // client must have converged too — not hung at "playing"
+  });
 });

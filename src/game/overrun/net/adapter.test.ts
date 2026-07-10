@@ -82,4 +82,31 @@ describe("overrunSyncAdapter cadence", () => {
     expect(out.players.b!.status).toBe("dead");
     expect(overrunSyncAdapter.onPeerLeave!(out, "ghost")).toBe(out);
   });
+
+  it("forces the ended-phase transition out even off the snapshot cadence, then suppresses duplicate frozen sends", () => {
+    // Find a seed whose wipe tick does NOT land on a snapshot-cadence boundary —
+    // that's the case the old code silently dropped (never broadcast → client hangs).
+    let ended: ShooterWorld | null = null;
+    let seed = 1;
+    for (; seed < 200 && ended === null; seed++) {
+      let world = createShooterWorld(["a", "b"], seed);
+      for (let guard = 0; guard < 3000 && world.phase !== "ended"; guard++) {
+        world = stepShooter(world, idle(world), SHOOTER_DT);
+      }
+      if (world.phase === "ended" && world.tick % SNAPSHOT_EVERY_TICKS !== 0) ended = world;
+    }
+    expect(ended).not.toBeNull();
+    const w = ended!;
+    expect(w.tick % SNAPSHOT_EVERY_TICKS).not.toBe(0); // confirms the non-boundary case
+
+    // Last broadcast (prevSent) predates the wipe and is still "playing".
+    const prevSent = createShooterWorld(["a", "b"], seed - 1);
+    const keyframe = overrunSyncAdapter.encodeSnapshot(w, prevSent);
+    expect(keyframe).not.toBeNull();
+    expect((JSON.parse(keyframe!) as { m: { t: string } }).m.t).toBe("oSnap");
+
+    // Once that keyframe is "sent" (prevSent becomes the frozen ended world itself),
+    // repeated calls against the same frozen tick+phase must not spam identical snapshots.
+    expect(overrunSyncAdapter.encodeSnapshot(w, w)).toBeNull();
+  });
 });

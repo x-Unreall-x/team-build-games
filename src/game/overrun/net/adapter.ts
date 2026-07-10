@@ -20,6 +20,15 @@ export const overrunSyncAdapter: SyncAdapter<ShooterWorld, ShooterIntent> = {
   coerceIntent: coerceShooterIntent,
   encodeInput: (_w, intent) => encode({ t: "oInput", intent }),
   encodeSnapshot: (w, prevSent) => {
+    // Frozen-tick guard: once the world stops advancing (phase "ended"), repeated
+    // calls see the exact same tick+phase as last broadcast — skip, don't spam.
+    if (prevSent !== null && prevSent.tick === w.tick && prevSent.phase === w.phase) return null;
+    // Phase-transition guard: a phase flip (e.g. → "ended") must reach clients even
+    // off the snapshot cadence, or a wipe landing on a non-boundary tick never ships
+    // and clients hang in the old phase forever. Force a keyframe.
+    if (prevSent !== null && prevSent.phase !== w.phase) {
+      return encode({ t: "oSnap", w: qWorld(w) });
+    }
     if (w.tick % SNAPSHOT_EVERY_TICKS !== 0 || w.tick === 0) return null;
     const snapIndex = w.tick / SNAPSHOT_EVERY_TICKS;
     if (prevSent === null || snapIndex % KEYFRAME_EVERY === 0) {
