@@ -41,15 +41,15 @@ export const ARCADE_GAMES: ArcadeGame[] = [
     chip: "border-emerald-400/40 text-emerald-300",
   },
   {
-    slug: "tactics",
-    name: "Tactics",
-    kind: "Turn-based",
-    players: "2–8 players",
+    slug: "overrun",
+    name: "Overrun",
+    kind: "Co-op horde shooter",
+    players: "1–8 players",
     blurb:
-      "For the chess brains. Outthink the room one turn at a time — no reflexes required, egos still at risk.",
-    href: "/games/tactics",
-    status: "soon",
-    chip: "border-fuchsia-400/40 text-fuchsia-300",
+      "The waves don't stop. Scavenge guns, pick perks on the run, and keep your team standing — Crimsonland energy, office-friendly rounds.",
+    href: "/games/overrun",
+    status: "live",
+    chip: "border-red-400/40 text-red-300",
   },
   {
     slug: "mystery",

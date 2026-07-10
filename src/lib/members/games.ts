@@ -11,7 +11,10 @@ export interface GameMeta {
   accent: string;
 }
 
-export const GAMES: GameMeta[] = [{ id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald-500/20" }];
+export const GAMES: GameMeta[] = [
+  { id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald-500/20" },
+  { id: "overrun", name: "Overrun", accent: "from-red-500/20 to-amber-500/20" },
+];
 
 /** Narrow an untrusted value to a known game id (the server-side allowlist for writes). */
 export function isKnownGameId(id: unknown): id is string {
