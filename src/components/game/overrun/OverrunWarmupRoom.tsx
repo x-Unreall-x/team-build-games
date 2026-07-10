@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlayerId } from "../../../game/overrun/types";
+import { MAX_OVERRUN_PLAYERS } from "../../../game/overrun/constants";
 
 /**
  * Overrun's warm-up room. Leaner than Arena's: no shape/weapon/avatar/bots/rounds —
@@ -30,7 +31,7 @@ interface Props {
 
 export default function OverrunWarmupRoom(props: Props) {
   const [copied, setCopied] = useState(false);
-  const canStart = props.roster.length >= 1;
+  const canStart = props.roster.length >= 1 && props.roster.length <= MAX_OVERRUN_PLAYERS;
 
   const copy = async () => {
     try {
@@ -83,19 +84,24 @@ export default function OverrunWarmupRoom(props: Props) {
           WASD move · mouse aim · hold LMB fire · R reload · 1/2/3 perks
         </p>
 
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          {props.isHost ? (
-            <button
-              onClick={() => canStart && props.onStart()}
-              aria-disabled={!canStart}
-              className={`rounded-lg px-5 py-2 font-semibold text-white ${
-                canStart ? "bg-red-600 hover:bg-red-500" : "cursor-not-allowed bg-red-600/50"
-              }`}
-            >
-              Start — co-op up to 8
-            </button>
-          ) : (
-            <span className="text-sm text-neutral-500">Waiting for the host…</span>
+        <div className="mt-2 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {props.isHost ? (
+              <button
+                onClick={() => canStart && props.onStart()}
+                aria-disabled={!canStart}
+                className={`rounded-lg px-5 py-2 font-semibold text-white ${
+                  canStart ? "bg-red-600 hover:bg-red-500" : "cursor-not-allowed bg-red-600/50"
+                }`}
+              >
+                Start — co-op up to 8
+              </button>
+            ) : (
+              <span className="text-sm text-neutral-500">Waiting for the host…</span>
+            )}
+          </div>
+          {props.isHost && props.roster.length > MAX_OVERRUN_PLAYERS && (
+            <span className="text-xs text-red-500">Too many players — the mesh caps at 8</span>
           )}
         </div>
       </div>
@@ -103,7 +109,7 @@ export default function OverrunWarmupRoom(props: Props) {
       {/* right: party list */}
       <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Squad · {props.roster.length}
+          Squad · {props.roster.length}/{MAX_OVERRUN_PLAYERS}
         </h3>
         <ul className="flex flex-col gap-2">
           {props.roster.map((p, i) => (

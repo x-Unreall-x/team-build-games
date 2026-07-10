@@ -19,7 +19,7 @@ import type { Transport } from "../../net/transport";
 import { decode, encode } from "../../net/protocol";
 import { SyncEngine } from "../../net/sync";
 import { electHost } from "../../net/election";
-import { OVERRUN_COUNTDOWN_S, MAX_CATCHUP_TICKS, SHOOTER_DT, SNAPSHOT_INTERVAL_S } from "../constants";
+import { OVERRUN_COUNTDOWN_S, MAX_CATCHUP_TICKS, SHOOTER_DT, SNAPSHOT_INTERVAL_S, MAX_OVERRUN_PLAYERS } from "../constants";
 import { initialShooterMemory, inputToShooterIntent } from "../intent";
 import { createShooterWorld } from "../match";
 import { overrunSyncAdapter } from "./adapter";
@@ -122,6 +122,7 @@ export class OverrunSession {
     if (this.hostId() !== this.localId) return;
     const players = rosterList(this.roster).map((p) => ({ id: p.id, name: p.name }));
     if (players.length < 1) return;
+    if (players.length > MAX_OVERRUN_PLAYERS) return;
     const seed = Math.floor(Math.random() * 0x7fffffff);
     this.t.send(encode({ t: "oStart", countdownMs: OVERRUN_COUNTDOWN_S * 1000, seed, players }));
     this.beginMatch(players, seed);

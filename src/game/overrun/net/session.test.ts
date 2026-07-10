@@ -113,4 +113,11 @@ describe("OverrunSession lifecycle", () => {
     sessions[0]!.toLobby();
     expect(sessions[0]!.phase).toBe("lobby");
   });
+
+  it("9 peers: host start() is a no-op (phase stays lobby for all)", () => {
+    const { sessions } = makeParty(9);
+    expect(sessions[0]!.getState().roster.length).toBe(9);
+    sessions[0]!.start();
+    expect(sessions.every((s) => s.phase === "lobby")).toBe(true);
+  });
 });

@@ -52,3 +52,7 @@ export const PITY_LIMIT = 25;
 // --- XP / perks ---
 export const XP_BASE = 20;
 export const XP_PER_LEVEL = 15;
+
+// --- roster ---
+/** Mesh ceiling — the P2P full mesh degrades past this many peers. */
+export const MAX_OVERRUN_PLAYERS = 8;
