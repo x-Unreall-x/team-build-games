@@ -6,7 +6,7 @@
  */
 
 import Phaser from "phaser";
-import { PALETTE } from "../../arena/render/scene";
+import { SQUID_PALETTE } from "./palette";
 import { COURSE_M, FINISH_X_M, HEAD_R_M, SQUID_PX_PER_M } from "../constants";
 import { HEAD } from "../octopus";
 import { stageById } from "../stage";
@@ -28,7 +28,7 @@ const fromPx = (px: number, py: number): { x: number; y: number } => ({
 });
 
 const UNHELD = 0x64748b;
-const colorOf = (i: number): number => PALETTE[i % PALETTE.length] ?? UNHELD;
+const colorOf = (i: number): number => SQUID_PALETTE[i % SQUID_PALETTE.length] ?? UNHELD;
 
 export class SquidScene extends Phaser.Scene {
   private cfg!: SquidConfig;

@@ -40,7 +40,7 @@ export interface SquidStartPlayer {
 }
 
 export type NetMessage =
-  | { t: "hello"; name: string; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
+  | { t: "hello"; name: string; iconColor?: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
   | { t: "kick"; targetId: PlayerId }
   // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.

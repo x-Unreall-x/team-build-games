@@ -1,6 +1,6 @@
 // src/components/game/lobby/SquidWarmupRoom.tsx
 import { useState } from "react";
-import { PALETTE } from "../../../game/arena/render/scene";
+import { SQUID_PALETTE } from "../../../game/squid/render/palette";
 import type { LobbyPlayer } from "../../../game/net/lobby";
 import type { PlayerId } from "../../../game/arena/types";
 import { STAGES } from "../../../game/squid/stage";
@@ -8,7 +8,7 @@ import type { StageId } from "../../../game/squid/stage";
 import { MAX_PLAYERS } from "../../../game/constants";
 import { formatTimeMs, type ScoreEntry } from "../../../lib/squid/scores";
 
-const hex = (i: number) => `#${(PALETTE[i % PALETTE.length] ?? 0).toString(16).padStart(6, "0")}`;
+const hex = (i: number) => `#${(SQUID_PALETTE[i % SQUID_PALETTE.length] ?? 0).toString(16).padStart(6, "0")}`;
 
 interface Props {
   roster: LobbyPlayer[];
@@ -64,7 +64,7 @@ export default function SquidWarmupRoom(props: Props) {
         <div className="flex flex-col gap-1 text-sm">
           <span className="text-neutral-500">Your leg color</span>
           <div className="flex flex-wrap gap-2">
-            {PALETTE.map((_, i) => (
+            {SQUID_PALETTE.map((_, i) => (
               <button
                 key={i}
                 aria-label={`color ${i + 1}`}
@@ -134,7 +134,7 @@ export default function SquidWarmupRoom(props: Props) {
           <ul className="flex flex-col gap-2">
             {props.roster.map((p) => (
               <li key={p.id} className="flex items-center gap-2">
-                <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: hex(p.iconColor) }} />
+                <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: hex(p.iconColor ?? 0) }} />
                 <span className="flex-1 truncate text-sm">
                   {p.name}
                   {p.id === props.localId && " (you)"}

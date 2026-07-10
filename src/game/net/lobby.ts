@@ -12,6 +12,7 @@ import { MAX_PLAYERS } from "../constants";
 export interface LobbyPlayer {
   id: PlayerId;
   name: string;
+  iconColor?: number; // squid leg tint (render-only); the arena identifies players by fighter shape
   shape: Shape; // cosmetic fighter selection (render-only)
   weapon: Weapon; // equipped weapon (sim-relevant)
   avatarUrl?: string | null; // signed-in member's face photo (render-only)

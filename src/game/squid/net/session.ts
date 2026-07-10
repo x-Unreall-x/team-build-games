@@ -106,7 +106,7 @@ export class SquidSession {
     const players: SquidStartPlayer[] = rosterList(this.roster).map((p) => ({
       id: p.id,
       name: p.name,
-      iconColor: p.iconColor,
+      iconColor: p.iconColor ?? 0,
       avatarUrl: p.avatarUrl ?? null,
     }));
     if (players.length < 1) return;
@@ -211,7 +211,7 @@ export class SquidSession {
         this.roster = upsert(this.roster, {
           id: from,
           name: m.name,
-          iconColor: m.iconColor,
+          iconColor: m.iconColor ?? 0,
           shape: DEFAULT_SHAPE,
           weapon: DEFAULT_WEAPON,
           avatarUrl: coerceAvatarUrl(m.avatarUrl),
