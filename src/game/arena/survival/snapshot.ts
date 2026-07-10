@@ -22,6 +22,7 @@ export interface SurvivalSnapshot {
   players: Record<PlayerId, PlayerState>;
   enemies: EnemyState[];
   run: SurvivalRun;
+  partySizeThisWave: number;
   waveStartTick: number;
   spawnCursor: number;
   projectiles: Projectile[];
@@ -38,6 +39,7 @@ export function survivalSnapshot(world: SurvivalWorld): SurvivalSnapshot {
     players: world.players,
     enemies: world.enemies,
     run: world.run,
+    partySizeThisWave: world.partySizeThisWave,
     waveStartTick: world.waveStartTick,
     spawnCursor: world.spawnCursor,
     projectiles: world.projectiles,
@@ -75,6 +77,7 @@ export function survivalWorldFromSnapshot(raw: SurvivalSnapshot): SurvivalWorld 
     players: (r.players && typeof r.players === "object" ? r.players : {}) as Record<PlayerId, PlayerState>,
     enemies: Array.isArray(r.enemies) ? r.enemies.map(coerceEnemy) : [],
     run: coerceRun(r.run),
+    partySizeThisWave: Math.max(1, Math.floor(num(r.partySizeThisWave, 1))),
     waveStartTick: nonNegInt(r.waveStartTick),
     spawnCursor: nonNegInt(r.spawnCursor),
     projectiles: Array.isArray(r.projectiles) ? (r.projectiles as Projectile[]) : [],

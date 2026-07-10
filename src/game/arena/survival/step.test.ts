@@ -109,6 +109,19 @@ describe("stepSurvival — campaign progression", () => {
     expect(next.outcome).toBe("won");
   });
 
+  it("revives a downed party on a level clear BEFORE testing for a wipe (same-tick edge)", () => {
+    // Final wave of a level clears the SAME tick the last ally is down: revive must win over wipe.
+    const base = createSurvivalWorld(["p1"], { seed: 5, wavesPerLevel: 1, campaignLevels: 5, endless: false });
+    const planLen = wavePlan(base.seed, 1, 1, base.partySizeThisWave).spawns.length;
+    const downed = { ...base.players.p1!, health: 0, status: "dead" as const };
+    const w: SurvivalWorld = { ...base, players: { p1: downed }, enemies: [], spawnCursor: planLen, waveStartTick: 0, tick: 5 };
+    const next = stepSurvival(w, noIntent(), DT);
+    expect(next.phase).toBe("playing"); // revived, not wiped
+    expect(next.outcome).toBeNull();
+    expect(next.players.p1!.status).toBe("alive");
+    expect(next.run.level).toBe(2); // levelled up
+  });
+
   it("fails the run when the whole party is down", () => {
     const base = createSurvivalWorld(["p1", "p2"], { seed: 1 });
     const dead = Object.fromEntries(
@@ -118,6 +131,24 @@ describe("stepSurvival — campaign progression", () => {
     const next = stepSurvival(w, noIntent(), DT);
     expect(next.phase).toBe("ended");
     expect(next.outcome).toBe("lost");
+  });
+});
+
+describe("stepSurvival — frozen party size", () => {
+  it("createSurvivalWorld freezes the wave's party size to the starting ally count", () => {
+    expect(createSurvivalWorld(["p1", "p2", "p3"], { seed: 1 }).partySizeThisWave).toBe(3);
+  });
+
+  it("spawns from the frozen partySizeThisWave, not the live player-map size (mid-wave leave can't fork)", () => {
+    // Frozen size 5, but only one ally remains in the map — spawn count must follow the frozen 5.
+    const base = createSurvivalWorld(["p1"], { seed: 3 });
+    // waveStartTick far in the past → every planned spawn is due on the first step (before enemies close in).
+    const w: SurvivalWorld = { ...base, partySizeThisWave: 5, waveStartTick: -1000, tick: 0, spawnCursor: 0 };
+    const next = stepSurvival(w, noIntent(), DT);
+    const planFrozen = wavePlan(w.seed, 1, 1, 5);
+    const planLive = wavePlan(w.seed, 1, 1, 1);
+    expect(planFrozen.spawns.length).not.toBe(planLive.spawns.length); // the two sizes really differ
+    expect(next.enemies.length).toBe(planFrozen.spawns.length);
   });
 });
 

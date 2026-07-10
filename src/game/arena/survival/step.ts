@@ -37,6 +37,11 @@ export interface SurvivalWorld {
   players: Record<PlayerId, PlayerState>;
   enemies: EnemyState[];
   run: SurvivalRun;
+  /**
+   * Party size the CURRENT wave's spawn count is scaled to — frozen at wave start (allies alive
+   * then) so a mid-wave leave/death can't change the horde size and fork replication/migration.
+   */
+  partySizeThisWave: number;
   /** Tick at which the current wave began emitting spawns. */
   waveStartTick: number;
   /** How many of the current wave plan's spawns have been emitted so far. */
@@ -79,6 +84,7 @@ export function createSurvivalWorld(ids: PlayerId[], opts: SurvivalOpts = {}): S
     players: centerSpawns(ids, fieldM),
     enemies: [],
     run: createRun(opts),
+    partySizeThisWave: Math.max(1, ids.length),
     waveStartTick: 0,
     spawnCursor: 0,
     projectiles: [],
@@ -158,8 +164,7 @@ function stepPlayer(p: PlayerState, intent: Intent | undefined, dt: number, tick
 
 /** Emit any planned spawns of the current wave whose relative atTick has elapsed. */
 function spawnDueEnemies(world: SurvivalWorld): { enemies: EnemyState[]; spawnCursor: number } {
-  const partySize = Object.keys(world.players).length;
-  const plan = wavePlan(world.seed, world.run.level, world.run.wave, partySize);
+  const plan = wavePlan(world.seed, world.run.level, world.run.wave, world.partySizeThisWave);
   const relTick = world.tick - world.waveStartTick;
   const enemies = [...world.enemies];
   let cursor = world.spawnCursor;
@@ -234,36 +239,41 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
     players[id] = health <= 0 ? { ...p, health: 0, status: "dead", attack: null } : { ...p, health };
   }
 
-  // 5) Progression. A full-party wipe fails the run; otherwise a fully-spawned, fully-cleared wave
-  //    advances the campaign (and revives downed allies on a level-up).
-  let { run, waveStartTick, spawnCursor } = { run: world.run, waveStartTick: world.waveStartTick, spawnCursor: spawned.spawnCursor };
+  // 5) Progression. Resolve the wave/level machine and revive downed allies on a level clear FIRST,
+  //    THEN test for a wipe — so the last ally downed on the same tick the last enemy dies is revived
+  //    rather than losing the run (a level clear beats a same-tick wipe).
+  let run = world.run;
+  let waveStartTick = world.waveStartTick;
+  let spawnCursor = spawned.spawnCursor;
+  let partySizeThisWave = world.partySizeThisWave;
   let outcome: SurvivalOutcome = null;
   let phase: SurvivalWorld["phase"] = "playing";
-  const anyAlive = Object.values(players).some((p) => p.status === "alive");
 
-  if (!anyAlive) {
+  const planLen = wavePlan(world.seed, run.level, run.wave, partySizeThisWave).spawns.length;
+  const waveCleared = spawnCursor >= planLen && !enemies.some((e) => e.status === "alive");
+  if (waveCleared) {
+    const cleared = clearWave(run);
+    run = cleared.run;
+    waveStartTick = world.tick + 1;
+    spawnCursor = 0;
+    enemies = [];
+    if (cleared.leveled) {
+      for (const id of Object.keys(players)) {
+        players[id] = { ...players[id]!, health: START_HEALTH, status: "alive", attack: null };
+      }
+    }
+    // Freeze the next wave's party size to the allies alive at its start (rides snapshots + migration).
+    partySizeThisWave = Math.max(1, Object.values(players).filter((p) => p.status === "alive").length);
+    if (run.phase === "won") {
+      phase = "ended";
+      outcome = "won";
+    }
+  }
+
+  if (phase === "playing" && !Object.values(players).some((p) => p.status === "alive")) {
     run = wipe(run);
     phase = "ended";
     outcome = "lost";
-  } else {
-    const allSpawned = spawnCursor >= wavePlan(world.seed, run.level, run.wave, Object.keys(players).length).spawns.length;
-    const noneAlive = !enemies.some((e) => e.status === "alive");
-    if (allSpawned && noneAlive) {
-      const cleared = clearWave(run);
-      run = cleared.run;
-      waveStartTick = world.tick + 1;
-      spawnCursor = 0;
-      enemies = [];
-      if (cleared.leveled) {
-        for (const id of Object.keys(players)) {
-          players[id] = { ...players[id]!, health: START_HEALTH, status: "alive", attack: null };
-        }
-      }
-      if (run.phase === "won") {
-        phase = "ended";
-        outcome = "won";
-      }
-    }
   }
 
   return {
@@ -274,6 +284,7 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
     enemies,
     projectiles,
     run,
+    partySizeThisWave,
     waveStartTick,
     spawnCursor,
     tick: world.tick + 1,
