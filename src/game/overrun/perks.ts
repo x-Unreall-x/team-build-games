@@ -59,12 +59,17 @@ export function xpToNext(level: number): number {
   return XP_BASE + XP_PER_LEVEL * level;
 }
 
-/** Three DISTINCT perks for a level-up, drawn by coordinate-hash (deterministic). */
-export function rollOffer(seed: number, tick: number, playerId: string): PerkOffer {
+/**
+ * Three DISTINCT perks for a level-up, drawn by coordinate-hash (deterministic).
+ * `level` (the level being awarded) is part of the hash coordinates so that two
+ * level-ups in the same tick — e.g. a big XP dump from a tank kill — roll
+ * DIFFERENT offers instead of duplicating the same three choices.
+ */
+export function rollOffer(seed: number, tick: number, playerId: string, level: number): PerkOffer {
   const pool = [...PERK_IDS];
   const choices: PerkId[] = [];
   for (let slot = 0; slot < 3; slot++) {
-    const idx = Math.floor(hash01(seed, tick, playerId, "perk", slot) * pool.length);
+    const idx = Math.floor(hash01(seed, tick, playerId, "perk", level, slot) * pool.length);
     choices.push(pool.splice(idx, 1)[0]!);
   }
   return { choices: choices as [PerkId, PerkId, PerkId] };

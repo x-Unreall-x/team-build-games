@@ -100,7 +100,7 @@ export function stepShooter(
       while (xp >= xpToNext(level)) {
         xp -= xpToNext(level);
         level += 1;
-        offers = [...offers, rollOffer(seed, tick, p.id)];
+        offers = [...offers, rollOffer(seed, tick, p.id, level)];
         events.push({ tick, kind: "levelup", playerId: p.id });
       }
       p = { ...p, xp, level, offers, stats: { ...p.stats, kills: p.stats.kills + 1 } };

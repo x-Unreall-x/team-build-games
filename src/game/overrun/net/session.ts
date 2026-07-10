@@ -124,8 +124,9 @@ export class OverrunSession {
     if (players.length < 1) return;
     if (players.length > MAX_OVERRUN_PLAYERS) return;
     const seed = Math.floor(Math.random() * 0x7fffffff);
-    this.t.send(encode({ t: "oStart", countdownMs: OVERRUN_COUNTDOWN_S * 1000, seed, players }));
-    this.beginMatch(players, seed);
+    const countdownMs = OVERRUN_COUNTDOWN_S * 1000;
+    this.t.send(encode({ t: "oStart", countdownMs, seed, players }));
+    this.beginMatch(players, seed, countdownMs);
   }
 
   /** HUD click path for a perk choice (keyboard 1/2/3 flows through RawShooterInput). */
@@ -268,14 +269,14 @@ export class OverrunSession {
         }
         break;
       case "oStart":
-        this.beginMatch(m.players, m.seed);
+        this.beginMatch(m.players, m.seed, m.countdownMs);
         break;
       default:
         break; // oInput/oSnap/oDelta are consumed by the SyncEngine's own handler
     }
   }
 
-  private beginMatch(players: { id: PlayerId; name: string }[], seed: number): void {
+  private beginMatch(players: { id: PlayerId; name: string }[], seed: number, countdownMs: number): void {
     // colorIndex is DERIVED, never carried on the wire: it's each player's position
     // in this host-ordered array (host built it via rosterList — sorted by id).
     this.meta = Object.fromEntries(players.map((p, i) => [p.id, { name: p.name, colorIndex: i }]));
@@ -302,7 +303,7 @@ export class OverrunSession {
     });
 
     this.phase = "countdown";
-    this.countdownLeft = OVERRUN_COUNTDOWN_S;
+    this.countdownLeft = countdownMs / 1000;
     this.matchEpoch += 1;
     this.opts.onChange();
   }
