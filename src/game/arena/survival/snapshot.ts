@@ -10,7 +10,7 @@
 
 import type { PlayerId, PlayerState, Projectile } from "../types";
 import { coerceEnemy, type EnemyState } from "./enemy";
-import type { SurvivalOutcome, SurvivalWorld } from "./step";
+import type { SurvivalOutcome, SurvivalState, SurvivalWorld } from "./step";
 import type { RunPhase, SurvivalRun } from "./campaign";
 
 export interface SurvivalSnapshot {
@@ -61,6 +61,23 @@ function coerceRun(raw: unknown): SurvivalRun {
     wavesPerLevel: Math.max(1, Math.floor(num(r.wavesPerLevel, 3))),
     campaignLevels: Math.max(1, Math.floor(num(r.campaignLevels, 5))),
     endless: r.endless === true,
+  };
+}
+
+/**
+ * Sanitize the `survival` block that rides on a shared World snapshot (the netcode path). Same clamps
+ * as the standalone snapshot above, minus the players/enemies which the World carries directly.
+ */
+export function coerceSurvivalState(raw: unknown): SurvivalState {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    seed: num(r.seed, 1),
+    fieldM: num(r.fieldM, 0) > 0 ? num(r.fieldM, 30) : 30,
+    run: coerceRun(r.run),
+    partySizeThisWave: Math.max(1, Math.floor(num(r.partySizeThisWave, 1))),
+    waveStartTick: nonNegInt(r.waveStartTick),
+    spawnCursor: nonNegInt(r.spawnCursor),
+    outcome: OUTCOMES.includes(r.outcome as never) ? (r.outcome as SurvivalOutcome) : null,
   };
 }
 

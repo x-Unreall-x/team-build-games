@@ -10,7 +10,8 @@
  * mode-branch + snapshot wiring is a later, separate slice.
  */
 
-import type { Intent, PlayerId, PlayerState, Projectile, Vec2 } from "../types";
+import type { Intent, PlayerId, PlayerState, Projectile, Vec2, World } from "../types";
+import type { GameMode } from "../modes";
 import { clampToField, directionAngle, directionFromInput, directionVector } from "../logic";
 import { consumeDashDistance, dashSpeedMultiplier, tickDashCooldown, tryStartDash } from "../dash";
 import { resolveAttack } from "../combat";
@@ -289,4 +290,80 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
     spawnCursor,
     tick: world.tick + 1,
   };
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// Integration with the shared World / SyncEngine.
+//
+// The netcode's engine is typed to `World` and calls `stepWorld`. Rather than fork the engine or
+// duplicate the World shape, survival rides on `World` via two additive optional fields — `enemies`
+// and `survival` (this block) — and `stepWorld` branches to `stepSurvivalWorld` when `world.survival`
+// is present. The adapters below are the ONLY bridge; `stepSurvival` above stays pure and unaware.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The survival-only slice carried on a `World` (absent in versus modes). */
+export interface SurvivalState {
+  seed: number;
+  fieldM: number;
+  run: SurvivalRun;
+  partySizeThisWave: number;
+  waveStartTick: number;
+  spawnCursor: number;
+  outcome: SurvivalOutcome;
+}
+
+/** The `winnerId` sentinel a survival World carries when the co-op party wins the campaign. */
+export const SURVIVAL_PARTY_WINNER = "party";
+
+function worldToSurvivalWorld(w: World): SurvivalWorld {
+  const s = w.survival!;
+  return {
+    phase: w.phase === "ended" ? "ended" : "playing",
+    outcome: s.outcome,
+    tick: w.tick,
+    seed: s.seed,
+    fieldM: s.fieldM,
+    players: w.players,
+    enemies: w.enemies ?? [],
+    run: s.run,
+    partySizeThisWave: s.partySizeThisWave,
+    waveStartTick: s.waveStartTick,
+    spawnCursor: s.spawnCursor,
+    projectiles: w.projectiles,
+  };
+}
+
+function survivalWorldToWorld(sw: SurvivalWorld, mode: GameMode): World {
+  return {
+    mode,
+    players: sw.players,
+    projectiles: sw.projectiles,
+    phase: sw.phase,
+    tick: sw.tick,
+    winnerId: sw.outcome === "won" ? SURVIVAL_PARTY_WINNER : null,
+    enemies: sw.enemies,
+    survival: {
+      seed: sw.seed,
+      fieldM: sw.fieldM,
+      run: sw.run,
+      partySizeThisWave: sw.partySizeThisWave,
+      waveStartTick: sw.waveStartTick,
+      spawnCursor: sw.spawnCursor,
+      outcome: sw.outcome,
+    },
+  };
+}
+
+/** Build a survival match as a shared `World` (host seeds; clients get the real state via snapshot). */
+export function createSurvivalMatchWorld(
+  ids: PlayerId[],
+  mode: GameMode,
+  opts: SurvivalOpts = {},
+): World {
+  return survivalWorldToWorld(createSurvivalWorld(ids, opts), mode);
+}
+
+/** `stepWorld`'s survival branch: unwrap → step the pure reducer → re-wrap onto the World. */
+export function stepSurvivalWorld(world: World, intents: Record<string, Intent>, dt: number): World {
+  return survivalWorldToWorld(stepSurvival(worldToSurvivalWorld(world), intents, dt), world.mode);
 }
