@@ -52,4 +52,23 @@ describe("SquidSession — lobby → start → play", () => {
     expect(a.frame(0, IDLE).world.control[4]).toBeNull();
     expect(a.frame(0, IDLE).world.playerIds).toEqual(["a"]);
   });
+
+  it("host chains the next stage from the ended phase: everyone re-enters countdown", () => {
+    const hub = new LocalHub();
+    const a = new SquidSession({ transport: hub.join("a"), name: "Ay", iconColor: 0, isCreator: true, onChange: () => {} });
+    const b = new SquidSession({ transport: hub.join("b"), name: "Bee", iconColor: 1, onChange: () => {} });
+
+    a.start("stage1");
+    const epoch1 = a.getState().matchEpoch;
+    a.phase = "ended";
+    b.phase = "ended";
+
+    a.start("stage2"); // what the Next level button calls
+    expect(a.phase).toBe("countdown");
+    expect(b.phase).toBe("countdown");
+    expect(a.getState().stage).toBe("stage2");
+    expect(b.getState().stage).toBe("stage2");
+    expect(a.getState().matchEpoch).toBe(epoch1 + 1);
+    expect(a.getState().roster.map((p) => p.id)).toEqual(["a", "b"]); // same party
+  });
 });

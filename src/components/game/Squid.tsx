@@ -8,7 +8,7 @@ import { buildJoinUrl, mintRoomId, parseRoomId } from "../../game/net/roomLink";
 import { buildIceServers, iceConfigFromEnv } from "../../game/net/ice";
 import { joinedIds } from "../../game/net/lobby";
 import { Sfx } from "../../game/audio/sfx";
-import { STAGES } from "../../game/squid/stage";
+import { STAGES, nextStageId } from "../../game/squid/stage";
 import type { StageId } from "../../game/squid/stage";
 import { formatTimeMs, type ScoreEntry } from "../../lib/squid/scores";
 import SquidWarmupRoom from "./lobby/SquidWarmupRoom";
@@ -197,6 +197,15 @@ export default function Squid() {
   const playAgain = () => {
     if (sessionState?.isHost) startRound();
   };
+  const startNextLevel = () => {
+    const state = sessionRef.current?.getState();
+    if (!state?.isHost) return;
+    const next = nextStageId(state.stage);
+    if (!next) return;
+    setStage(next); // keep the lobby selector + "Play again" in sync with what we're playing
+    sfxRef.current.resume();
+    sessionRef.current?.start(next);
+  };
   const backToRoom = () => {
     sessionRef.current?.toLobby();
     setResult(null);
@@ -249,6 +258,11 @@ export default function Squid() {
                 <h2 className="text-4xl font-bold">The octopus fell! ☠️</h2>
               )}
               <div className="flex gap-3">
+                {sessionState!.isHost && result.result === "finished" && nextStageId(sessionState!.stage) && (
+                  <button onClick={startNextLevel} className="rounded-lg bg-emerald-500 px-5 py-2 font-semibold text-white hover:bg-emerald-400">
+                    Next level ▶
+                  </button>
+                )}
                 {sessionState!.isHost && (
                   <button onClick={playAgain} className="rounded-lg bg-sky-500 px-5 py-2 font-semibold text-white hover:bg-sky-400">
                     Play again
