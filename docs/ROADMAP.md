@@ -785,9 +785,14 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
   arena imports in overrun (recursive test), own primitives/wire/lobby/HUD. Fixed along the way: plan's stepEnemy
   self-contradiction (signed clamp), revive-helper pre-combat snapshot, engine host-election staleness on
   peer-leave (`sync.ts` refresh — benefits arena too). 302 tests, tsc clean, build green (40 routes), HTTP smoke
-  verified. **Owner actions:** live cross-device playtest + balance pass; known follow-ups: dead re-claim/announce
-  branch in both sessions, engine listener accumulation on rematch, `%` stripped from merch sub by sanitizer,
-  shot events lack playerId (SFX attribution heuristic).
+  verified. Final whole-branch review (adversarial) caught + fixed pre-merge: **ended-phase never broadcast off
+  the snapshot cadence** (clients hung on wipe — forced phase-transition keyframe + duplicate suppression, networked
+  game-over e2e added), unbounded `pending` wire growth in endless runs (`MAX_PENDING` 150 + suffix-drop `pdo` delta),
+  same-tick multi-level duplicate perk offers, digit-string guards, separation guard extended to overrun components,
+  `countdownMs` consumed. 312 tests. **Owner actions:** live cross-device playtest + balance pass. Known follow-ups
+  (accepted): dead re-claim/announce branch in both sessions, engine listener accumulation on rematch, `%` stripped
+  from merch sub by sanitizer, shot events lack playerId (SFX attribution heuristic), lobby-host vs engine-host
+  divergence for a mid-match late joiner.
 - **2026-07-09** — **B1b per-game avatars shipped + data model decided.** Finalized the Track B data
   model (data-type collections keyed by `(memberId, gameId)`; leaderboard metrics as first-class columns).
   Built the avatar slice: created `PlayerAvatars` (ADMIN, deterministic `<gameSlug>-<memberId>` id; verified

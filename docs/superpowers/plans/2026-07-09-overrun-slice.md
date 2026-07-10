@@ -36,6 +36,13 @@ amendments OVERRIDE the corresponding details in the tasks below:
 2. **Baseline numbers**: 201 tests at execution start (not 151); maze (P9) and the merch storefront (`/shop/*` pages) already exist — the Task 14 merch link should point at the LIVE funnel exactly as `Arena.tsx` does at HEAD (re-read it; if its buildShopUrl call changed products/params, mirror the new form).
 3. **Read files at HEAD before mirroring**: `session.ts`/`lobby.ts`/`protocol.ts`/`Arena.tsx`/`WarmupRoom.tsx` all changed after the plan's code excerpts were written. Where a task says "mirror the arena X", the CURRENT file wins over any stale detail in this plan's prose.
 
+## Plan amendment — wire byte budgets (final review, 2026-07-10)
+
+Measured worst-case (all caps maxed) came in at keyframe 4156 B / delta 3135 B, over the original
+4096/2560 targets. The asserted ceilings are **keyframe ≤ 6144 B / delta ≤ 4096 B** (still a hard,
+test-pinned cap; ~15 KB/s steady-state at 10 Hz — well within DataChannel headroom). Endless-run
+growth is contained by `MAX_PENDING = 150` + suffix-drop (`pdo`) delta encoding of the spawn queue.
+
 ## Plan amendment — GAME SEPARATION (added 2026-07-09, user directive; OVERRIDES task details below)
 
 Arena and Overrun must be two fully separate games. Binding rules for every remaining task:
