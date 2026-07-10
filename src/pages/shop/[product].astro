@@ -12,7 +12,7 @@ import {
   unitPriceCents,
 } from "../../lib/merch/catalog";
 import { sanitizePayload } from "../../lib/merch/print";
-import { BODY_ASSET } from "../../game/arena/cosmetic";
+import { sanitizeVisual } from "../../lib/merch/visual";
 
 const product = productBySlug(Astro.params.product ?? "");
 if (!product) return Astro.redirect(`/shop/tee${Astro.url.search}`);
@@ -22,14 +22,11 @@ const payload = sanitizePayload({
   sub: Astro.url.searchParams.get("sub") ?? undefined,
 });
 
-// warrior: must be one of the known same-origin sprite paths
-const _rawWarrior = Astro.url.searchParams.get("warrior");
-const _allowedWarriors = new Set(Object.values(BODY_ASSET));
-const warriorSrc = _rawWarrior && _allowedWarriors.has(_rawWarrior) ? _rawWarrior : undefined;
-
-// avatar: must be a first-party Wix CDN URL
-const _rawAvatar = Astro.url.searchParams.get("avatar");
-const avatarUrl = _rawAvatar && /^https:\/\/static\.wixstatic\.com\//.test(_rawAvatar) ? _rawAvatar : undefined;
+// Optional player visual (fighter sprite + avatar photo) — validated in one place.
+const { warriorSrc, avatarUrl } = sanitizeVisual({
+  warrior: Astro.url.searchParams.get("warrior"),
+  avatar: Astro.url.searchParams.get("avatar"),
+});
 const error = Astro.url.searchParams.get("error");
 const errorMessage =
   error === "save"
@@ -126,6 +123,12 @@ if (avatarUrl)  tabParams.set("avatar",  avatarUrl);
         <input type="hidden" name="product" value={product.slug} />
         <input type="hidden" name="title" value={payload.title} />
         <input type="hidden" name="sub" value={payload.sub} />
+        {warriorSrc && <input type="hidden" name="warrior" value={warriorSrc} />}
+        {
+          avatarUrl && (
+            <input type="hidden" name="avatar" id="avatar-field" value={avatarUrl} data-url={avatarUrl} />
+          )
+        }
 
         <div class="rounded-xl border border-white/10 bg-night-900 p-5">
           <div class="font-display text-[9px] text-neutral-500">Print reads</div>
@@ -268,12 +271,15 @@ if (avatarUrl)  tabParams.set("avatar",  avatarUrl);
     refresh();
   }
 
-  // Avatar toggle: show/hide the avatar <image> in the SVG preview.
+  // Avatar toggle: show/hide the avatar <image> in the preview AND control whether the
+  // avatar rides through to checkout (clear the hidden field when it's switched off).
   const avatarToggle = document.getElementById("avatar-toggle") as HTMLInputElement | null;
+  const avatarField = document.getElementById("avatar-field") as HTMLInputElement | null;
   if (avatarToggle) {
     const syncAvatar = () => {
       for (const el of document.querySelectorAll<SVGElement>("[data-avatar]"))
         el.style.display = avatarToggle.checked ? "" : "none";
+      if (avatarField) avatarField.value = avatarToggle.checked ? (avatarField.dataset.url ?? "") : "";
     };
     avatarToggle.addEventListener("change", syncAvatar);
   }

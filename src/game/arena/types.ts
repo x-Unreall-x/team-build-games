@@ -6,6 +6,7 @@
  */
 
 import type { Weapon } from "./weapons";
+import type { GameMode } from "./modes";
 
 export interface Vec2 {
   x: number;
@@ -123,6 +124,8 @@ export interface Projectile {
 }
 
 export interface World {
+  /** Player-facing ruleset + field choice selected in the waiting room. */
+  mode: GameMode;
   players: Record<PlayerId, PlayerState>;
   /** In-flight ranged projectiles (host-owned). */
   projectiles: Projectile[];

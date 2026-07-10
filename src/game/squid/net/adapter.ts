@@ -1,8 +1,8 @@
 // src/game/squid/net/adapter.ts
-/** Squid's SyncAdapter: plugs the squid sim + wire messages into the shared SyncEngine. */
+/** Squid's SyncAdapter: plugs the squid sim + wire messages into squid's own SyncEngine. */
 
-import type { SyncAdapter } from "../../net/sync";
-import { decode, encode } from "../../net/protocol";
+import type { SyncAdapter } from "./engine";
+import { decodeSquid, encodeSquid } from "./protocol";
 import { electHost } from "../../net/election";
 import { stepSquid } from "../sim";
 import { coerceSquidIntent } from "../intent";
@@ -12,10 +12,10 @@ import type { SquidIntent, SquidWorld } from "../types";
 export const squidSyncAdapter: SyncAdapter<SquidWorld, SquidIntent> = {
   step: stepSquid,
   coerceIntent: coerceSquidIntent,
-  encodeInput: (world, intent) => encode({ t: "squidInput", tick: world.tick, intent }),
-  encodeSnapshot: (world) => encode({ t: "squidSnapshot", world }),
+  encodeInput: (world, intent) => encodeSquid({ t: "squidInput", tick: world.tick, intent }),
+  encodeSnapshot: (world) => encodeSquid({ t: "squidSnapshot", world }),
   decodeMessage: (data) => {
-    const m = decode(data);
+    const m = decodeSquid(data);
     if (!m) return null;
     if (m.t === "squidInput") return { kind: "input", intent: m.intent };
     if (m.t === "squidSnapshot") return { kind: "snapshot", world: m.world };

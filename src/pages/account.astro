@@ -4,7 +4,7 @@ import RootLayout from "../components/layout/layout.astro";
 import { getSessionMember } from "../lib/wix/members";
 import AvatarUploader from "../components/members/AvatarUploader";
 import { GAMES } from "../lib/members/games";
-import { getGameAvatarUrl } from "../lib/wix/playerAvatars";
+import { getGameAvatarSetting } from "../lib/wix/playerAvatars";
 import { resolveGameAvatar } from "../lib/members/gameAvatar";
 
 // SSR: read the current member (anonymous until sign-in).
@@ -15,8 +15,11 @@ const member = await getSessionMember();
 const games = member
   ? await Promise.all(
       GAMES.map(async (g) => {
-        const perGameUrl = await getGameAvatarUrl(member.id, g.id);
-        return { ...g, perGameUrl, resolvedUrl: resolveGameAvatar(perGameUrl, member.avatarUrl) };
+        const avatar = await getGameAvatarSetting(member.id, g.id);
+        return {
+          ...g,
+          resolvedUrl: resolveGameAvatar(avatar.url, member.avatarUrl, avatar.disabled),
+        };
       }),
     )
   : [];

@@ -45,6 +45,7 @@ const FRESH_HUD: HudState = { countdown: 3, health: 3, dashFraction: 1, attackFr
  * SoloDriver for practice — so the same canvas serves both.
  */
 export default function Arena({ isMember = false, avatarUrl = null }: { isMember?: boolean; avatarUrl?: string | null } = {}) {
+  const arenaFrameRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const sfxRef = useRef<Sfx>(new Sfx());
@@ -57,7 +58,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const nameRef = useRef("Player");
   const shapeRef = useRef<Shape>(DEFAULT_SHAPE);
   const weaponRef = useRef<Weapon>(DEFAULT_WEAPON);
-  const avatarUrlRef = useRef<string | null>(avatarUrl); // resolved Arena avatar (SSR); static for the island's life
+  const avatarUrlRef = useRef<string | null>(avatarUrl); // current Arena face photo used when the session starts
 
   const [, forceRender] = useState(0);
   const bump = useCallback(() => forceRender((n) => n + 1), []);
@@ -66,6 +67,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
   const [name, setName] = useState("Player");
   const [shape, setShape] = useState<Shape>(DEFAULT_SHAPE);
   const [weapon, setWeapon] = useState<Weapon>(DEFAULT_WEAPON);
+  const [arenaAvatarUrl, setArenaAvatarUrl] = useState<string | null>(avatarUrl);
   const [mode, setMode] = useState<GameMode>(DEFAULT_MODE);
   const [practiceDriver, setPracticeDriver] = useState<SoloDriver | null>(null);
   const [practiceEpoch, setPracticeEpoch] = useState(0);
@@ -161,6 +163,33 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
     });
     gameRef.current = game;
     if (import.meta.env.DEV) (window as unknown as { __arenaGame?: Phaser.Game }).__arenaGame = game;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const frame = arenaFrameRef.current;
+      if (!frame) return;
+
+      const rect = frame.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const stickyNav = document.querySelector<HTMLElement>("nav.sticky");
+      const safeTop = Math.max(0, stickyNav?.getBoundingClientRect().bottom ?? 0) + 12;
+      const visibleHeight = Math.max(
+        0,
+        Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, safeTop),
+      );
+      const usefulHeight = Math.min(rect.height, Math.max(0, viewportHeight - safeTop)) * 0.5;
+      const topIsVisible = rect.top >= safeTop && rect.top < viewportHeight;
+
+      if (!topIsVisible || visibleHeight < usefulHeight) {
+        const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+        window.scrollTo({
+          top: Math.max(0, window.scrollY + rect.top - safeTop),
+          behavior: reducedMotion ? "auto" : "smooth",
+        });
+      }
+      frame.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(focusFrame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameKey, onEvent, onHud]);
 
@@ -202,6 +231,11 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
     setWeapon(w);
     weaponRef.current = w;
     sessionRef.current?.setProfile(nameRef.current, shapeRef.current, w);
+  };
+  const changeAvatar = (url: string | null) => {
+    setArenaAvatarUrl(url);
+    avatarUrlRef.current = url;
+    sessionRef.current?.setAvatarUrl(url);
   };
   const startMatch = (bots: number, rounds = 1, selectedMode: GameMode = DEFAULT_MODE) => {
     sfxRef.current.resume();
@@ -279,20 +313,25 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
           onName={changeName}
           onShape={changeShape}
           onWeapon={changeWeapon}
+          onAvatar={changeAvatar}
           onMode={setMode}
           onStart={startMatch}
           onKick={(id) => sessionRef.current?.kick(id)}
           onMakeHost={(id) => sessionRef.current?.makeHost(id)}
           isMember={isMember}
-          avatarUrl={avatarUrl}
+          avatarUrl={arenaAvatarUrl}
         />
       ) : (
         <div
+          ref={arenaFrameRef}
+          data-arena-frame
+          tabIndex={-1}
           style={{
             position: "relative",
             width: "100%",
             maxWidth: ARENA_WIDTH,
             aspectRatio: `${ARENA_WIDTH} / ${ARENA_HEIGHT}`,
+            outline: "none",
           }}
         >
           <div ref={hostRef} style={{ position: "absolute", inset: 0, borderRadius: 12, overflow: "hidden", background: "#0f172a" }} />
@@ -369,7 +408,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
                     title={matchPayload.title}
                     sub={matchPayload.sub}
                     warriorSrc={warriorSrc}
-                    avatarUrl={avatarUrl}
+                    avatarUrl={arenaAvatarUrl}
                   />
                 </div>
                 <div style={{ flex: 1, textAlign: "left" }}>
@@ -444,7 +483,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
                   {(["tee", "mug", "keychain", "poster"] as const).map((slug) => (
                     <a
                       key={slug}
-                      href={buildShopUrl(slug, matchPayload, { warriorSrc, avatarUrl })}
+                      href={buildShopUrl(slug, matchPayload, { warriorSrc, avatarUrl: arenaAvatarUrl })}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex flex-col items-center gap-1 rounded-lg border border-white/10 p-2 text-neutral-300 no-underline transition hover:border-cyan-400/50 hover:bg-white/5"
@@ -456,7 +495,7 @@ export default function Arena({ isMember = false, avatarUrl = null }: { isMember
                           title={matchPayload.title}
                           sub={matchPayload.sub}
                           warriorSrc={warriorSrc}
-                          avatarUrl={avatarUrl}
+                          avatarUrl={arenaAvatarUrl}
                         />
                       </div>
                       <span className="text-center font-display text-[8px] leading-tight text-neutral-300">

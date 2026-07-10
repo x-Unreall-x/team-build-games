@@ -9,8 +9,9 @@
 
 import type { PlayerId } from "../types";
 import type { Transport } from "../../net/transport";
-import { coerceAvatarUrl, decode, encode, type SquidStartPlayer } from "../../net/protocol";
-import { SyncEngine } from "../../net/sync";
+import { coerceAvatarUrl, decode, encode } from "../../net/protocol";
+import { decodeSquid, encodeSquid, type SquidStartPlayer } from "./protocol";
+import { SyncEngine } from "./engine";
 import { electHost } from "../../net/election";
 import type { LobbyPlayer, Roster } from "../../net/lobby";
 import { remove, rosterList, upsert } from "../../net/lobby";
@@ -110,7 +111,7 @@ export class SquidSession {
       avatarUrl: p.avatarUrl ?? null,
     }));
     if (players.length < 1) return;
-    this.t.send(encode({ t: "squidStart", countdownMs: COUNTDOWN_S * 1000, stage, players }));
+    this.t.send(encodeSquid({ t: "squidStart", countdownMs: COUNTDOWN_S * 1000, stage, players }));
     this.beginRound(stage, players);
   }
 
@@ -203,6 +204,12 @@ export class SquidSession {
   }
 
   private onMessage(data: string, from: PlayerId): void {
+    // squid game traffic first (per-game protocol); squidInput/squidSnapshot are the engine's
+    const sq = decodeSquid(data);
+    if (sq) {
+      if (sq.t === "squidStart") this.beginRound(coerceStageId(sq.stage), sq.players);
+      return;
+    }
     const m = decode(data);
     if (!m) return;
     switch (m.t) {
@@ -231,9 +238,6 @@ export class SquidSession {
           this.phase = "lobby";
           this.opts.onChange();
         }
-        break;
-      case "squidStart":
-        this.beginRound(coerceStageId(m.stage), m.players);
         break;
       default:
         break; // squidInput/squidSnapshot are consumed by the SyncEngine's handler

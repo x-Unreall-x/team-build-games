@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LocalHub } from "./transport";
-import { arenaSyncAdapter, SyncEngine } from "./sync";
+import { SyncEngine } from "./sync";
 import { createWorld } from "../arena/match";
 import type { Intent, InputState, World } from "../arena/types";
 
@@ -23,7 +23,6 @@ describe("SyncEngine — host authority", () => {
       transport: hub.join("a"),
       localId: "a",
       world: createWorld(spawns().slice(0, 2)),
-      adapter: arenaSyncAdapter,
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
     });
@@ -31,7 +30,6 @@ describe("SyncEngine — host authority", () => {
       transport: hub.join("b"),
       localId: "b",
       world: createWorld(spawns().slice(0, 2)),
-      adapter: arenaSyncAdapter,
       readIntent: () => RIGHT, // b holds "right"
       onWorld: (w) => (bWorld = w),
     });
@@ -62,12 +60,11 @@ describe("SyncEngine — host-controlled bots & peer drop", () => {
       transport: hub.join("a"),
       localId: "a",
       world: createWorld(spawns()),
-      adapter: arenaSyncAdapter,
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
       hostExtraIntents: () => ({ c: RIGHT }), // host drives "c" like a bot
     });
-    const b = new SyncEngine({ transport: hub.join("b"), localId: "b", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: () => {} });
+    const b = new SyncEngine({ transport: hub.join("b"), localId: "b", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: () => {} });
     for (let i = 0; i < 3; i++) {
       b.tick(0.1);
       a.tick(0.1);
@@ -84,11 +81,10 @@ describe("SyncEngine — host-controlled bots & peer drop", () => {
       transport: ta,
       localId: "a",
       world: createWorld(spawns().slice(0, 2)),
-      adapter: arenaSyncAdapter,
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
     });
-    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns().slice(0, 2)), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: () => {} });
+    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns().slice(0, 2)), readIntent: () => IDLE, onWorld: () => {} });
 
     a.tick(0.05);
     tb.close(); // b drops → host a marks b dead
@@ -108,9 +104,9 @@ describe("SyncEngine — host migration", () => {
     const ta = hub.join("a");
     const tb = hub.join("b");
     const tc = hub.join("c");
-    const a = new SyncEngine({ transport: ta, localId: "a", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: (w) => (worlds.a = w) });
-    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: (w) => (worlds.b = w) });
-    const c = new SyncEngine({ transport: tc, localId: "c", world: createWorld(spawns()), adapter: arenaSyncAdapter, readIntent: () => IDLE, onWorld: (w) => (worlds.c = w) });
+    const a = new SyncEngine({ transport: ta, localId: "a", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.a = w) });
+    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.b = w) });
+    const c = new SyncEngine({ transport: tc, localId: "c", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.c = w) });
 
     expect(a.isHost).toBe(true);
     for (let i = 0; i < 4; i++) {

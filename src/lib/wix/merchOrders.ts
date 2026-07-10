@@ -18,6 +18,13 @@ export interface MerchOrderRecord {
   optionsSummary: string;
   printTitle: string;
   printSub: string;
+  /** validated fighter sprite path composited on the print, or "" */
+  printWarrior: string;
+  /** validated avatar photo URL composited on the print, or "" */
+  printAvatar: string;
+  /** resolved garment + print swatch hexes, so the receipt preview is exact */
+  garmentColor: string;
+  printColor: string;
   qty: string;
   unitPrice: string;
   total: string;
@@ -37,6 +44,10 @@ const FIELDS: (keyof MerchOrderRecord)[] = [
   "optionsSummary",
   "printTitle",
   "printSub",
+  "printWarrior",
+  "printAvatar",
+  "garmentColor",
+  "printColor",
   "qty",
   "unitPrice",
   "total",

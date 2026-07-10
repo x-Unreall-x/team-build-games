@@ -54,6 +54,41 @@ describe("Session — lobby → start → play", () => {
     expect(aw.players["bot:1"]).toBeDefined();
     expect(aw.players["bot:1"]!.status).toBe("alive");
   });
+
+  it("does not start an unavailable mode under Free For All rules", () => {
+    const hub = new LocalHub();
+    const a = new Session({ transport: hub.join("a"), name: "A", shape: "circle", weapon: "sword", onChange: () => {} });
+    a.start(1, 1, "coop-survival");
+    expect(a.getState().mode).toBe("ffa");
+    expect(a.frame(0, IDLE).world.mode).toBe("ffa");
+  });
+
+  it("broadcasts avatar removal and replacement to the lobby", () => {
+    const hub = new LocalHub();
+    const a = new Session({
+      transport: hub.join("a"),
+      name: "A",
+      shape: "circle",
+      weapon: "sword",
+      avatarUrl: "https://cdn.example.com/a.png",
+      onChange: () => {},
+    });
+    const b = new Session({
+      transport: hub.join("b"),
+      name: "B",
+      shape: "square",
+      weapon: "spear",
+      onChange: () => {},
+    });
+
+    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toContain("a.png");
+    a.setAvatarUrl(null);
+    expect(a.getState().roster.find((p) => p.id === "a")?.avatarUrl).toBeNull();
+    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toBeNull();
+
+    a.setAvatarUrl("https://cdn.example.com/new-a.png");
+    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toContain("new-a.png");
+  });
 });
 
 describe("Session — explicit host (creator stays host; transferable)", () => {
