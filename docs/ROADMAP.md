@@ -561,6 +561,16 @@ Tracking:
 
 ## Track D — Overrun (twin-stick co-op horde shooter, Crimsonland-style) · `dependsOn: A/P12 (projectiles), A/P-A0` — **supersedes the Track C "Tactics" placeholder**
 
+Status: **thin vertical slice SHIPPED (2026-07-10, branch `game/overrun-slice`)** — pistol/shotgun/rifle
+(all hitscan), rusher + tank, endless proportional waves, weapon/medkit drops (+pity/caps), downed/revive
+(revive-before-wipe), XP + global perk pool with NON-BLOCKING overlay picks (1/2/3), per-player run stats →
+end-screen scorecard → merch print funnel, procedural art, 1–8 co-op over quantized keyframe+delta @10 Hz
+(fixed 30 Hz sim) on a generic `SyncAdapter`/`SyncEngine`. **Decoupled from Track A** (P-A0 absorbed as
+game-agnostic net infra) and **fully separated from Arena** (own primitives/lobby wire/renderer/HUD; zero
+`src/game/arena/**` imports, enforced by a recursive purity test). Widen-later: 5-level campaign, the other
+6 guns (auto-rifle/SMG/gauss/rocket/flame/MG+heat), crawler/swarm/spitter, sprite atlases (Track E), Track B
+highscore persistence, touch/gamepad.
+
 Goal: a SEPARATE game (`src/game/overrun/`) reusing the whole spine (pure `stepWorld`, host-authoritative
 SyncEngine, Trystero mesh cap 8, fake-2.5D renderer, free-aim input). 1–8 humans (a tactical-camo figure)
 spawn together; WASD moves the body, mouse aims, hold-to-fire spawns synced projectiles. Enemies pour from
@@ -640,11 +650,12 @@ Goal: tune numbers, validate the entity cap holds framerate with 8 players + hea
 
 **Open decisions (Overrun)**
 - Game slug + name: **DECIDED (2026-07-08) — `overrun` / "Overrun"** (module `src/game/overrun/`, page `src/pages/games/overrun.astro`).
-- Weapon inventory: **single active weapon + infinite-ammo pistol fallback** (recommended) vs primary+secondary slots vs a full Crimsonland perk system.
+- Weapon inventory: **DECIDED (2026-07-10, shipped) — single active weapon + infinite-ammo pistol fallback.**
+- Perks (NEW): **DECIDED (2026-07-09) — global pool now, class/weapon scoping later via `PerkDef.tags`**; pick UX = **non-blocking overlay** (keys 1/2/3 or click, offers queue). Stats→merch via the existing `print.ts` funnel.
 - Per-gun tuning (proposed START table — damage/RPM/mag/reserve/reloadS/spread°/pellets/projSpeed/range/pierce/aoe/kind): PISTOL 12/300/12/∞/1.2/2/1/-/20/0/0 hitscan; SHOTGUN 8·pellet/70/6/36/1.0/9/8/-/12/0/0 hitscan; RIFLE 34/220/10/60/1.6/1/1/-/40/1/0 hitscan; AUTO-RIFLE 22/600/30/180/2.2/3/1/-/32/0/0 hitscan; SMG 14/900/30/240/1.4/5/1/-/22/0/0 hitscan; GAUSS 90/40/4/16/1.8/line/1/-/50/∞/0 pierce-line; ROCKET 120/50/1/6/2.0/0/1/18/45/0/aoe3.5 travel; FLAMETHROWER 6·particle/fuel100/-/1.5/cone/8/6/pierce travel; MG 20/1000/100/300/heat/1/-/38/0/0 hitscan+heat — **all tune in playtest**.
 - Drop rate/weights: start ~15% base × tier multiplier, rare weight 1 / common weight 5, pity threshold — tune vs enemy density.
 - Campaign length + Endless: recommend a **short 5-level campaign** first, Endless local-score only initially (persistence → Track B).
-- Generalize `session.ts`/`SyncEngine` to game-agnostic (World-parameterized) vs fork `shooterSession.ts` — **recommend light generic parameterization**; decide before P-D2.
+- Generalize `session.ts`/`SyncEngine`: **DECIDED (2026-07-10, shipped) — generic `SyncAdapter<W,I>` in `net/sync.ts`** (arena's adapter in `net/arenaAdapter.ts`, overrun's in `overrun/net/adapter.ts`); Overrun runs its own `OverrunSession` + `oHello/oStart/oInput/oSnap/oDelta` wire kinds (full game separation from Arena — user directive 2026-07-09).
 - Multi-shot-per-tick vs a 20-shots/s ceiling for the highest-RPM guns.
 
 **Risks (Overrun)**
@@ -762,6 +773,21 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 
 ## Progress log
 
+- **2026-07-10** — **Overrun thin slice SHIPPED (Track D, branch `game/overrun-slice`).** Subagent-driven TDD
+  build of the full vertical slice per `docs/superpowers/plans/2026-07-09-overrun-slice.md`: pure deterministic
+  sim core `src/game/overrun/` (coordinate-hash RNG carried by a world seed, fixed 30 Hz, purity-guard test),
+  3 hitscan guns + reload/pistol-fallback, rusher/tank waves (budget × frozen partySize, perimeter spawns),
+  drops (weights+pity+cap), downed/revive with revive-before-wipe, XP → 6-perk global pool (non-blocking picks),
+  stats→merch scorecard; quantized keyframe/delta codec @10 Hz (worst-case keyframe 4156 B / delta 3135 B,
+  budget-tested), generic `SyncEngine`/`SyncAdapter` (arena byte-identical via `arenaAdapter.ts`), `OverrunSession`
+  with client interpolation + 8-peer/host-migration LocalHub e2e + 8-player mesh cap; procedural fake-2.5D
+  renderer + React island/HUD/lobby; `/games/overrun` page replaces the Tactics card. **Game separation:** zero
+  arena imports in overrun (recursive test), own primitives/wire/lobby/HUD. Fixed along the way: plan's stepEnemy
+  self-contradiction (signed clamp), revive-helper pre-combat snapshot, engine host-election staleness on
+  peer-leave (`sync.ts` refresh — benefits arena too). 302 tests, tsc clean, build green (40 routes), HTTP smoke
+  verified. **Owner actions:** live cross-device playtest + balance pass; known follow-ups: dead re-claim/announce
+  branch in both sessions, engine listener accumulation on rematch, `%` stripped from merch sub by sanitizer,
+  shot events lack playerId (SFX attribution heuristic).
 - **2026-07-09** — **B1b per-game avatars shipped + data model decided.** Finalized the Track B data
   model (data-type collections keyed by `(memberId, gameId)`; leaderboard metrics as first-class columns).
   Built the avatar slice: created `PlayerAvatars` (ADMIN, deterministic `<gameSlug>-<memberId>` id; verified
