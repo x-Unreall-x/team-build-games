@@ -105,6 +105,31 @@ describe("stepSquid — locomotion (the core mechanic)", () => {
   });
 });
 
+describe("stepSquid — floor integrity & abandoned legs", () => {
+  it("no point ever ends a tick below the floor (solo lift+swing thrash)", () => {
+    let w = createSquidWorld("stage1", ["A"]);
+    const intents = { A: { swing: 1 as const, lift: true, cycle: false, grabLeg: 0 } };
+    for (let i = 0; i < 60; i++) {
+      w = stepSquid(w, intents, DT);
+      for (const p of w.points) expect(p.pos.y).toBeGreaterThanOrEqual(-1e-9);
+    }
+  });
+
+  it("a leg abandoned while lifted auto-unlifts and returns to the floor", () => {
+    let w = createSquidWorld("stage1", ["A"]);
+    // lift leg 0 for a second…
+    w = run(w, { A: { ...idle, grabLeg: 0, lift: true } }, 20);
+    expect(w.legs[0]!.lifted).toBe(true);
+    // …then A cycles away to another leg and goes idle
+    w = stepSquid(w, { A: { ...idle, cycle: true } }, DT);
+    w = run(w, { A: idle }, 40);
+    expect(w.legs[0]!.lifted).toBe(false);
+    const tip = w.points[w.legs[0]!.pts[2]]!;
+    expect(tip.pos.y).toBeLessThan(0.1); // back down at the floor, not dangling
+    expect(tip.pos.y).toBeGreaterThanOrEqual(-1e-9);
+  });
+});
+
 describe("stepSquid — fail & finish", () => {
   /** Teleport the rig so the head sits over the given x (test helper — sim never does this). */
   const rigAt = (w: SquidWorld, x: number): SquidWorld => {
@@ -118,21 +143,24 @@ describe("stepSquid — fail & finish", () => {
     };
   };
 
-  it("stage2: head over the hole with no planted support falls in ⇒ failed", () => {
-    let w = rigAt(createSquidWorld("stage2", ["A"]), 3.25);
-    // unplant everything so nothing holds the body up over the gap
+  it("stage2: head over the hole with every leg held lifted falls in ⇒ failed", () => {
+    const ids = Array.from({ length: LEG_COUNT }, (_, i) => `P${i}`);
+    const intents: Record<string, SquidIntent> = {};
+    for (let i = 0; i < LEG_COUNT; i++) intents[`P${i}`] = { ...idle, grabLeg: i, lift: true };
+    let w = rigAt(createSquidWorld("stage2", ids), 3.45); // center of the 3.0–3.9 gap
     w = { ...w, legs: w.legs.map((l) => ({ ...l, planted: false, lifted: true })) };
-    w = run(w, {}, 60); // gravity does the rest
+    w = run(w, intents, 80);
     expect(w.result).toBe("failed");
     expect(w.phase).toBe("ended");
     expect(w.points[HEAD]!.pos.y).toBeLessThan(-HEAD_DROP_FAIL_M);
   });
 
-  it("stage1 has no fail state: the same sag just rests on the ground", () => {
-    let w = rigAt(createSquidWorld("stage1", ["A"]), 3.25);
+  it("stage1 has no fail state: abandoned legs re-plant and the body just rests", () => {
+    let w = rigAt(createSquidWorld("stage1", ["A"]), 3.45);
     w = { ...w, legs: w.legs.map((l) => ({ ...l, planted: false, lifted: true })) };
-    w = run(w, {}, 60);
+    w = run(w, {}, 60); // no controllers ⇒ legs auto-unlift, drop, re-plant
     expect(w.result).toBeNull();
+    expect(w.legs.every((l) => !l.lifted)).toBe(true);
   });
 
   it("head crossing the finish arch ends the round with the exact time", () => {

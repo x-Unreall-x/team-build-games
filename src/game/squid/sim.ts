@@ -58,6 +58,11 @@ export function stepSquid(
     if (leg.lifted) leg.planted = false;
   }
 
+  // Any leg nobody controls may not stay lifted — it relaxes, drops, and re-plants.
+  for (let legIdx = 0; legIdx < legs.length; legIdx++) {
+    if (control[legIdx] === null) legs[legIdx]!.lifted = false;
+  }
+
   // Second pass: apply motors — lifted legs get tip raised; planted legs get propulsion push
   for (let legIdx = 0; legIdx < legs.length; legIdx++) {
     const leg = legs[legIdx]!;
@@ -88,17 +93,14 @@ export function stepSquid(
 
   // 3) physics: substepped integrate + solve, pins = planted tips
   // Lifted legs stay fully connected to the rig via RIG_CONSTRAINTS so the chain never
-  // detaches (no spaghetti drift). Ground support is simply skipped for all three points
-  // of a lifted leg — they can swing through the air without being pushed up by terrain.
+  // detaches (no spaghetti drift). The ground now clamps every non-pinned point,
+  // lifted legs included — `lifted` only blocks *planting*, it no longer exempts a leg
+  // from ground collision, so a lifted leg simply rests on the floor if it sinks to it.
   const pinned: boolean[] = Array(points.length).fill(false);
   for (const leg of legs) if (leg.planted) pinned[leg.pts[2]] = true;
-  const skipGround: boolean[] = Array(points.length).fill(false);
-  for (const leg of legs) {
-    if (leg.lifted) for (const i of leg.pts) skipGround[i] = true;
-  }
   let pts = points;
   for (let s = 0; s < SUBSTEPS; s++) {
-    pts = solve(integrate(pts, dt / SUBSTEPS), RIG_CONSTRAINTS, pinned, groundAt, skipGround);
+    pts = solve(integrate(pts, dt / SUBSTEPS), RIG_CONSTRAINTS, pinned, groundAt);
   }
   // pinned tips must not drift (integrate moves everything): restore them
   for (const leg of legs) {
