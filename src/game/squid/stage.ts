@@ -11,7 +11,7 @@ export interface StageDef {
 
 export const STAGES: StageDef[] = [
   { id: "stage1", name: "Boardwalk", hole: null },
-  { id: "stage2", name: "The Gap", hole: { x: 3, width: 0.5 } },
+  { id: "stage2", name: "The Gap", hole: { x: 3, width: 0.9 } },
 ];
 
 export function stageById(id: StageId): StageDef {
@@ -28,4 +28,10 @@ export function groundYAt(x: number, stage: StageDef): number | null {
 /** Wire/UI trust boundary: narrow an untrusted value to a known stage id. */
 export function coerceStageId(raw: unknown): StageId {
   return STAGES.some((s) => s.id === raw) ? (raw as StageId) : "stage1";
+}
+
+/** The stage after `id` in STAGES order, or null when `id` is the last stage. */
+export function nextStageId(id: StageId): StageId | null {
+  const i = STAGES.findIndex((s) => s.id === id);
+  return i >= 0 && i + 1 < STAGES.length ? STAGES[i + 1]!.id : null;
 }
