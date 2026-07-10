@@ -7,6 +7,7 @@ import {
   MAX_QTY,
   normalizeSelection,
   productBySlug,
+  selectionColors,
   unitPriceCents,
 } from "./catalog";
 
@@ -66,5 +67,48 @@ describe("describeSelection", () => {
     expect(describeSelection(tee, defaultSelection(tee))).toBe(
       "Arcade black · Neon cyan · XS",
     );
+  });
+});
+
+describe("keychain product", () => {
+  const keychain = productBySlug("keychain");
+
+  it("exists in the catalog", () => {
+    expect(keychain).toBeDefined();
+  });
+
+  it("has material and printColor options", () => {
+    const keys = keychain!.options.map((o) => o.key);
+    expect(keys).toContain("material");
+    expect(keys).toContain("printColor");
+  });
+
+  it("metal material adds a price delta", () => {
+    const metalChoice = keychain!.options
+      .find((o) => o.key === "material")!
+      .choices.find((c) => c.value === "metal")!;
+    expect(metalChoice.priceDeltaCents).toBeGreaterThan(0);
+  });
+
+  it("base price is correct", () => {
+    expect(keychain!.basePriceCents).toBe(900);
+  });
+
+  it("default selection includes material=acrylic", () => {
+    expect(defaultSelection(keychain!)).toMatchObject({ material: "acrylic" });
+  });
+});
+
+describe("selectionColors", () => {
+  it("resolves the chosen garment + print swatches for a tee", () => {
+    const colors = selectionColors(tee, { shirtColor: "white", printColor: "fuchsia", size: "M" });
+    expect(colors.garmentColor).toBe("#e8e8ee");
+    expect(colors.printColor).toBe("#e879f9");
+  });
+
+  it("falls back to a dark garment when the product has no color swatch (poster)", () => {
+    const colors = selectionColors(poster, defaultSelection(poster));
+    expect(colors.garmentColor).toBe("#0b0b1a");
+    expect(colors.printColor).toBe("#22d3ee");
   });
 });

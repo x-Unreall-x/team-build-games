@@ -13,7 +13,6 @@ import type { Intent, PlayerId, PlayerStats, RawInput, World } from "../arena/ty
 import type { Transport } from "./transport";
 import { coerceAvatarUrl, decode, encode, type StartPlayer } from "./protocol";
 import { SyncEngine } from "./sync";
-import { arenaSyncAdapter } from "./arenaAdapter";
 import { electHost } from "./election";
 import { createWorld, evenSpawns } from "../arena/match";
 import { createRounds, nextRound, recordRoundWin, recordTiebreakWin, standings, type NextRound, type Placement, type RoundsState } from "../arena/rounds";
@@ -25,6 +24,7 @@ import type { LobbyPlayer, Roster } from "./lobby";
 import { remove, rosterList, upsert } from "./lobby";
 import { coerceShape, DEFAULT_SHAPE, type Shape } from "../arena/cosmetic";
 import { coerceWeapon, DEFAULT_WEAPON, type Weapon } from "../arena/weapons";
+import { coerceMode, DEFAULT_MODE, modeInfo, type GameMode } from "../arena/modes";
 
 // "roundover" = a round finished and the host hasn't advanced yet (others wait); "ended" = final scoreboard.
 export type SessionPhase = "lobby" | "countdown" | "playing" | "roundover" | "ended";
@@ -52,7 +52,7 @@ export interface SessionOptions {
   onChange: () => void;
 }
 
-const EMPTY_WORLD: World = { players: {}, projectiles: [], phase: "lobby", tick: 0, winnerId: null };
+const EMPTY_WORLD: World = { mode: DEFAULT_MODE, players: {}, projectiles: [], phase: "lobby", tick: 0, winnerId: null };
 const NO_INPUT: RawInput = { up: false, down: false, left: false, right: false, dash: false, attack: false };
 
 export class Session implements MatchDriver {
@@ -70,7 +70,7 @@ export class Session implements MatchDriver {
    * adopted — `hostId()` then falls back to lowest-id election (also the migration rule on host-leave).
    */
   private explicitHostId: PlayerId | null = null;
-  private engine: SyncEngine<World, Intent> | null = null;
+  private engine: SyncEngine | null = null;
   private initialWorld: World | null = null;
   private meta: Record<PlayerId, PlayerMeta> = {};
   private botIds: PlayerId[] = [];
@@ -87,6 +87,7 @@ export class Session implements MatchDriver {
   private pendingNext: NextRound | null = null; // host: what "Next round" will do
   private cumulativeStats: Record<PlayerId, PlayerStats> = {}; // summed across rounds (host)
   private board: Board | null = null; // populated at each round's end (both host + clients)
+  private mode: GameMode = DEFAULT_MODE;
 
   constructor(private readonly opts: SessionOptions) {
     this.t = opts.transport;
@@ -117,6 +118,7 @@ export class Session implements MatchDriver {
       roundsTotal: this.roundsTotal,
       roundTiebreak: this.roundTiebreak,
       board: this.board,
+      mode: this.mode,
     };
   }
 
@@ -139,9 +141,17 @@ export class Session implements MatchDriver {
     this.opts.onChange();
   }
 
+  setAvatarUrl(avatarUrl: string | null): void {
+    this.profile = { ...this.profile, avatarUrl };
+    this.roster = upsert(this.roster, this.profile);
+    this.sendHello();
+    this.opts.onChange();
+  }
+
   /** Host-only: start a best-of-`rounds` match with the current roster plus `botCount` bots. */
-  start(botCount = 0, rounds = 1): void {
+  start(botCount = 0, rounds = 1, requestedMode: GameMode = DEFAULT_MODE): void {
     if (this.hostId() !== this.localId) return;
+    this.mode = modeInfo(requestedMode).available ? requestedMode : DEFAULT_MODE;
     const humans: StartPlayer[] = rosterList(this.roster).map((p) => ({
       id: p.id,
       name: p.name,
@@ -182,7 +192,7 @@ export class Session implements MatchDriver {
   /** Host: broadcast the round's start (so peers build the same world) and begin it locally. */
   private startRound(players: StartPlayer[], roundNumber: number, tiebreak: boolean): void {
     this.t.send(
-      encode({ t: "start", countdownMs: COUNTDOWN_S * 1000, players, rounds: this.roundsTotal, roundNumber, tiebreak }),
+      encode({ t: "start", countdownMs: COUNTDOWN_S * 1000, players, mode: this.mode, rounds: this.roundsTotal, roundNumber, tiebreak }),
     );
     this.beginMatch(players, roundNumber, tiebreak);
   }
@@ -344,6 +354,8 @@ export class Session implements MatchDriver {
         break;
       case "start":
         // Client mirrors each round the host starts (host-authoritative RoundsState stays host-side).
+        this.mode = coerceMode(m.mode);
+        if (!modeInfo(this.mode).available) this.mode = DEFAULT_MODE;
         this.matchPlayers = m.players;
         this.roundsTotal = m.rounds ?? 1;
         this.board = null;
@@ -375,14 +387,13 @@ export class Session implements MatchDriver {
     this.botIds = players.filter((p) => p.isBot).map((p) => p.id);
     // Zip the deterministic spawn ring with each player's equipped weapon (same order as ids).
     const spawns = evenSpawns(ids).map((s, i) => ({ ...s, weapon: players[i]!.weapon }));
-    this.initialWorld = createWorld(spawns, "playing");
+    this.initialWorld = createWorld(spawns, "playing", this.mode);
     this.mem = initialMemory();
 
     this.engine = new SyncEngine({
       transport: this.t,
       localId: this.localId,
       world: this.initialWorld,
-      adapter: arenaSyncAdapter,
       readIntent: () => {
         const { intent, memory } = inputToIntent(this.pendingRaw, this.mem);
         this.mem = memory;

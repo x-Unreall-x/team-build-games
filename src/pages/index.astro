@@ -91,7 +91,7 @@ const features = [
       aria-hidden="true"></span>
 
     <div
-      class="relative mx-auto flex w-full max-w-5xl flex-col items-center px-4 py-20 text-center sm:py-28"
+      class="relative mx-auto flex w-full max-w-5xl flex-col items-center px-4 py-16 text-center sm:py-[90px]"
     >
       <p class="eyebrow text-cyan-400">* The office arcade *</p>
       <h1
@@ -164,14 +164,12 @@ const features = [
                 {/* cabinet screen */}
                 <div class="pixel-grid relative h-40 overflow-hidden border-b border-white/10 bg-night-950">
                   {game.slug === "arena" && (
-                    <div class="absolute inset-0">
-                      <span class="animate-float absolute left-[22%] top-[38%] h-4 w-4 rounded-full bg-cyan-400 shadow-[0_0_14px_rgb(34_211_238/0.9)]" />
-                      <span class="animate-float absolute right-[24%] top-[30%] h-4 w-4 rotate-45 bg-fuchsia-400 shadow-[0_0_14px_rgb(232_121_249/0.9)] [animation-delay:-2s]" />
-                      <span class="animate-float absolute bottom-[26%] left-[44%] h-4 w-4 bg-amber-300 shadow-[0_0_14px_rgb(252_211_77/0.9)] [animation-delay:-3.4s] [clip-path:polygon(50%_0,100%_100%,0_100%)]" />
-                      <span class="neon absolute left-[38%] top-[42%] font-display text-sm text-white/90">
-                        VS
-                      </span>
-                    </div>
+                    <img
+                      src="/assets/arena/arena-screenshot.png"
+                      alt="Arena gameplay — two warriors facing off"
+                      class="absolute inset-0 h-full w-full object-cover object-center"
+                      loading="lazy"
+                    />
                   )}
                   {game.slug === "survival" && (
                     <div class="absolute inset-0">

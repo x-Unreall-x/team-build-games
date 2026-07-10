@@ -5,6 +5,7 @@ import { SHAPES, type Shape } from "../../../game/arena/cosmetic";
 import { WEAPON_LIST, type Weapon } from "../../../game/arena/weapons";
 import { MAX_PLAYERS } from "../../../game/constants";
 import AvatarUploader from "../../members/AvatarUploader";
+import { MODES, modeInfo, type GameMode } from "../../../game/arena/modes";
 
 const FIGHTER: Record<Shape, { label: string; src: string }> = {
   circle: { label: "Swordsman", src: "/assets/arena/warriors/swordsman.png" },
@@ -24,11 +25,14 @@ interface Props {
   name: string;
   shape: Shape;
   weapon: Weapon;
+  mode: GameMode;
   joinUrl: string;
   onName: (n: string) => void;
   onShape: (s: Shape) => void;
   onWeapon: (w: Weapon) => void;
-  onStart: (botCount: number, rounds: number) => void;
+  onAvatar: (url: string | null) => void;
+  onMode: (mode: GameMode) => void;
+  onStart: (botCount: number, rounds: number, mode: GameMode) => void;
   onKick: (id: PlayerId) => void;
   onMakeHost: (id: PlayerId) => void;
   /** Signed-in members can set a per-game face photo; anonymous players see a locked hint. */
@@ -44,7 +48,8 @@ export default function WarmupRoom(props: Props) {
   const [copied, setCopied] = useState(false);
 
   // A match needs at least 2 participants — humans in the roster plus host-driven bots.
-  const canStart = props.roster.length + bots >= 2;
+  const selectedMode = modeInfo(props.mode);
+  const canStart = selectedMode.available && props.roster.length + bots >= 2;
 
   // Fill an empty room with 2 bots, then clear them the moment another player joins.
   const wasAlone = useRef(props.roster.length <= 1);
@@ -85,6 +90,37 @@ export default function WarmupRoom(props: Props) {
           />
         </label>
 
+        <div className="flex flex-col gap-2 text-sm">
+          <span className="text-neutral-500">Game mode</span>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {MODES.map((entry) => {
+              const selected = entry.id === props.mode;
+              const status = entry.available ? "Live" : entry.id === "coop-survival" ? "In development" : "Future";
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  disabled={!props.isHost || !entry.available}
+                  onClick={() => props.onMode(entry.id)}
+                  aria-pressed={selected}
+                  className={`min-h-16 rounded-md border px-3 py-2 text-left transition ${
+                    selected
+                      ? "border-cyan-400 bg-cyan-400/10"
+                      : "border-neutral-300 dark:border-neutral-700"
+                  } ${!props.isHost || !entry.available ? "cursor-not-allowed opacity-55" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-neutral-900 dark:text-neutral-100">{entry.name}</span>
+                    <span className="text-[10px] uppercase text-neutral-500">{status}</span>
+                  </span>
+                  <span className="mt-1 block text-xs text-neutral-500">{entry.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
+          {!props.isHost && <span className="text-xs text-neutral-500">The host chooses the mode.</span>}
+        </div>
+
         <div className="flex flex-col gap-1 text-sm">
           <span className="text-neutral-500">Your fighter</span>
           <div className="flex flex-wrap gap-2">
@@ -109,7 +145,13 @@ export default function WarmupRoom(props: Props) {
         <div className="flex flex-col gap-1 text-sm">
           <span className="text-neutral-500">Your face photo</span>
           {props.isMember ? (
-            <AvatarUploader gameId="arena" currentUrl={props.avatarUrl} />
+            <AvatarUploader
+              gameId="arena"
+              currentUrl={props.avatarUrl}
+              allowRemove
+              reloadAfterChange={false}
+              onChange={props.onAvatar}
+            />
           ) : (
             <div className="flex items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-700">
               <span aria-hidden>🔒</span>
@@ -195,7 +237,7 @@ export default function WarmupRoom(props: Props) {
               </label>
               <div className="group relative inline-block">
                 <button
-                  onClick={() => canStart && props.onStart(bots, rounds)}
+                  onClick={() => canStart && props.onStart(bots, rounds, props.mode)}
                   aria-disabled={!canStart}
                   className={`rounded-lg px-5 py-2 font-semibold text-white ${
                     canStart ? "bg-sky-500 hover:bg-sky-400" : "cursor-not-allowed bg-sky-500/50"

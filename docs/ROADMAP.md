@@ -179,6 +179,12 @@ from a **seed broadcast in `start`** and injected into the core, never read from
 inside it. Player customization (shape, avatar image) is **cosmetic only** and must **not** enter the
 sim core. (Each feature has a stable id `F1…F7` for cross-referencing.)
 
+**Canonical Arena modes:**
+- **Free For All** — open-field last-player-standing; live.
+- **Labyrinth** — last-player-standing in a generated maze; planned.
+- **Coop Survival** — allied players against escalating creature waves; in development.
+- **Team Versus** — waiting-room team selection and team combat; future.
+
 ### P6 — Lobby feel & death juice · `dependsOn: P4 (lobby), P1 (death tween)`
 Goal: cheap, high-value feel wins — audible lobby presence and a readable death moment.
 
@@ -385,18 +391,19 @@ and Overrun (Track D).
 - [ ] **Quantized entity encoding** in `protocol.ts`: Int16 positions (cm), Uint8 kind/status/health, Uint8 brad angle — Trystero data channels are binary-capable; keep JSON for lobby/control msgs
 - [ ] **Delta snapshots**: full keyframe on join + every N ticks; per-tick diffs otherwise; `sync.ts` sends a keyframe to a newly-joined/promoted peer
 - [ ] **Entity snapshot rate = 10 Hz** with client-side position interpolation; inputs stay 20 Hz — measured, tunable
-- [ ] **Coordinate-hash RNG** `src/game/arena/survival/rng.ts`: `hash(seed, tick, entityId, salt)` (mulberry32/splitmix32) — replaces any shared advancing cursor so draw-order can't fork; colocated `rng.test.ts` (same input → same output, distribution sanity)
+- [x] **Coordinate-hash RNG** `src/game/arena/survival/rng.ts`: `hash(seed, tick, entityId, salt)` — replaces any shared advancing cursor so draw-order can't fork; colocated `rng.test.ts` (same input → same output, distribution sanity)
 - [ ] `worldFromSnapshot` extended to reconstruct EVERYTHING host-mutated (see P-A3); **guard test**: hydrate a fresh engine from ONE snapshot on a different localId, step both, assert byte-identical for many ticks
 - [ ] **RISK gate**: measure real snapshot bytes at 8 players + full horde; assert under the data-channel budget before P-A5
 
-### P-A1 — Mode plumbing + `versus` rename (zero behavior change) · `dependsOn: P-A0`
-Goal: introduce `mode:'versus'|'survival'` end-to-end and rename shipped FFA to **versus** with ZERO logic
-change, so later phases have a discriminator to branch on. Versus tests stay green untouched.
+### P-A1 — Named mode plumbing (zero behavior change) · `dependsOn: P-A0`
+Goal: carry the player-facing `GameMode` end-to-end so future reducers have a safe discriminator.
+Only **Free For All** is startable until each other mode owns its rules; existing FFA tests stay green.
 
-- [ ] `mode: MatchMode` on `World` (types.ts); `createWorld` defaults `'versus'`; `stepWorld` guards existing logic behind `world.mode==='versus'` — existing `sim.test.ts` passes unchanged
-- [ ] `protocol.ts`: add `mode` + `seed:number` to `start`; **additive/back-compat decode** (old versus clients ignore new optional fields) to avoid stranding open tabs on deploy; if a hard version bump is unavoidable, surface a "refresh to update" via the `hello` version rather than a silent drop
+- [x] `modes.ts`: canonical `Free For All | Labyrinth | Coop Survival | Team Versus` registry, rule/arena metadata, availability, and wire coercion — unit-tested
+- [x] `mode: GameMode` on `World` (`types.ts`); `createWorld` defaults to `'ffa'`; existing `sim.test.ts` passes unchanged
+- [x] `protocol.ts`: additive optional `mode` on `start` and snapshots; `worldFromSnapshot` defaults old payloads to FFA
+- [x] `session.ts`: host validates availability, carries mode through rounds/start, clients coerce it, and unavailable modes fall back to FFA rather than running the wrong rules
 - [ ] `session.ts start()`: host generates `seed` ONCE (`Math.random` outside the core), broadcasts in `start`, threads into `beginMatch`
-- [ ] Rename user-facing "FFA / last man standing" → **Versus** in `WarmupRoom.tsx`, `Arena.tsx` result overlay, `index.astro`
 - [ ] `match.ts`: extract `resolveEnd(world)` (versus path = current `soleSurvivor`); `sim.ts` calls it instead of the inline check — versus tests unchanged
 
 ### P-A2 — Enemy model + wave plan + one archetype end-to-end (pure, TDD) · `dependsOn: P-A1`
@@ -406,7 +413,8 @@ Goal: prove the whole pipeline (data-on-World → host sim → snapshot → clie
 - [ ] `src/game/arena/survival/enemy.ts`: `EnemyState{id,kind,pos,facing,aim,health,maxHealth,status,speed,contactDamage,hitCooldownRemaining,target,spawnTick}` + `coerceEnemy` wire-trust boundary; `enemies` on World with **deterministic ids** `e{level}-{seq}` (seq lives IN world, never a host-local counter)
 - [ ] `enemyKinds.ts`: per-kind stat table (pure data) `ant|zombie|bat|dino|clawed`
 - [ ] `steering.ts`: `nearestPlayer` (generalize `bot.ts nearestEnemy`), `stepToward`, separation + one-way boundary clamp (enemies exempt until they enter the field); colocated tests
-- [ ] `waves.ts`: pure `wavePlan(seed,level,wave)` + `spawnsDueAt(level,tick,seed,partySize)` (kind/angle/count from coordinate-hash); colocated tests (determinism + monotonic escalation)
+- [x] `waves.ts`: pure capped `wavePlan(seed,level,wave,partySize)` with sub-linear frozen-party scaling, deterministic ids/angles/timing, and monotonic-escalation tests
+- [ ] `spawnsDueAt(level,tick,seed,partySize)` consumes the plan once enemy/world state exists
 - [ ] `centerSpawns(ids)` in `match.ts` (cluster near center) + `createSurvivalWorld(spawns,seed,{endless})`; colocated tests
 - [ ] **Sorted-id iteration** mandated for every per-enemy loop; tie-breaks by lowest EnemyId; test two insertion orders → identical stepped output
 - [ ] Enemy contact damage reuses the −1-health + knockback model, gated by per-kind `hitCooldown`; render enemy as a procedural placeholder (real art = Track E), y-sorted, death tween
@@ -437,7 +445,8 @@ Goal: five archetypes mapped to creatures, and the full campaign→endless run w
 ### P-A5 — Survival UX: WarmupRoom, HUD, revive/pause, art + SFX, playtest · `dependsOn: P-A4, E/AP3`
 Goal: mode picker, mode-aware shell/HUD, revive UX, and the real sprite-sheet enemies wired in.
 
-- [ ] `WarmupRoom.tsx`: Mode toggle (Versus | Survival); survival hides bots, shows Campaign|Endless + player-count note; `canStart` in survival = ≥1 player; `onStart` carries mode+endless
+- [x] `WarmupRoom.tsx`: four-mode selector with Live / In development / Future statuses; only available modes can start; host choice carries through `onStart`
+- [ ] Enable Coop Survival after P-A2/P-A3; hide bots, show Campaign|Endless + player-count note; `canStart` in survival = ≥1 player; `onStart` carries endless
 - [ ] `Arena.tsx` + HudState: mode-aware result copy ("Campaign cleared!" / "Wiped out — reached Level X"); new `SurvivalHud` (level/wave, enemies remaining, per-ally downed + revive indicator); "Spectating…" → "Downed — revive at wave clear"
 - [ ] Enemy rendering via Track E atlases (per-kind idle/walk/attack/die), y-sorted; boss HP bar + screen-shake on slam; procedural fallback still active
 - [ ] `audio/sfx.ts`: enemy spawn/hit/death (oscillator, asset-free); boss slam sting
@@ -565,7 +574,8 @@ Status: **thin vertical slice SHIPPED (2026-07-10, branch `game/overrun-slice`)*
 (all hitscan), rusher + tank, endless proportional waves, weapon/medkit drops (+pity/caps), downed/revive
 (revive-before-wipe), XP + global perk pool with NON-BLOCKING overlay picks (1/2/3), per-player run stats →
 end-screen scorecard → merch print funnel, procedural art, 1–8 co-op over quantized keyframe+delta @10 Hz
-(fixed 30 Hz sim) on a generic `SyncAdapter`/`SyncEngine`. **Decoupled from Track A** (P-A0 absorbed as
+(fixed 30 Hz sim) on Overrun's own `SyncAdapter`/`SyncEngine` under `src/game/overrun/net/` (per the
+per-game netcode convention; shared `net/` stays arena's). **Decoupled from Track A** (P-A0 absorbed as
 game-agnostic net infra) and **fully separated from Arena** (own primitives/lobby wire/renderer/HUD; zero
 `src/game/arena/**` imports, enforced by a recursive purity test). Widen-later: 5-level campaign, the other
 6 guns (auto-rifle/SMG/gauss/rocket/flame/MG+heat), crawler/swarm/spitter, sprite atlases (Track E), Track B
@@ -655,7 +665,7 @@ Goal: tune numbers, validate the entity cap holds framerate with 8 players + hea
 - Per-gun tuning (proposed START table — damage/RPM/mag/reserve/reloadS/spread°/pellets/projSpeed/range/pierce/aoe/kind): PISTOL 12/300/12/∞/1.2/2/1/-/20/0/0 hitscan; SHOTGUN 8·pellet/70/6/36/1.0/9/8/-/12/0/0 hitscan; RIFLE 34/220/10/60/1.6/1/1/-/40/1/0 hitscan; AUTO-RIFLE 22/600/30/180/2.2/3/1/-/32/0/0 hitscan; SMG 14/900/30/240/1.4/5/1/-/22/0/0 hitscan; GAUSS 90/40/4/16/1.8/line/1/-/50/∞/0 pierce-line; ROCKET 120/50/1/6/2.0/0/1/18/45/0/aoe3.5 travel; FLAMETHROWER 6·particle/fuel100/-/1.5/cone/8/6/pierce travel; MG 20/1000/100/300/heat/1/-/38/0/0 hitscan+heat — **all tune in playtest**.
 - Drop rate/weights: start ~15% base × tier multiplier, rare weight 1 / common weight 5, pity threshold — tune vs enemy density.
 - Campaign length + Endless: recommend a **short 5-level campaign** first, Endless local-score only initially (persistence → Track B).
-- Generalize `session.ts`/`SyncEngine`: **DECIDED (2026-07-10, shipped) — generic `SyncAdapter<W,I>` in `net/sync.ts`** (arena's adapter in `net/arenaAdapter.ts`, overrun's in `overrun/net/adapter.ts`); Overrun runs its own `OverrunSession` + `oHello/oStart/oInput/oSnap/oDelta` wire kinds (full game separation from Arena — user directive 2026-07-09).
+- Generalize `session.ts`/`SyncEngine`: **DECIDED (2026-07-10, shipped; merge-reconciled 2026-07-10 onto the repo's per-game netcode convention) — Overrun owns its netcode under `src/game/overrun/net/`** (`engine.ts`/`protocol.ts`/`adapter.ts`/`session.ts`, mirroring Squid's own `src/game/squid/net/`); shared `src/game/net/{sync,session,protocol}.ts` stays arena's, non-generic. Overrun runs its own `OverrunSession` + `oHello/oStart/oInput/oSnap/oDelta` wire kinds (full game separation from Arena — user directive 2026-07-09).
 - Multi-shot-per-tick vs a 20-shots/s ceiling for the highest-RPM guns.
 
 **Risks (Overrun)**
@@ -771,28 +781,87 @@ never blocks on art. **Sourcing DECIDED (2026-07-08): AI-generated bespoke roste
 
 ---
 
+## Track F — Squid (co-op octopus walker) — **SHIPPED 2026-07-10** · `dependsOn: none (first consumer of the generic SyncEngine)`
+
+1–8 players cooperatively walk a verlet-physics octopus 5 m to an arched finish line — each player
+holds ONE leg at a time (click to grab, Space to cycle; ←/→ swing, hold ↑ to lift/replant). Planted
+legs are the base that propels the body (QWOP-style, emergent from pinned tips + rigid chains).
+Rounds are timed; the host posts finish times to a per-stage **team highscore board** shown in the
+waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.5 m hole at 3 m — head in ⇒ game over).
+
+- **Module map:** pure core `src/game/squid/{constants,stage,types,verlet,octopus,control,intent,sim,match}.ts`
+  (fully unit-tested, no clock/RNG/engine imports; clock accumulates injected `dt`); net
+  `src/game/squid/net/{adapter,session}.ts` over the now-generic `SyncEngine<W,I>` (`net/sync.ts` —
+  arena byte-identical via `arenaSyncAdapter`; this closes the Track D "generalize session/sync" open
+  decision); render `src/game/squid/render/{contract,scene}.ts` (side view, per-player leg tints);
+  UI `Squid.tsx` + `SquidWarmupRoom.tsx` (stage select + top-10 dashboards); page `games/squid.astro`
+  + live cabinet in `lib/games/registry.ts`; persistence `lib/squid/scores.ts` +
+  `/api/squid-result` (host-reported, sanity-bounded) + `/api/squid-scores` reading a per-stage
+  top-10 JSON doc in `GameScores` (elevated get/save only — no query builders).
+- **Live-verified (headless Playwright):** lobby → stage select → countdown → grab (click + Space) →
+  walk → **Finish! 3:27.1** → score saved → dashboard row; API bounds all 400; two-tab roster sync
+  over live Nostr relays. Playtest caught + fixed a real clock bug (timer counted frames, not dt).
+- **Open follow-ups (feel, next playtest):** collapsed stance (3-segment legs buckle — head drags;
+  consider joint stiffness / head↔tip struts); solo progress walls at The Gap's edge (rear pinned
+  anchors + lead tips can't plant — fail state hard to reach solo; tune hole/stance or embrace as
+  co-op challenge); sticky-lifted abandoned legs dangle below the floor (clip or auto-replant);
+  `SWING_LIFTED_MPS=0.5` is deliberate but sluggish (raising it is capped by the <0.15 m head-drift
+  test); more stages; per-member stats via Track B; touch controls; SFX polish; WASD aliases in the
+  controls legend.
+
+---
+
 ## Progress log
 
+- **2026-07-10** — **merge-reconcile(overrun): netcode made per-game.** Merging `main` (which had landed
+  Squid's own "netcode per game" resolution — `1fffecb`) into `game/overrun-slice` surfaced the same
+  architectural fork on the Overrun side: this branch had made the shared `net/sync.ts` a generic
+  `SyncEngine<W,I>`/`SyncAdapter`, but `main` had reverted shared `net/{sync,session,protocol}.ts` back to
+  arena's original non-generic line. Resolved to the repo convention: shared `src/game/net/**` stays
+  arena's (untouched, non-generic); **Overrun now owns its full netcode under `src/game/overrun/net/`** —
+  `engine.ts` (its own copy of the generic `SyncEngine`/`SyncAdapter`, carrying the cadence/`lastSent`
+  snapshot-or-delta logic, the `update` message kind, and the host-election-staleness fix in
+  `onPeerLeave`), `protocol.ts` (own `{v,m}` envelope + the `oHello/oStart/oInput/oSnap/oDelta` wire kinds,
+  moved out of the shared protocol), `adapter.ts`, and `session.ts` — mirroring how Squid's own
+  `src/game/squid/net/{engine,protocol,adapter,session}.ts` already does this. Deleted
+  `src/game/net/arenaAdapter.ts` (arena goes back to its inline engine). Overrun's engine keeps its
+  cadence/delta/`update` extension and the peer-leave host-refresh fix **game-locally** — Squid's own
+  engine copy doesn't have either, confirming per-game really means per-game (no shared generic engine
+  reintroduced). 312+ tests, tsc clean, build green.
 - **2026-07-10** — **Overrun thin slice SHIPPED (Track D, branch `game/overrun-slice`).** Subagent-driven TDD
   build of the full vertical slice per `docs/superpowers/plans/2026-07-09-overrun-slice.md`: pure deterministic
   sim core `src/game/overrun/` (coordinate-hash RNG carried by a world seed, fixed 30 Hz, purity-guard test),
   3 hitscan guns + reload/pistol-fallback, rusher/tank waves (budget × frozen partySize, perimeter spawns),
   drops (weights+pity+cap), downed/revive with revive-before-wipe, XP → 6-perk global pool (non-blocking picks),
   stats→merch scorecard; quantized keyframe/delta codec @10 Hz (worst-case keyframe 4156 B / delta 3135 B,
-  budget-tested), generic `SyncEngine`/`SyncAdapter` (arena byte-identical via `arenaAdapter.ts`), `OverrunSession`
-  with client interpolation + 8-peer/host-migration LocalHub e2e + 8-player mesh cap; procedural fake-2.5D
-  renderer + React island/HUD/lobby; `/games/overrun` page replaces the Tactics card. **Game separation:** zero
-  arena imports in overrun (recursive test), own primitives/wire/lobby/HUD. Fixed along the way: plan's stepEnemy
-  self-contradiction (signed clamp), revive-helper pre-combat snapshot, engine host-election staleness on
-  peer-leave (`sync.ts` refresh — benefits arena too). 302 tests, tsc clean, build green (40 routes), HTTP smoke
-  verified. Final whole-branch review (adversarial) caught + fixed pre-merge: **ended-phase never broadcast off
-  the snapshot cadence** (clients hung on wipe — forced phase-transition keyframe + duplicate suppression, networked
-  game-over e2e added), unbounded `pending` wire growth in endless runs (`MAX_PENDING` 150 + suffix-drop `pdo` delta),
+  budget-tested), own `SyncEngine`/`SyncAdapter` copy under `src/game/overrun/net/` (per the per-game netcode
+  convention — shared `net/` stays arena's), `OverrunSession` with client interpolation + 8-peer/host-migration
+  LocalHub e2e + 8-player mesh cap; procedural fake-2.5D renderer + React island/HUD/lobby; `/games/overrun`
+  page replaces the Tactics card. **Game separation:** zero arena imports in overrun (recursive test), own
+  primitives/wire/lobby/HUD. Fixed along the way: plan's stepEnemy self-contradiction (signed clamp),
+  revive-helper pre-combat snapshot, engine host-election staleness on peer-leave (fixed in overrun's own
+  `net/engine.ts`). 302 tests, tsc clean, build green (40 routes), HTTP smoke verified. Final whole-branch
+  review (adversarial) caught + fixed pre-merge: **ended-phase never broadcast off the snapshot cadence**
+  (clients hung on wipe — forced phase-transition keyframe + duplicate suppression, networked game-over e2e
+  added), unbounded `pending` wire growth in endless runs (`MAX_PENDING` 150 + suffix-drop `pdo` delta),
   same-tick multi-level duplicate perk offers, digit-string guards, separation guard extended to overrun components,
   `countdownMs` consumed. 312 tests. **Owner actions:** live cross-device playtest + balance pass. Known follow-ups
   (accepted): dead re-claim/announce branch in both sessions, engine listener accumulation on rematch, `%` stripped
   from merch sub by sanitizer, shot events lack playerId (SFX attribution heuristic), lobby-host vs engine-host
   divergence for a mid-match late joiner.
+- **2026-07-10** — **Track F: Squid shipped (subagent-driven, 14-task plan).** New co-op octopus
+  walker per the approved spec (`docs/superpowers/specs/2026-07-09-squid-game-design.md`; plan in
+  `docs/superpowers/plans/2026-07-09-squid-game.md`). Pure fixed-iteration verlet core (head hub +
+  8×3-segment legs; planted tips pinned; lifted legs keep their chain but skip ground support; lift
+  cap is head-relative so the rig falls into the hole as one piece), leg-ownership reducers,
+  edge-triggered intents + `coerceSquidIntent` trust boundary, and a **generic
+  `SyncEngine<W,I>`/`SyncAdapter`** refactor (arena wire-identical) that squid rides with its own
+  session (explicit-host parity). Per-stage team top-10 persisted via `GameScores` single-doc rows +
+  trusted API routes. Review loop caught real bugs pre-merge: spaghetti-leg detachment (constraints
+  were being dropped for lifted legs), a per-click phantom sim tick, non-host "Saving…" stuck state,
+  leaderboard-wipe on transient read errors — and the live Playwright playtest caught the round clock
+  counting frames instead of dt (3×+ fast timers). 226 tests green (56 new), tsc clean, build green; solo
+  finish + score save + dashboard verified in-browser. Feel follow-ups logged in Track F.
 - **2026-07-09** — **B1b per-game avatars shipped + data model decided.** Finalized the Track B data
   model (data-type collections keyed by `(memberId, gameId)`; leaderboard metrics as first-class columns).
   Built the avatar slice: created `PlayerAvatars` (ADMIN, deterministic `<gameSlug>-<memberId>` id; verified

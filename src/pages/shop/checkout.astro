@@ -9,9 +9,11 @@ import {
   formatPrice,
   normalizeSelection,
   productBySlug,
+  selectionColors,
   unitPriceCents,
 } from "../../lib/merch/catalog";
 import { sanitizePayload } from "../../lib/merch/print";
+import { sanitizeVisual } from "../../lib/merch/visual";
 import { getSessionMember } from "../../lib/wix/members";
 
 // Everything arrives via query params from the product page and is re-validated
@@ -33,23 +35,26 @@ const payload = sanitizePayload({
 const qty = clampQty(params.get("qty"));
 const unitCents = unitPriceCents(product, selection);
 
+// Optional player visual carried from the product page (same trust boundary).
+const { warriorSrc, avatarUrl } = sanitizeVisual({
+  warrior: params.get("warrior"),
+  avatar: params.get("avatar"),
+});
+
+// Preserve payload + visual when hopping back to the product page.
+const backParams = new URLSearchParams({ title: payload.title, sub: payload.sub });
+if (warriorSrc) backParams.set("warrior", warriorSrc);
+if (avatarUrl) backParams.set("avatar", avatarUrl);
+
 const member = await getSessionMember();
 
-const garmentKey = product.options.find((o) => o.key !== "printColor" && o.choices[0]?.swatch)?.key;
-const swatchOf = (key: string | undefined) =>
-  key
-    ? product.options
-        .find((o) => o.key === key)
-        ?.choices.find((c) => c.value === selection[key])?.swatch
-    : undefined;
-const garmentColor = swatchOf(garmentKey) ?? "#0b0b1a";
-const printColor = swatchOf("printColor") ?? "#22d3ee";
+const { garmentColor, printColor } = selectionColors(product, selection);
 ---
 
 <Layout title="Checkout — Trophy shop — TeamBuild Games">
   <div class="mx-auto w-full max-w-3xl px-4 py-10">
     <a
-      href={`/shop/${product.slug}?title=${encodeURIComponent(payload.title)}&sub=${encodeURIComponent(payload.sub)}`}
+      href={`/shop/${product.slug}?${backParams.toString()}`}
       class="font-display text-[9px] text-neutral-500 hover:text-cyan-300"
     >
       &lt; Back to the product
@@ -67,11 +72,13 @@ const printColor = swatchOf("printColor") ?? "#22d3ee";
       <div class="mt-4 flex flex-wrap items-center gap-6">
         <div class="pixel-grid h-36 w-36 shrink-0 rounded-lg border border-white/10 bg-night-950 p-2">
           <MerchPreview
-            product={product.slug as "tee" | "mug" | "poster"}
+            product={product.slug as "tee" | "mug" | "keychain" | "poster"}
             garmentColor={garmentColor}
             printColor={printColor}
             title={payload.title}
             sub={payload.sub}
+            warriorSrc={warriorSrc}
+            avatarUrl={avatarUrl}
           />
         </div>
         <dl class="flex-1 space-y-2 text-sm">
@@ -106,6 +113,8 @@ const printColor = swatchOf("printColor") ?? "#22d3ee";
       <input type="hidden" name="title" value={payload.title} />
       <input type="hidden" name="sub" value={payload.sub} />
       <input type="hidden" name="qty" value={qty} />
+      {warriorSrc && <input type="hidden" name="warrior" value={warriorSrc} />}
+      {avatarUrl && <input type="hidden" name="avatar" value={avatarUrl} />}
       {
         product.options.map((o) => (
           <input type="hidden" name={o.key} value={selection[o.key]} />

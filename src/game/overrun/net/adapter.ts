@@ -1,13 +1,14 @@
 // src/game/overrun/net/adapter.ts
 /**
  * Overrun's SyncAdapter: plugs stepShooter + the quantized keyframe/delta codec
- * into the shared SyncEngine. Cadence: broadcast every SNAPSHOT_EVERY_TICKS
- * ticks; keyframe when there's no delta base or on the KEYFRAME_EVERY schedule.
+ * into Overrun's own SyncEngine (`./engine` — netcode is per-game; see its header).
+ * Cadence: broadcast every SNAPSHOT_EVERY_TICKS ticks; keyframe when there's no
+ * delta base or on the KEYFRAME_EVERY schedule.
  */
 
 import type { PeerId } from "../../net/transport";
-import type { SyncAdapter } from "../../net/sync";
-import { decode, encode } from "../../net/protocol";
+import type { SyncAdapter } from "./engine";
+import { decode, encode } from "./protocol";
 import { electHost } from "../../net/election";
 import { KEYFRAME_EVERY, SNAPSHOT_EVERY_TICKS } from "../constants";
 import { coerceShooterIntent } from "../intent";

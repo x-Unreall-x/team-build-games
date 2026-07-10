@@ -1,13 +1,16 @@
 // src/game/overrun/net/session.ts
 /**
- * Overrun netplay session: Transport + warm-up roster + the generic SyncEngine,
- * exposed as the renderer's OverrunDriver. Mirrors the arena Session's presence
- * + explicit-host model (hello/host/kick/leave), minus rounds/bots/cosmetics —
- * Overrun and Arena are separate games and share no game-specific imports.
+ * Overrun netplay session: Transport + warm-up roster + Overrun's own SyncEngine
+ * (`./engine` — netcode is per-game), exposed as the renderer's OverrunDriver.
+ * Mirrors the arena Session's presence + explicit-host model (hello/host/kick/leave),
+ * minus rounds/bots/cosmetics — Overrun and Arena are separate games and share no
+ * game-specific imports.
  *
  * Roster + hello use Overrun's own `oHello` message (no shape/weapon/iconColor
  * on the wire — colorIndex is DERIVED at match start from each player's index
  * in the host-ordered `oStart` players array, never transmitted separately).
+ * `host`/`kick` stay on the shared lobby wire (`../../net/protocol`) — they're
+ * game-neutral control messages, same as arena/squid use.
  *
  * The ONE permitted impurity in this file: `start()` mints the match seed with
  * Math.random() — it is broadcast in `oStart` and from then on all randomness
@@ -16,8 +19,9 @@
 
 import type { PlayerId } from "../types";
 import type { Transport } from "../../net/transport";
-import { decode, encode } from "../../net/protocol";
-import { SyncEngine } from "../../net/sync";
+import { decode as decodeLobby, encode as encodeLobby } from "../../net/protocol";
+import { decode, encode } from "./protocol";
+import { SyncEngine } from "./engine";
 import { electHost } from "../../net/election";
 import { OVERRUN_COUNTDOWN_S, MAX_CATCHUP_TICKS, SHOOTER_DT, SNAPSHOT_INTERVAL_S, MAX_OVERRUN_PLAYERS } from "../constants";
 import { initialShooterMemory, inputToShooterIntent } from "../intent";
@@ -136,7 +140,7 @@ export class OverrunSession {
 
   kick(targetId: PlayerId): void {
     if (this.hostId() !== this.localId || targetId === this.localId) return;
-    this.t.send(encode({ t: "kick", targetId }));
+    this.t.send(encodeLobby({ t: "kick", targetId }));
     this.roster = removePlayer(this.roster, targetId);
     this.opts.onChange();
   }
@@ -146,7 +150,7 @@ export class OverrunSession {
     if (this.hostId() !== this.localId || targetId === this.localId) return;
     if (!(targetId in this.roster)) return;
     this.explicitHostId = targetId;
-    this.t.send(encode({ t: "host", hostId: targetId }));
+    this.t.send(encodeLobby({ t: "host", hostId: targetId }));
     this.opts.onChange();
   }
 
@@ -234,7 +238,7 @@ export class OverrunSession {
       this.explicitHostId = null;
       if (electHost([this.localId, ...this.t.getPeers()]) === this.localId) {
         this.explicitHostId = this.localId;
-        this.t.send(encode({ t: "host", hostId: this.localId }));
+        this.t.send(encodeLobby({ t: "host", hostId: this.localId }));
       }
     }
     this.opts.onChange();
@@ -245,18 +249,31 @@ export class OverrunSession {
   }
 
   private onMessage(data: string, from: PlayerId): void {
-    const m = decode(data);
+    // Try Overrun's own tags first (oHello/oStart/oInput/oSnap/oDelta — all "o"-prefixed);
+    // fall back to the shared lobby wire for host/kick (game-neutral control messages).
+    const om = decode(data);
+    if (om) {
+      switch (om.t) {
+        case "oHello": {
+          const isNew = !(from in this.roster);
+          this.roster = upsertPlayer(this.roster, { id: from, name: om.name });
+          // A joiner with no host yet adopts the sender's claimed host (creator/host propagation).
+          if (this.explicitHostId == null && om.hostId != null) this.explicitHostId = om.hostId;
+          if (isNew) this.sendHello(); // reply so the newcomer learns us + our host (bounded: first sight)
+          this.opts.onChange();
+          break;
+        }
+        case "oStart":
+          this.beginMatch(om.players, om.seed, om.countdownMs);
+          break;
+        default:
+          break; // oInput/oSnap/oDelta are consumed by the SyncEngine's own handler
+      }
+      return;
+    }
+    const m = decodeLobby(data);
     if (!m) return;
     switch (m.t) {
-      case "oHello": {
-        const isNew = !(from in this.roster);
-        this.roster = upsertPlayer(this.roster, { id: from, name: m.name });
-        // A joiner with no host yet adopts the sender's claimed host (creator/host propagation).
-        if (this.explicitHostId == null && m.hostId != null) this.explicitHostId = m.hostId;
-        if (isNew) this.sendHello(); // reply so the newcomer learns us + our host (bounded: first sight)
-        this.opts.onChange();
-        break;
-      }
       case "host":
         this.explicitHostId = m.hostId;
         this.opts.onChange();
@@ -268,11 +285,8 @@ export class OverrunSession {
           this.opts.onChange();
         }
         break;
-      case "oStart":
-        this.beginMatch(m.players, m.seed, m.countdownMs);
-        break;
       default:
-        break; // oInput/oSnap/oDelta are consumed by the SyncEngine's own handler
+        break;
     }
   }
 

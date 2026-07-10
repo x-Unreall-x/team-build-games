@@ -8,6 +8,8 @@ import type { Direction, Intent, PlayerId, PlayerStats, Projectile, World } from
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 import type { Placement } from "../arena/rounds";
+import type { GameMode } from "../arena/modes";
+import { DEFAULT_MODE } from "../arena/modes";
 
 export const PROTOCOL_VERSION = 2;
 
@@ -31,13 +33,13 @@ export interface StartPlayer {
 }
 
 export type NetMessage =
-  | { t: "hello"; name: string; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
+  | { t: "hello"; name: string; iconColor?: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
   | { t: "kick"; targetId: PlayerId }
   // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.
   | { t: "host"; hostId: PlayerId }
   // P8 round fields are optional so a plain single-match `start` (rounds=1, today's behaviour) still validates.
-  | { t: "start"; countdownMs: number; players: StartPlayer[]; rounds?: number; roundNumber?: number; tiebreak?: boolean }
+  | { t: "start"; countdownMs: number; players: StartPlayer[]; mode?: GameMode; rounds?: number; roundNumber?: number; tiebreak?: boolean }
   // Host → peers at each round's end: running tally + standings/stats. `phase` is "roundover"
   // (host will advance) or "ended" (final scoreboard). `podium` + `stats` drive the overlays.
   | {
@@ -55,15 +57,10 @@ export type NetMessage =
       tick: number;
       phase: World["phase"];
       winnerId: PlayerId | null;
+      mode?: GameMode;
       players: World["players"];
       projectiles: Projectile[];
     }
-  // Overrun (Track D) — payloads are opaque here; src/game/overrun/net/codec.ts owns their shape.
-  | { t: "oHello"; name: string; hostId?: PlayerId | null }
-  | { t: "oStart"; countdownMs: number; seed: number; players: { id: PlayerId; name: string }[] }
-  | { t: "oInput"; intent: unknown }
-  | { t: "oSnap"; w: unknown }
-  | { t: "oDelta"; d: unknown }
   | { t: "event"; kind: string; targetId?: PlayerId }
   | { t: "ping"; sentAt: number }
   | { t: "pong"; sentAt: number; hostTick: number }
@@ -119,5 +116,12 @@ export function coerceIntent(raw: unknown): Intent {
 
 /** Build a World from a snapshot message. */
 export function worldFromSnapshot(m: Extract<NetMessage, { t: "snapshot" }>): World {
-  return { players: m.players, projectiles: m.projectiles, phase: m.phase, tick: m.tick, winnerId: m.winnerId };
+  return {
+    mode: m.mode ?? DEFAULT_MODE,
+    players: m.players,
+    projectiles: m.projectiles,
+    phase: m.phase,
+    tick: m.tick,
+    winnerId: m.winnerId,
+  };
 }

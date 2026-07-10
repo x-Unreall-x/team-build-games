@@ -6,14 +6,16 @@ import GameSwitcher from "../../components/games/GameSwitcher.astro";
 import LikeButton from "../../components/games/LikeButton.astro";
 import { getLikeCounts, getMemberLikedSet } from "../../lib/wix/gameLikes";
 import { getSessionMember } from "../../lib/wix/members";
-import { getGameAvatarUrl } from "../../lib/wix/playerAvatars";
+import { getGameAvatarSetting } from "../../lib/wix/playerAvatars";
 import { resolveGameAvatar } from "../../lib/members/gameAvatar";
 
 // SSR: resolve this member's Arena avatar (per-game override → profile photo). Passed to the island
 // so a signed-in player's face photo rides the wire to peers and overlays the selected fighter.
 const member = await getSessionMember();
-const perGameUrl = member ? await getGameAvatarUrl(member.id, "arena") : null;
-const avatarUrl = member ? resolveGameAvatar(perGameUrl, member.avatarUrl) : null;
+const gameAvatar = member ? await getGameAvatarSetting(member.id, "arena") : null;
+const avatarUrl = member
+  ? resolveGameAvatar(gameAvatar?.url, member.avatarUrl, gameAvatar?.disabled)
+  : null;
 
 // Likes: current count + whether this member already voted.
 const likeCounts = await getLikeCounts(["arena"]);
@@ -31,7 +33,7 @@ const controls = [
   title="Arena — TeamBuild Games"
   description="Last one standing, up to 8 players. Dash, aim, and swing in a realtime P2P arena — right in the browser."
 >
-  <div class="mx-auto w-full max-w-4xl px-4 py-10">
+  <div class="mx-auto w-full max-w-[1400px] px-4 py-10">
     <div class="mb-8">
       <a
         href="/"

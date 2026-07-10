@@ -91,6 +91,23 @@ export const MERCH_PRODUCTS: MerchProduct[] = [
       { key: "printColor", label: "Print color", choices: PRINT_COLORS },
     ],
   },
+  {
+    slug: "keychain",
+    name: "Fighter Keychain",
+    tagline: "Your character, pocket-sized and battle-hardened.",
+    basePriceCents: 900,
+    options: [
+      {
+        key: "material",
+        label: "Material",
+        choices: [
+          { value: "acrylic", label: "Clear acrylic" },
+          { value: "metal", label: "Brushed metal", priceDeltaCents: 600 },
+        ],
+      },
+      { key: "printColor", label: "Print color", choices: PRINT_COLORS },
+    ],
+  },
 ];
 
 export const MAX_QTY = 16; // one full room, twice over
@@ -135,6 +152,24 @@ export function unitPriceCents(product: MerchProduct, selection: Record<string, 
 
 export function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Resolve the garment + print swatch colors for a selection, for the SVG preview.
+ * garment = the first non-print option that carries swatches (shirt/mug color);
+ * products without one (poster, keychain) fall back to a dark default.
+ */
+export function selectionColors(
+  product: MerchProduct,
+  selection: Record<string, string>,
+): { garmentColor: string; printColor: string } {
+  const swatchOf = (key: string) =>
+    product.options.find((o) => o.key === key)?.choices.find((c) => c.value === selection[key])?.swatch;
+  const garmentKey = product.options.find((o) => o.key !== "printColor" && o.choices[0]?.swatch)?.key;
+  return {
+    garmentColor: (garmentKey && swatchOf(garmentKey)) || "#0b0b1a",
+    printColor: swatchOf("printColor") || "#22d3ee",
+  };
 }
 
 /** Human-readable "Arcade black · Neon cyan · L" line for order summaries. */

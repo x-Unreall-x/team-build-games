@@ -30,6 +30,17 @@ export const ARCADE_GAMES: ArcadeGame[] = [
     chip: "border-cyan-400/40 text-cyan-300",
   },
   {
+    slug: "squid",
+    name: "Squid",
+    kind: "Co-op walker",
+    players: "1–8 players",
+    blurb:
+      "One octopus, eight legs, zero coordination. Grab a leg each and walk the beast 5 m to the finish arch — mind the gap, and race the team clock.",
+    href: "/games/squid",
+    status: "live",
+    chip: "border-violet-400/40 text-violet-300",
+  },
+  {
     slug: "survival",
     name: "Survival",
     kind: "Co-op horde",
