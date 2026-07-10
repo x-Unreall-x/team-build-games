@@ -15,8 +15,9 @@ const bad = (status: number) => new Response(null, { status });
 /**
  * Trusted squid score write: the round HOST posts { stageId, timeMs, playerNames[] } on finish.
  * Server validates (stage allowlist + sanity bounds) and merges into the per-stage top-10 doc
- * with elevated creds — clients never write Wix Data directly. A cheating host can mis-report;
- * accepted for casual play (same posture as the roadmap's match-result route).
+ * with elevated creds — clients never write Wix Data directly. The route is unauthenticated:
+ * ANY client that knows the URL can post bounded times, not just the round host — accepted for
+ * casual play (same posture as the roadmap's match-result route).
  */
 export const POST: APIRoute = async ({ request }) => {
   let body: unknown;

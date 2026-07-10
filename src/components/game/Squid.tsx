@@ -8,6 +8,7 @@ import { buildJoinUrl, mintRoomId, parseRoomId } from "../../game/net/roomLink";
 import { buildIceServers, iceConfigFromEnv } from "../../game/net/ice";
 import { joinedIds } from "../../game/net/lobby";
 import { Sfx } from "../../game/audio/sfx";
+import { STAGES } from "../../game/squid/stage";
 import type { StageId } from "../../game/squid/stage";
 import { formatTimeMs, type ScoreEntry } from "../../lib/squid/scores";
 import SquidWarmupRoom from "./lobby/SquidWarmupRoom";
@@ -76,14 +77,14 @@ export default function Squid() {
   const inLobby = !sessionState || sessionState.phase === "lobby";
   const refreshScores = useCallback(async () => {
     try {
-      const [s1, s2] = await Promise.all(
-        (["stage1", "stage2"] as StageId[]).map(async (s) => {
-          const r = await fetch(`/api/squid-scores?stage=${s}`);
+      const entries = await Promise.all(
+        STAGES.map(async (s) => {
+          const r = await fetch(`/api/squid-scores?stage=${s.id}`);
           if (!r.ok) throw new Error(String(r.status));
-          return (await r.json()).scores as ScoreEntry[];
+          return [s.id, (await r.json()).scores as ScoreEntry[]] as const;
         }),
       );
-      setScores({ stage1: s1, stage2: s2 });
+      setScores(Object.fromEntries(entries));
     } catch {
       setScores({}); // dashboard shows empty states; the game stays playable
     }
@@ -111,7 +112,7 @@ export default function Squid() {
       const state = session.getState();
       if (res !== "finished" || !state.isHost || postedEpochRef.current === state.matchEpoch) return;
       postedEpochRef.current = state.matchEpoch;
-      const playerNames = state.playerIds.map((id) => session.getMeta(id).name);
+      const playerNames = state.playerIds.map((id) => session.getMeta(id).name.trim() || "Player");
       void fetch("/api/squid-result", {
         method: "POST",
         headers: { "content-type": "application/json" },
