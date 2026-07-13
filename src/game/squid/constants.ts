@@ -52,12 +52,12 @@ export const STAND_HEAD_Y_M = 0.75;
 /** Max upward acceleration each PLANTED leg contributes — zero planted legs ⇒ zero support. */
 export const SUPPORT_PER_LEG_MPS2 = 2.5;
 /** Stance spring gain: m/s² per meter of height deficit (gravity is 9 — must exceed it within the deficit range).
- * Raised to the top of the tunable band (was 50) for the 15-joint rope: the nudge lands on
- * ROOT_ANCHOR (4 links deep) instead of the old rig's root (1 link from the head), so most of
- * the correction gets absorbed by the intervening free joints before it reaches the head.
- * Even at 80 the settle height only reaches ~0.07 m (measured, see sim.test.ts) — SUPPORT_PER_LEG_MPS2
- * (capped support, off-limits to tune) is the real ceiling, so the stand-band's lower edge was
- * lowered to match instead of pushing gain further. */
+ * 80 for the 15-joint rope. The stance nudge lifts HEAD together with the whole upper chain
+ * (points 0..ROOT_ANCHOR) of each planted leg as one rigid block (see sim.ts), so solve() no
+ * longer cancels the lift the way it did when only a single deep anchor was pushed. With that
+ * whole-block nudge the head settles at ~0.60 m with 8 planted legs (measured, probe-fix.mjs) —
+ * near the old 3-joint rig's ~0.575 m. SUPPORT_PER_LEG_MPS2 (capped support, off-limits to tune)
+ * remains the ceiling on total upward accel, so fewer planted legs settle proportionally lower. */
 export const STAND_GAIN = 80;
 
 /** Head center below -this ⇒ round failed (only reachable over the hole). */

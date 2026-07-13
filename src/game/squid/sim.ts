@@ -109,19 +109,26 @@ export function stepSquid(
   for (let s = 0; s < SUBSTEPS; s++) {
     pts = integrate(pts, sdt);
     // active stance: capped support spring through planted legs — upward only, never a winch.
-    // Lifting HEAD alone gets almost entirely cancelled by solve(): HEAD is shared by all
-    // LEG_COUNT head-root constraints, and each one's Gauss-Seidel correction pulls HEAD
-    // straight back toward its (unmoved) legs before any lift can stick. Instead, nudge
-    // HEAD *and* every PLANTED leg's root point together (unplanted/lifted legs are left
-    // alone so they still sag and re-plant normally) — moving head + planted roots as one
-    // keeps relative distances intact, so solve() has nothing to correct away.
+    // Nudging HEAD (or HEAD + a single deep anchor) gets almost entirely cancelled by solve():
+    // with a 15-link rope, moving HEAD up while the joints below stay put leaves every
+    // intervening head→p0→…→ROOT_ANCHOR constraint stretched, and each one's Gauss-Seidel
+    // correction pulls HEAD back down toward the (unmoved) chain — the old rig hid this because
+    // its "root" sat one link from the head. Fix: lift HEAD *and the whole upper chain*
+    // (points 0..ROOT_ANCHOR) of each PLANTED leg as one rigid block. Every constraint *inside*
+    // that block keeps its rest length, so solve() has nothing to cancel there; only the single
+    // block→below link (ROOT_ANCHOR→ROOT_ANCHOR+1) is stretched, and it sits deep enough that the
+    // compliant rope below (which stays taut to the pinned tip, providing the support ceiling)
+    // absorbs it gently instead of dragging the head back to the floor. Lifted/unplanted legs are
+    // left alone so they still sag and re-plant; the legs below ROOT_ANCHOR stay free rope, so
+    // they still bend and swing visibly.
     const deficit = STAND_HEAD_Y_M - pts[HEAD]!.pos.y;
     if (plantedCount > 0 && deficit > 0) {
       const accel = Math.min(STAND_GAIN * deficit, plantedCount * SUPPORT_PER_LEG_MPS2);
       const dy = accel * sdt * sdt; // position nudge, same style as gravity in integrate()
       pts[HEAD]!.pos.y += dy;
       for (const leg of legs) {
-        if (leg.planted) pts[leg.pts[ROOT_ANCHOR]!]!.pos.y += dy;
+        if (!leg.planted) continue;
+        for (let j = 0; j <= ROOT_ANCHOR; j++) pts[leg.pts[j]!]!.pos.y += dy;
       }
     }
     pts = solve(pts, RIG_CONSTRAINTS, pinned, groundAt);

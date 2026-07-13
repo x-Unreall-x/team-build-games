@@ -33,10 +33,11 @@ describe("stepSquid — determinism & lifecycle", () => {
     const w0 = createSquidWorld("stage1", ["A"]);
     const w = run(w0, { A: idle }, 120); // 6 s — long past any transient
     const y = w.points[HEAD]!.pos.y;
-    // Band lowered for the 15-joint rope: STAND_GAIN maxed at 80 (top of the 20-80 tunable band)
-    // still only reaches ~0.0705 m measured here (SUPPORT_PER_LEG_MPS2's cap is the real ceiling,
-    // and it's off-limits to tune) — still clearly a stand, not the ~0 m collapse with no spring at all.
-    expect(y).toBeGreaterThan(0.06);
+    // Rope stance restored: the spring lifts HEAD + the whole upper chain (points 0..ROOT_ANCHOR)
+    // of each planted leg as one rigid block, so solve() no longer cancels the lift. Measured
+    // settle height at STAND_GAIN=80 with 8 planted legs is ~0.60 m (probe-fix.mjs) — a real
+    // stand near the old 3-joint rig's ~0.575, not the ~0.07 m collapse the single-anchor nudge gave.
+    expect(y).toBeGreaterThan(0.55);
     expect(y).toBeLessThan(STAND_HEAD_Y_M + 0.2); // capped spring — no balloon float
     expect(w.result).toBeNull();
   });
