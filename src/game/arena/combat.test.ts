@@ -128,7 +128,9 @@ describe("inAttackLine (straight thrust — e.g. spear)", () => {
 describe("weapon hit shapes", () => {
   it("a spear thrusts in a straight line — misses a 45° target that a sword's cone would hit", () => {
     const at = { x: 0, y: 0 };
-    const off = player("T", { x: 1, y: 1 }); // 45° off the aim, ~1.41 m away
+    // A flat point target 45° off, ~1.41 m away — height isolated so this tests the 2D hit SHAPE
+    // (cone angle vs straight band), not the vertical capsule.
+    const off = { id: "T", pos: { x: 1, y: 1 }, status: "alive" as const, hitHeight: 0 };
     const sword = player("S", at, "right", "alive", "sword");
     const spear = player("P", at, "right", "alive", "spear");
     expect(resolveAttack(sword, [sword, off]).length).toBe(1); // cone catches the 45° target
@@ -181,29 +183,23 @@ describe("resolveAttack", () => {
     expect(resolveAttack(attacker, [attacker, clear]).length).toBe(0);
   });
 
-  it("extends melee reach for a straight-up swing (foreshortened 2.5D vertical axis)", () => {
-    // Horizontal body-reach is SWORD_REACH_M + FIGURE_RADIUS_M = 2.75 m; a vertical swing adds
-    // VERTICAL_REACH_BONUS_M (→ 3.5 m). A target at 3.2 m is out of horizontal reach but within it up.
-    const up = { ...player("A", { x: 0, y: 0 }), aim: directionAngle("up") };
-    expect(resolveAttack(up, [player("B", { x: 0, y: -3.2 })]).length).toBe(1);
-    // Same distance to the side (horizontal aim, no bonus) stays out of reach.
-    const right = { ...player("A", { x: 0, y: 0 }), aim: 0 };
-    expect(resolveAttack(right, [player("C", { x: 3.2, y: 0 })]).length).toBe(0);
+  it("hits a tall target by aiming up its silhouette (head/torso), not only its footprint", () => {
+    // A tall target's foot is dead to the right; aiming up-right at its head still connects because
+    // the body capsule (foot→head) rises into the swing.
+    const tall = { id: "T", pos: { x: 1.5, y: 0 }, status: "alive" as const, hitRadius: 0.5, hitHeight: 1.8 };
+    const headAim = { ...player("A", { x: 0, y: 0 }), aim: Math.atan2(-1.6, 1.5) }; // ~at the top of the body
+    expect(resolveAttack(headAim, [tall]).length).toBe(1);
   });
 
-  it("fans the melee arc wider for a vertical-ish aim (covers the tall figure), but not unlimited", () => {
-    const target = player("B", { x: 1.4, y: 0 }); // dead to the right, in range
-    // Aiming 50° up-right is beyond the 45° base half-angle from the target — only the vertical
-    // widening lets it connect.
-    const steep = { ...player("A", { x: 0, y: 0 }), aim: (50 * Math.PI) / 180 };
-    expect(resolveAttack(steep, [target]).length).toBe(1);
-    // 80° off is still outside even the widened arc.
-    const tooSteep = { ...player("A", { x: 0, y: 0 }), aim: (80 * Math.PI) / 180 };
-    expect(resolveAttack(tooSteep, [target]).length).toBe(0);
+  it("respects a target's height: a flat/short target is not caught by an overhead-angled swing", () => {
+    // Same aim, but a zero-height target (plain disc at the foot) offers no body to intercept it.
+    const flat = { id: "F", pos: { x: 1.5, y: 0 }, status: "alive" as const, hitRadius: 0.5, hitHeight: 0 };
+    const headAim = { ...player("A", { x: 0, y: 0 }), aim: Math.atan2(-1.6, 1.5) };
+    expect(resolveAttack(headAim, [flat]).length).toBe(0);
   });
 
   it("uses each target's own hitRadius so the hit-zone matches its sprite, not the player body", () => {
-    const attacker = { ...player("A", { x: 0, y: 0 }), aim: 0 }; // sword reach 2, horizontal (no vertical bonus)
+    const attacker = { ...player("A", { x: 0, y: 0 }), aim: 0 }; // sword reach 2, aimed at the footprint
     // A small enemy (radius 0.4) at 2.5 m is beyond reach+0.4 = 2.4 → miss.
     const small = { id: "e", pos: { x: 2.5, y: 0 }, status: "alive" as const, hitRadius: 0.4 };
     expect(resolveAttack(attacker, [small])).toEqual([]);

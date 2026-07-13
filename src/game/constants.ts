@@ -33,16 +33,15 @@ export const SWORD_REACH_M = 2;
 export const ATTACK_CONE_HALF_ANGLE = Math.PI / 4;
 
 /**
- * 2.5D vertical-aim compensation for melee. The sim is flat top-down (a target is a circle at its
- * foot point), but figures are drawn TALL with the depth axis foreshortened, so a swing aimed up or
- * down visually strikes a head/legs that sit off the hittable footprint. A vertical swing therefore
- * reaches `VERTICAL_REACH_BONUS_M` further and fans its arc up to `VERTICAL_ARC_BONUS` wider, scaled
- * by |sin(aim)| (0 = horizontal → unchanged, 1 = straight up/down → full bonus). Feel-only tuning.
+ * 2.5D melee hit shape. The sim is flat top-down, but figures/creatures are drawn TALL from a foot
+ * shadow with the depth axis foreshortened, so a target's hittable body is a vertical CAPSULE — a
+ * footprint circle (its `hitRadius`) swept from the foot up to its drawn height — not a flat disc.
+ * A swing connects if it reaches any point up that silhouette, so aiming at the head/torso lands.
+ * `FIGURE_HIT_HEIGHT_M` is the player capsule height; enemies carry their own per-kind height.
  */
-export const VERTICAL_REACH_BONUS_M = 0.75;
-export const VERTICAL_ARC_BONUS = 0.35;
-/** Hard cap on the widened half-angle so a vertical swing never exceeds a near-hemisphere. */
-export const MAX_MELEE_HALF_ANGLE = (Math.PI / 12) * 5; // 75°
+export const FIGURE_HIT_HEIGHT_M = 1.8;
+/** Spacing (metres) between the sampled points along a body capsule when resolving a hit. */
+export const MELEE_BODY_SAMPLE_M = 0.4;
 
 /** Seconds the swing visual stays up (damage itself resolves on the initiation tick). */
 export const ATTACK_TTL_S = 0.2;

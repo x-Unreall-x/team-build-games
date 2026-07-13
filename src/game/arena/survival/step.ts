@@ -208,6 +208,7 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
     pos: e.pos,
     status: e.status,
     hitRadius: ENEMY_STATS[e.kind].radius,
+    hitHeight: ENEMY_STATS[e.kind].hitHeight,
   }));
   const dmgByEnemy: Record<string, number> = {};
   for (const id of swungIds) {

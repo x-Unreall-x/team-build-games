@@ -16,13 +16,24 @@ export interface EnemyStats {
   contactDamage: number;
   /** Seconds between contact hits from the same enemy. */
   hitCooldown: number;
-  /** Body radius (metres) for contact + separation. */
+  /** Body radius (metres) for contact + separation, and the melee/arrow footprint width. */
   radius: number;
+  /**
+   * Drawn standing height (metres, world-y) of the sprite above its footprint — the vertical extent
+   * of the melee hit capsule, so a tall dino is hittable up its whole silhouette and a low crawler
+   * is not over-extended. Tuned to the art (kept roughly in sync with the sprite proportions).
+   */
+  hitHeight: number;
 }
 
-/** Per-kind stat table. One archetype for now (roadmap: prove the pipeline before adding variety). */
+/** Per-kind stat table. `crawler` mirrors the ant for old snapshots and tests. */
 export const ENEMY_STATS: Record<SurvivalEnemyKind, EnemyStats> = {
-  crawler: { maxHealth: 2, speed: 2.4, contactDamage: 1, hitCooldown: 0.8, radius: 0.4 },
+  crawler: { maxHealth: 2, speed: 2.4, contactDamage: 1, hitCooldown: 0.8, radius: 0.55, hitHeight: 1.3 },
+  ant: { maxHealth: 2, speed: 2.7, contactDamage: 1, hitCooldown: 0.75, radius: 0.55, hitHeight: 1.3 },
+  zombie: { maxHealth: 4, speed: 1.65, contactDamage: 1, hitCooldown: 1, radius: 0.65, hitHeight: 1.9 },
+  bat: { maxHealth: 2, speed: 3.25, contactDamage: 1, hitCooldown: 0.7, radius: 0.5, hitHeight: 1.1 },
+  dino: { maxHealth: 12, speed: 1.35, contactDamage: 2, hitCooldown: 1.35, radius: 1.05, hitHeight: 2.8 },
+  clawed: { maxHealth: 7, speed: 2, contactDamage: 1, hitCooldown: 0.9, radius: 0.8, hitHeight: 2.2 },
 };
 
 export interface EnemyState {

@@ -13,10 +13,9 @@ import {
   ATTACK_COOLDOWN_S,
   BLOCK_COOLDOWN_S,
   BLOCK_WIDTH_MULT,
+  FIGURE_HIT_HEIGHT_M,
   FIGURE_RADIUS_M,
-  MAX_MELEE_HALF_ANGLE,
-  VERTICAL_ARC_BONUS,
-  VERTICAL_REACH_BONUS_M,
+  MELEE_BODY_SAMPLE_M,
 } from "../constants";
 
 export interface DamageEvent {
@@ -34,11 +33,17 @@ export interface Hittable {
   pos: Vec2;
   status: "alive" | "dead";
   /**
-   * Body radius (metres) for the hit test — so each target's zone matches its own sprite. Defaults
-   * to the player figure radius; survival enemies pass their per-kind radius (a bat is small, the
-   * dino large), which is what makes the hit-zone line up with what's drawn.
+   * Footprint radius (metres) — the capsule's width. Defaults to the player figure radius; survival
+   * enemies pass their per-kind radius (a bat is small, the dino large) so the zone matches the sprite.
    */
   hitRadius?: number;
+  /**
+   * Drawn body height (metres, world-y) above the footprint — the capsule's vertical extent. The
+   * hit test sweeps the footprint circle from the foot up to this height, so a swing aimed anywhere
+   * up the tall 2.5D silhouette (foot→head) connects. Defaults to the player figure height; a flat
+   * target passes 0 for a plain disc.
+   */
+  hitHeight?: number;
 }
 
 /** Attack recharge progress in [0,1]: 0 just after a swing → 1 when ready (UI sweep). */
@@ -141,45 +146,43 @@ export function inAttackLine(
 }
 
 /**
- * Resolve one attacker's melee swing against candidate players, emitting a damage event per
- * alive, non-self target hit. The hit shape comes from the attacker's weapon: a widening cone
- * (sword/knife) or a straight forward band (thrust weapons, e.g. spear). Self is skipped.
+ * Points sampled up a target's body capsule, from the foot (`foot`) toward its head (−y, the 2.5D
+ * "up") over `height` metres. Spacing is ≤ MELEE_BODY_SAMPLE_M so no gap exceeds a body, and the
+ * foot + head are always included. A zero-height (flat) target yields just the foot → a plain disc.
+ */
+function bodySamples(foot: Vec2, height: number): Vec2[] {
+  if (height <= 0) return [foot];
+  const steps = Math.max(1, Math.ceil(height / MELEE_BODY_SAMPLE_M));
+  const points: Vec2[] = [];
+  for (let i = 0; i <= steps; i++) points.push({ x: foot.x, y: foot.y - (height * i) / steps });
+  return points;
+}
+
+/**
+ * Resolve one attacker's melee swing against candidate targets, emitting a damage event per alive,
+ * non-self target hit. The hit shape comes from the attacker's weapon: a widening cone (sword/knife)
+ * or a straight forward band (thrust weapons, e.g. spear), tested against each target's vertical body
+ * capsule (foot→head). Self is skipped.
  */
 export function resolveAttack(
   attacker: PlayerState,
   candidates: readonly Hittable[],
 ): DamageEvent[] {
   const stats = WEAPONS[attacker.weapon];
-  // The whole body is hittable: a target is hit once its body (its own `hitRadius`) overlaps the
-  // weapon's reach — not only when its center is in range.
-  //
-  // 2.5D compensation: figures/creatures are drawn tall and the depth axis is foreshortened, so an
-  // up/down swing visually strikes parts that sit off the flat footprint. Scale the reach + arc by
-  // how vertical the aim is (|sin| → 0 horizontal, 1 straight up/down) so vertical hits register.
-  const verticality = Math.abs(Math.sin(attacker.aim));
-  const vReach = VERTICAL_REACH_BONUS_M * verticality;
-  const arcMult = 1 + VERTICAL_ARC_BONUS * verticality;
   const events: DamageEvent[] = [];
   for (const t of candidates) {
     if (t.id === attacker.id) continue;
     if (t.status !== "alive") continue;
     const bodyRadius = t.hitRadius ?? FIGURE_RADIUS_M;
-    const reach = stats.reach + bodyRadius + vReach;
-    const hit = stats.thrust
-      ? inAttackLine(
-          attacker.pos,
-          attacker.aim,
-          t.pos,
-          reach,
-          (stats.thrust.halfWidth + bodyRadius) * arcMult,
-        )
-      : inAttackCone(
-          attacker.pos,
-          attacker.aim,
-          t.pos,
-          reach,
-          Math.min(stats.coneHalfAngle * arcMult, MAX_MELEE_HALF_ANGLE),
-        );
+    const reach = stats.reach + bodyRadius;
+    // The target's body is a vertical capsule: its footprint circle swept from the foot (t.pos) up
+    // its drawn height (toward −y, the 2.5D "up"). A swing connects if it reaches ANY point up that
+    // silhouette — so aiming at a tall creature's head/torso lands, not only its foot.
+    const hit = bodySamples(t.pos, t.hitHeight ?? FIGURE_HIT_HEIGHT_M).some((point) =>
+      stats.thrust
+        ? inAttackLine(attacker.pos, attacker.aim, point, reach, stats.thrust.halfWidth + bodyRadius)
+        : inAttackCone(attacker.pos, attacker.aim, point, reach, stats.coneHalfAngle),
+    );
     if (hit) events.push({ fromId: attacker.id, targetId: t.id });
   }
   return events;
