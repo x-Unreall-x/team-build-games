@@ -59,9 +59,10 @@ describe("fireTick", () => {
     // point blank: every pellet lands → 8 × 8 damage
     expect(a.enemies[0]!.health).toBe(1000 - 8 * 8);
     // different tick → different spread draw
-    const c = fireTick(p, [enemy("e1", 11, { health: 1000 })], true, 42, 8, EFF);
-    const d = fireTick(p, [enemy("e1", 11, { health: 1000 })], true, 42, 7, EFF);
-    expect(c.enemies[0]!.health === d.enemies[0]!.health).toBe(false);
+    const edgeDamage = Array.from({ length: 12 }, (_, tick) =>
+      fireTick(p, [enemy("e1", 16.5, { health: 1000 })], true, 42, tick, EFF).enemies[0]!.health,
+    );
+    expect(new Set(edgeDamage).size).toBeGreaterThan(1);
   });
 
   it("respects range", () => {
@@ -69,6 +70,17 @@ describe("fireTick", () => {
     const r = fireTick(p, [enemy("e1", 26)], true, 1, 0, EFF);
     expect(r.enemies[0]!.health).toBe(20);
     expect(r.player.stats.hits).toBe(0);
+  });
+
+  it("uses the rendered monster width for projectile hits without changing contact radius", () => {
+    const p = player();
+    const visibleEdge = enemy("e1", 8, { pos: { x: 8, y: 16 } });
+    const outsideSprite = enemy("e2", 8, { pos: { x: 8, y: 16.5 } });
+    const hit = fireTick(p, [visibleEdge], true, 1, 0, EFF);
+    const miss = fireTick(p, [outsideSprite], true, 1, 0, EFF);
+
+    expect(hit.enemies[0]!.health).toBeLessThan(20);
+    expect(miss.enemies[0]!.health).toBe(20);
   });
 
   it("empty mag with reserve auto-starts a reload; firing stays blocked while reloading", () => {

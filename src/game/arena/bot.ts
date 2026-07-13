@@ -4,7 +4,14 @@
  * Bots double as stand-in "remote players" until real P2P peers arrive (P2).
  */
 
-import type { Direction, InputState, Intent, PlayerId, PlayerState, World } from "./types";
+import type {
+  Direction,
+  InputState,
+  Intent,
+  PlayerId,
+  PlayerState,
+  World,
+} from "./types";
 import { directionAngle, distance } from "./logic";
 import { SWORD_REACH_M } from "../constants";
 
@@ -24,7 +31,10 @@ function facingToward(dx: number, dy: number, prev: Direction): Direction {
 }
 
 /** Closest alive opponent to `selfId`, or null. */
-export function nearestEnemy(selfId: PlayerId, world: World): PlayerState | null {
+export function nearestEnemy(
+  selfId: PlayerId,
+  world: World,
+): PlayerState | null {
   const self = world.players[selfId];
   if (!self) return null;
   let best: PlayerState | null = null;
@@ -48,10 +58,25 @@ export function botIntent(selfId: PlayerId, world: World): Intent {
   const self = world.players[selfId];
   if (!self || self.status !== "alive") {
     const f = self?.facing ?? "down";
-    return { move: { ...NONE }, facing: f, aim: directionAngle(f), dash: false, attack: false };
+    return {
+      move: { ...NONE },
+      facing: f,
+      aim: directionAngle(f),
+      dash: false,
+      attack: false,
+      block: false,
+    };
   }
   const target = nearestEnemy(selfId, world);
-  if (!target) return { move: { ...NONE }, facing: self.facing, aim: directionAngle(self.facing), dash: false, attack: false };
+  if (!target)
+    return {
+      move: { ...NONE },
+      facing: self.facing,
+      aim: directionAngle(self.facing),
+      dash: false,
+      attack: false,
+      block: false,
+    };
 
   const dx = target.pos.x - self.pos.x;
   const dy = target.pos.y - self.pos.y;
@@ -64,7 +89,8 @@ export function botIntent(selfId: PlayerId, world: World): Intent {
   const move: InputState = inReach
     ? { ...NONE }
     : { up: dy < -eps, down: dy > eps, left: dx < -eps, right: dx > eps };
-  const attack = inReach && world.tick % ATTACK_PERIOD === phase % ATTACK_PERIOD;
+  const attack =
+    inReach && world.tick % ATTACK_PERIOD === phase % ATTACK_PERIOD;
   const dash =
     !inReach &&
     dist > 4 &&
@@ -73,5 +99,5 @@ export function botIntent(selfId: PlayerId, world: World): Intent {
 
   // Aim straight at the target so attacks land under the free-aim combat model.
   const aim = Math.atan2(dy, dx);
-  return { move, facing, aim, dash, attack };
+  return { move, facing, aim, dash, attack, block: false };
 }

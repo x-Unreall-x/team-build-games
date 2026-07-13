@@ -4,14 +4,34 @@ import { Session } from "./session";
 import { COUNTDOWN_S } from "../constants";
 import type { RawInput } from "../arena/types";
 
-const IDLE: RawInput = { up: false, down: false, left: false, right: false, dash: false, attack: false };
+const IDLE: RawInput = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+  dash: false,
+  attack: false,
+  block: false,
+};
 const RIGHT: RawInput = { ...IDLE, right: true };
 
 describe("Session — lobby → start → play", () => {
   it("converges the roster, elects a host, starts a match, and syncs a client's movement", () => {
     const hub = new LocalHub();
-    const a = new Session({ transport: hub.join("a"), name: "Ay", shape: "circle", weapon: "sword", onChange: () => {} });
-    const b = new Session({ transport: hub.join("b"), name: "Bee", shape: "circle", weapon: "sword", onChange: () => {} });
+    const a = new Session({
+      transport: hub.join("a"),
+      name: "Ay",
+      shape: "circle",
+      weapon: "sword",
+      onChange: () => {},
+    });
+    const b = new Session({
+      transport: hub.join("b"),
+      name: "Bee",
+      shape: "circle",
+      weapon: "sword",
+      onChange: () => {},
+    });
 
     // presence converges on both peers despite join ordering
     expect(a.getState().roster.map((p) => p.id)).toEqual(["a", "b"]);
@@ -40,8 +60,20 @@ describe("Session — lobby → start → play", () => {
 
   it("a host-driven bot is simulated and visible to clients", () => {
     const hub = new LocalHub();
-    const a = new Session({ transport: hub.join("a"), name: "A", shape: "circle", weapon: "sword", onChange: () => {} });
-    const b = new Session({ transport: hub.join("b"), name: "B", shape: "circle", weapon: "sword", onChange: () => {} });
+    const a = new Session({
+      transport: hub.join("a"),
+      name: "A",
+      shape: "circle",
+      weapon: "sword",
+      onChange: () => {},
+    });
+    const b = new Session({
+      transport: hub.join("b"),
+      name: "B",
+      shape: "circle",
+      weapon: "sword",
+      onChange: () => {},
+    });
 
     a.start(1); // 2 humans + 1 bot
     expect(a.getMeta("bot:1").name).toBe("Bot 1");
@@ -57,8 +89,14 @@ describe("Session — lobby → start → play", () => {
 
   it("does not start an unavailable mode under Free For All rules", () => {
     const hub = new LocalHub();
-    const a = new Session({ transport: hub.join("a"), name: "A", shape: "circle", weapon: "sword", onChange: () => {} });
-    a.start(1, 1, "coop-survival");
+    const a = new Session({
+      transport: hub.join("a"),
+      name: "A",
+      shape: "circle",
+      weapon: "sword",
+      onChange: () => {},
+    });
+    a.start(1, 1, "labyrinth"); // still 'soon' → falls back to FFA rules
     expect(a.getState().mode).toBe("ffa");
     expect(a.frame(0, IDLE).world.mode).toBe("ffa");
   });
@@ -81,13 +119,17 @@ describe("Session — lobby → start → play", () => {
       onChange: () => {},
     });
 
-    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toContain("a.png");
+    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toContain(
+      "a.png",
+    );
     a.setAvatarUrl(null);
     expect(a.getState().roster.find((p) => p.id === "a")?.avatarUrl).toBeNull();
     expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toBeNull();
 
     a.setAvatarUrl("https://cdn.example.com/new-a.png");
-    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toContain("new-a.png");
+    expect(b.getState().roster.find((p) => p.id === "a")?.avatarUrl).toContain(
+      "new-a.png",
+    );
   });
 });
 
@@ -104,7 +146,11 @@ describe("Session — explicit host (creator stays host; transferable)", () => {
   it("keeps the room creator as host even when a joiner has a lexicographically-lower id", () => {
     const hub = new LocalHub();
     // creator "z" has the HIGHER id; joiner "a" the lower — old lowest-id election would crown "a".
-    const z = new Session({ ...opts("z"), transport: hub.join("z"), isCreator: true });
+    const z = new Session({
+      ...opts("z"),
+      transport: hub.join("z"),
+      isCreator: true,
+    });
     const a = new Session({ ...opts("a"), transport: hub.join("a") });
 
     expect(z.getState().isHost).toBe(true);
@@ -115,7 +161,11 @@ describe("Session — explicit host (creator stays host; transferable)", () => {
 
   it("transfers host to another player via makeHost", () => {
     const hub = new LocalHub();
-    const z = new Session({ ...opts("z"), transport: hub.join("z"), isCreator: true });
+    const z = new Session({
+      ...opts("z"),
+      transport: hub.join("z"),
+      isCreator: true,
+    });
     const a = new Session({ ...opts("a"), transport: hub.join("a") });
 
     z.makeHost("a");
@@ -128,7 +178,11 @@ describe("Session — explicit host (creator stays host; transferable)", () => {
 
   it("migrates host to a remaining peer when the host leaves", () => {
     const hub = new LocalHub();
-    const z = new Session({ ...opts("z"), transport: hub.join("z"), isCreator: true });
+    const z = new Session({
+      ...opts("z"),
+      transport: hub.join("z"),
+      isCreator: true,
+    });
     const a = new Session({ ...opts("a"), transport: hub.join("a") });
     const b = new Session({ ...opts("b"), transport: hub.join("b") });
 
@@ -152,7 +206,11 @@ describe("Session — rounds lifecycle (host-gated, P8)", () => {
 
   it("rounds=1: a round ending finishes the match (phase 'ended') with a populated board", () => {
     const hub = new LocalHub();
-    const a = new Session({ ...opts("a"), transport: hub.join("a"), isCreator: true });
+    const a = new Session({
+      ...opts("a"),
+      transport: hub.join("a"),
+      isCreator: true,
+    });
     new Session({ ...opts("b"), transport: hub.join("b") });
     a.start(0, 1);
     a.frame(COUNTDOWN_S + 0.1, IDLE); // exit countdown → playing
@@ -168,7 +226,11 @@ describe("Session — rounds lifecycle (host-gated, P8)", () => {
 
   it("rounds>1: a round ending pauses at 'roundover' until the host advances", () => {
     const hub = new LocalHub();
-    const a = new Session({ ...opts("a"), transport: hub.join("a"), isCreator: true });
+    const a = new Session({
+      ...opts("a"),
+      transport: hub.join("a"),
+      isCreator: true,
+    });
     new Session({ ...opts("b"), transport: hub.join("b") });
     a.start(0, 2); // best of 2
     a.frame(COUNTDOWN_S + 0.1, IDLE);
@@ -185,7 +247,11 @@ describe("Session — rounds lifecycle (host-gated, P8)", () => {
 
   it("ignores nextRoundAction unless we are the host at a round-over", () => {
     const hub = new LocalHub();
-    const a = new Session({ ...opts("a"), transport: hub.join("a"), isCreator: true });
+    const a = new Session({
+      ...opts("a"),
+      transport: hub.join("a"),
+      isCreator: true,
+    });
     a.nextRoundAction(); // in lobby → no-op
     expect(a.phase).toBe("lobby");
   });

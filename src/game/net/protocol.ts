@@ -4,14 +4,23 @@
  * input through it so a peer can only ever send well-formed *intent bits*, never positions/health.
  */
 
-import type { Direction, Intent, PlayerId, PlayerStats, Projectile, World } from "../arena/types";
+import type {
+  Direction,
+  Intent,
+  PlayerId,
+  PlayerStats,
+  Projectile,
+  World,
+} from "../arena/types";
 import type { Shape } from "../arena/cosmetic";
 import type { Weapon } from "../arena/weapons";
 import type { Placement } from "../arena/rounds";
 import type { GameMode } from "../arena/modes";
 import { DEFAULT_MODE } from "../arena/modes";
+import { coerceEnemy } from "../arena/survival/enemy";
+import { coerceSurvivalState } from "../arena/survival/snapshot";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 4;
 
 export interface RosterEntry {
   id: PlayerId;
@@ -19,6 +28,7 @@ export interface RosterEntry {
   shape: Shape;
   weapon: Weapon;
   avatarUrl?: string | null;
+  ownedPremiumShapes?: Shape[];
   alive: boolean;
 }
 
@@ -29,17 +39,35 @@ export interface StartPlayer {
   shape: Shape;
   weapon: Weapon;
   avatarUrl?: string | null;
+  ownedPremiumShapes?: Shape[];
   isBot: boolean;
 }
 
 export type NetMessage =
-  | { t: "hello"; name: string; iconColor?: number; shape: Shape; weapon: Weapon; avatarUrl?: string | null; hostId?: PlayerId | null }
+  | {
+      t: "hello";
+      name: string;
+      iconColor?: number;
+      shape: Shape;
+      weapon: Weapon;
+      avatarUrl?: string | null;
+      ownedPremiumShapes?: Shape[];
+      hostId?: PlayerId | null;
+    }
   | { t: "roster"; hostId: PlayerId; players: RosterEntry[] }
   | { t: "kick"; targetId: PlayerId }
   // Explicit host assignment/transfer/migration — receivers adopt `hostId` as the authoritative host.
   | { t: "host"; hostId: PlayerId }
   // P8 round fields are optional so a plain single-match `start` (rounds=1, today's behaviour) still validates.
-  | { t: "start"; countdownMs: number; players: StartPlayer[]; mode?: GameMode; rounds?: number; roundNumber?: number; tiebreak?: boolean }
+  | {
+      t: "start";
+      countdownMs: number;
+      players: StartPlayer[];
+      mode?: GameMode;
+      rounds?: number;
+      roundNumber?: number;
+      tiebreak?: boolean;
+    }
   // Host → peers at each round's end: running tally + standings/stats. `phase` is "roundover"
   // (host will advance) or "ended" (final scoreboard). `podium` + `stats` drive the overlays.
   | {
@@ -51,6 +79,9 @@ export type NetMessage =
       podium?: Placement[];
       stats?: Record<PlayerId, PlayerStats>;
     }
+  // Host → peers when the coin is inserted: everyone plays the "insert coin" start
+  // animation in the warm-up room for ~1s before the host follows with `start`.
+  | { t: "coin" }
   | { t: "input"; tick: number; intent: Intent }
   | {
       t: "snapshot";
@@ -60,6 +91,9 @@ export type NetMessage =
       mode?: GameMode;
       players: World["players"];
       projectiles: Projectile[];
+      /** Coop Survival only: host-simulated enemies + campaign state (absent in versus). */
+      enemies?: World["enemies"];
+      survival?: World["survival"];
     }
   | { t: "event"; kind: string; targetId?: PlayerId }
   | { t: "ping"; sentAt: number }
@@ -103,7 +137,9 @@ const DIRECTIONS: Direction[] = ["up", "down", "left", "right"];
 export function coerceIntent(raw: unknown): Intent {
   const i = (raw ?? {}) as Partial<Intent> & { move?: Partial<Intent["move"]> };
   const m: Partial<Intent["move"]> = i.move ?? {};
-  const facing = DIRECTIONS.includes(i.facing as Direction) ? (i.facing as Direction) : "down";
+  const facing = DIRECTIONS.includes(i.facing as Direction)
+    ? (i.facing as Direction)
+    : "down";
   const aim = Number.isFinite(i.aim) ? (i.aim as number) : undefined;
   return {
     move: { up: !!m.up, down: !!m.down, left: !!m.left, right: !!m.right },
@@ -111,12 +147,15 @@ export function coerceIntent(raw: unknown): Intent {
     aim,
     dash: !!i.dash,
     attack: !!i.attack,
+    block: !!i.block,
   };
 }
 
-/** Build a World from a snapshot message. */
-export function worldFromSnapshot(m: Extract<NetMessage, { t: "snapshot" }>): World {
-  return {
+/** Build a World from a snapshot message. Survival fields ride through their trust boundary. */
+export function worldFromSnapshot(
+  m: Extract<NetMessage, { t: "snapshot" }>,
+): World {
+  const world: World = {
     mode: m.mode ?? DEFAULT_MODE,
     players: m.players,
     projectiles: m.projectiles,
@@ -124,4 +163,10 @@ export function worldFromSnapshot(m: Extract<NetMessage, { t: "snapshot" }>): Wo
     tick: m.tick,
     winnerId: m.winnerId,
   };
+  // Coop Survival: sanitize the host-owned enemy list + campaign block (a bad host can't fork peers).
+  if (m.survival) {
+    world.enemies = Array.isArray(m.enemies) ? m.enemies.map(coerceEnemy) : [];
+    world.survival = coerceSurvivalState(m.survival);
+  }
+  return world;
 }

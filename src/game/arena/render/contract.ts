@@ -28,6 +28,7 @@ export interface HudState {
   health: number;
   dashFraction: number;
   attackFraction: number;
+  blockFraction: number;
   alive: boolean;
 }
 
@@ -36,6 +37,7 @@ export type ArenaEvent =
   | { type: "go" }
   | { type: "dash" }
   | { type: "attack" }
+  | { type: "block" }
   | { type: "shoot" }
   | { type: "hit"; local: boolean }
   | { type: "death"; local: boolean };

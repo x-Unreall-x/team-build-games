@@ -6,19 +6,25 @@ import AvatarUploader from "../components/members/AvatarUploader";
 import { GAMES } from "../lib/members/games";
 import { getGameAvatarSetting } from "../lib/wix/playerAvatars";
 import { resolveGameAvatar } from "../lib/members/gameAvatar";
+import { getMemberGamePurchases } from "../lib/wix/gamePurchases";
 
 // SSR: read the current member (anonymous until sign-in).
 const member = await getSessionMember();
 
 // Games listed under "Player". Per-game stats + session history are placeholders until Track B B2
 // (progress persistence); the per-game avatar (B1b) is live — resolve per-game override → profile photo.
+const purchaseGroups = member ? await getMemberGamePurchases(member.id) : [];
+const purchasesByGame = new Map(purchaseGroups.map((group) => [group.gameId, group]));
 const games = member
   ? await Promise.all(
       GAMES.map(async (g) => {
         const avatar = await getGameAvatarSetting(member.id, g.id);
+        const purchases = purchasesByGame.get(g.id);
         return {
           ...g,
           resolvedUrl: resolveGameAvatar(avatar.url, member.avatarUrl, avatar.disabled),
+          availablePurchases: purchases?.availableItems ?? [],
+          ownedPurchases: purchases?.ownedItems ?? [],
         };
       }),
     )
@@ -99,6 +105,53 @@ const games = member
                     <div class="ml-auto shrink-0">
                       <AvatarUploader client:load gameId={g.id} currentUrl={g.resolvedUrl} />
                     </div>
+                  </div>
+
+                  <div class="mt-4 border border-white/10 bg-night-950 p-3">
+                    <div class="flex items-center justify-between gap-4">
+                      <div>
+                        <div class="font-display text-[10px] text-neutral-300">Bought items</div>
+                        <p class="mt-1 text-xs text-neutral-500">
+                          Premium unlocks you own for {g.name}. Future game purchases will land here automatically.
+                        </p>
+                      </div>
+                      <span class="rounded-full border border-cyan-400/30 px-2 py-1 font-display text-[8px] text-cyan-300">
+                        {g.ownedPurchases.length}/{g.availablePurchases.length}
+                      </span>
+                    </div>
+
+                    {g.ownedPurchases.length > 0 ? (
+                      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                        {g.ownedPurchases.map((item) => (
+                          <article class="flex gap-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3">
+                            <img
+                              src={item.imageSrc}
+                              alt=""
+                              loading="lazy"
+                              class="h-16 w-16 rounded-md border border-white/10 bg-night-900 object-cover"
+                            />
+                            <div class="min-w-0">
+                              <div class="flex flex-wrap items-center gap-2">
+                                <h4 class="font-display text-[10px] text-white">{item.name}</h4>
+                                <span class="rounded-full bg-emerald-400 px-2 py-0.5 font-display text-[7px] text-night-950">
+                                  Owned
+                                </span>
+                              </div>
+                              <p class="mt-1 text-xs leading-relaxed text-neutral-400">{item.description}</p>
+                              <p class="mt-2 font-display text-[8px] text-neutral-500">
+                                {item.kind} · bought item · {item.priceLabel}
+                              </p>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p class="mt-4 rounded-lg border border-dashed border-white/10 bg-night-900/60 px-3 py-3 text-xs leading-relaxed text-neutral-500">
+                        {g.availablePurchases.length > 0
+                          ? `No ${g.name} premium items bought yet. Unlocks will appear here after checkout.`
+                          : `${g.name} has no premium items configured yet. When we add skins, vehicles, passes, or upgrades, this slot is already wired.`}
+                      </p>
+                    )}
                   </div>
 
                   <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">

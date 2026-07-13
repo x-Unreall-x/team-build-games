@@ -8,8 +8,8 @@ const enemy = (over: Partial<Enemy> = {}): Enemy => ({ id: "e0", kind: "rusher",
 describe("enemy defs", () => {
   it("defines rusher (fast/fragile) and tank (slow/beefy) with wave gating", () => {
     expect(ENEMY_KINDS).toEqual(["rusher", "tank"]);
-    expect(ENEMIES.rusher).toMatchObject({ radius: 0.4, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 });
-    expect(ENEMIES.tank).toMatchObject({ radius: 0.9, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
+    expect(ENEMIES.rusher).toMatchObject({ radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 });
+    expect(ENEMIES.tank).toMatchObject({ radius: 0.9, hitRadius: 13 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
   });
 });
 

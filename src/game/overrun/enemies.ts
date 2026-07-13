@@ -8,7 +8,10 @@ import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
 export interface EnemyDef {
   kind: EnemyKind;
+  /** Physical ground radius used for movement, contact damage, and field bounds. */
   radius: number;
+  /** Projectile hit radius, matched to the rendered sprite's full visible width. */
+  hitRadius: number;
   speed: number;
   health: number;
   /** Contact damage per attack. */
@@ -25,8 +28,8 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  rusher: { kind: "rusher", radius: 0.4, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 },
-  tank: { kind: "tank", radius: 0.9, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 },
+  rusher: { kind: "rusher", radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 },
+  tank: { kind: "tank", radius: 0.9, hitRadius: 13 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 },
 };
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */

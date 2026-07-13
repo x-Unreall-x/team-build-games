@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { coerceWeapon, DEFAULT_WEAPON, WEAPONS, WEAPON_LIST } from "./weapons";
+import {
+  coerceWeapon,
+  DEFAULT_WEAPON,
+  ownsWeapon,
+  playableWeapon,
+  WEAPONS,
+  WEAPON_LIST,
+} from "./weapons";
 import { SWORD_REACH_M, ATTACK_CONE_HALF_ANGLE, ATTACK_COOLDOWN_S, KNOCKBACK_M } from "../constants";
 
 describe("weapons", () => {
@@ -31,5 +38,27 @@ describe("weapons", () => {
     for (const w of WEAPON_LIST) expect(coerceWeapon(w)).toBe(w);
     expect(coerceWeapon("bazooka")).toBe(DEFAULT_WEAPON);
     expect(coerceWeapon(undefined)).toBe(DEFAULT_WEAPON);
+  });
+
+  it("defines the premium signature attacks at their requested dimensions", () => {
+    expect(WEAPONS.katana.special).toEqual({
+      kind: "crushing-wave",
+      speed: 12,
+      range: 10,
+      radius: 0.5,
+    });
+    expect(WEAPONS["solar-hammer"].special).toEqual({
+      kind: "solar-wave",
+      speed: 12,
+      radius: 3,
+    });
+  });
+
+  it("unlocks each premium weapon with its matching premium fighter", () => {
+    expect(ownsWeapon("katana", ["neon-ronin"])).toBe(true);
+    expect(ownsWeapon("katana", ["solar-warden"])).toBe(false);
+    expect(ownsWeapon("solar-hammer", ["solar-warden"])).toBe(true);
+    expect(playableWeapon("katana", [])).toBe(DEFAULT_WEAPON);
+    expect(playableWeapon("spear", [])).toBe("spear");
   });
 });

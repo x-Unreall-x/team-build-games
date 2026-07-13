@@ -3,7 +3,14 @@
  * No engine/DOM/clock/RNG. Spawn placement is deterministic (a ring around the field).
  */
 
-import type { Direction, MatchPhase, PlayerId, PlayerState, Vec2, World } from "./types";
+import type {
+  Direction,
+  MatchPhase,
+  PlayerId,
+  PlayerState,
+  Vec2,
+  World,
+} from "./types";
 import { initialDash } from "./dash";
 import { directionAngle } from "./logic";
 import { DEFAULT_WEAPON, type Weapon } from "./weapons";
@@ -18,7 +25,12 @@ export interface SpawnSpec {
 }
 
 /** A fresh, full-health, ready-to-play player. */
-export function createPlayer(id: PlayerId, pos: Vec2, facing: Direction = "down", weapon: Weapon = DEFAULT_WEAPON): PlayerState {
+export function createPlayer(
+  id: PlayerId,
+  pos: Vec2,
+  facing: Direction = "down",
+  weapon: Weapon = DEFAULT_WEAPON,
+): PlayerState {
   return {
     id,
     pos,
@@ -30,6 +42,9 @@ export function createPlayer(id: PlayerId, pos: Vec2, facing: Direction = "down"
     dash: initialDash(),
     attack: null,
     attackCooldownRemaining: 0,
+    block: null,
+    blockCooldownRemaining: 0,
+    blockImpactSeq: 0,
     stats: { hits: 0, misses: 0, distance: 0 },
   };
 }
@@ -41,7 +56,8 @@ export function createWorld(
   mode: GameMode = DEFAULT_MODE,
 ): World {
   const players: Record<PlayerId, PlayerState> = {};
-  for (const s of spawns) players[s.id] = createPlayer(s.id, s.pos, s.facing, s.weapon);
+  for (const s of spawns)
+    players[s.id] = createPlayer(s.id, s.pos, s.facing, s.weapon);
   return { mode, players, projectiles: [], phase, tick: 0, winnerId: null };
 }
 
@@ -63,12 +79,19 @@ export function soleSurvivor(world: World): PlayerId | null {
  * Deterministic spawn ring: place ids evenly on a circle inside the field,
  * `marginM` meters from the edge, all facing the centre.
  */
-export function evenSpawns(ids: PlayerId[], fieldM = FIELD_M, marginM = 2): SpawnSpec[] {
+export function evenSpawns(
+  ids: PlayerId[],
+  fieldM = FIELD_M,
+  marginM = 2,
+): SpawnSpec[] {
   const c = fieldM / 2;
   const radius = c - marginM;
   return ids.map((id, i) => {
     const angle = (i / ids.length) * Math.PI * 2;
-    const pos = { x: c + radius * Math.cos(angle), y: c + radius * Math.sin(angle) };
+    const pos = {
+      x: c + radius * Math.cos(angle),
+      y: c + radius * Math.sin(angle),
+    };
     return { id, pos, facing: facingToCenter(pos, { x: c, y: c }) };
   });
 }

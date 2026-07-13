@@ -6,6 +6,7 @@
 export type SfxName =
   | "dash"
   | "attack"
+  | "block"
   | "hit"
   | "tik"
   | "go"
@@ -27,7 +28,9 @@ export class Sfx {
   resume(): void {
     if (!this.ctx) {
       const AC: typeof AudioContext =
-        window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
       if (!AC) return;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
@@ -58,6 +61,12 @@ export class Sfx {
       case "attack":
         this.noise(t, 0.12, 0.5, 1600);
         this.tone(1200, t, 0.05, "square", 0.25);
+        break;
+      case "block":
+        // Metallic fallback for the hosted block-impact sample.
+        this.tone(1680, t, 0.12, "square", 0.42, 760);
+        this.tone(2380, t + 0.012, 0.08, "triangle", 0.3, 1100);
+        this.noise(t, 0.1, 0.18, 1900);
         break;
       case "hit":
         this.tone(220, t, 0.13, "square", 0.85, 70);
@@ -113,13 +122,19 @@ export class Sfx {
     o.stop(start + dur + 0.03);
   }
 
-  private noise(start: number, dur: number, gain: number, centerFreq: number): void {
+  private noise(
+    start: number,
+    dur: number,
+    gain: number,
+    centerFreq: number,
+  ): void {
     if (!this.ctx || !this.master) return;
     const frames = Math.floor(this.ctx.sampleRate * dur);
     const buffer = this.ctx.createBuffer(1, frames, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     // deterministic-ish noise without Math.random dependency concerns (audio only)
-    for (let i = 0; i < frames; i++) data[i] = (((i * 1103515245 + 12345) & 0x7fffffff) / 0x3fffffff) - 1;
+    for (let i = 0; i < frames; i++)
+      data[i] = ((i * 1103515245 + 12345) & 0x7fffffff) / 0x3fffffff - 1;
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     const filter = this.ctx.createBiquadFilter();
@@ -134,7 +149,14 @@ export class Sfx {
     src.stop(start + dur + 0.02);
   }
 
-  private melody(start: number, freqs: number[], type: OscillatorType, step: number): void {
-    freqs.forEach((f, i) => this.tone(f, start + i * step, step * 1.1, type, 0.6));
+  private melody(
+    start: number,
+    freqs: number[],
+    type: OscillatorType,
+    step: number,
+  ): void {
+    freqs.forEach((f, i) =>
+      this.tone(f, start + i * step, step * 1.1, type, 0.6),
+    );
   }
 }

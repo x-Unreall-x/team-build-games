@@ -43,6 +43,8 @@ export class SquidSession {
   private profile: LobbyPlayer;
   private roster: Roster = {};
   phase: SquidSessionPhase = "lobby";
+  /** Coin-insert flag — every player in the room sees the start animation before the round begins. */
+  starting = false;
   matchEpoch = 0;
 
   private explicitHostId: PlayerId | null = null;
@@ -76,6 +78,7 @@ export class SquidSession {
     return {
       localId: this.localId,
       phase: this.phase,
+      starting: this.starting,
       matchEpoch: this.matchEpoch,
       roster: rosterList(this.roster),
       hostId,
@@ -89,8 +92,17 @@ export class SquidSession {
 
   toLobby(): void {
     this.phase = "lobby";
+    this.starting = false;
     this.engine = null;
     this.initialWorld = null;
+    this.opts.onChange();
+  }
+
+  /** Host-only: broadcast "coin inserted" so all peers play the ~1s start animation before `start`. */
+  signalCoin(): void {
+    if (this.hostId() !== this.localId || this.starting) return;
+    this.t.send(encode({ t: "coin" }));
+    this.starting = true;
     this.opts.onChange();
   }
 
@@ -232,6 +244,10 @@ export class SquidSession {
         this.explicitHostId = m.hostId;
         this.opts.onChange();
         break;
+      case "coin":
+        this.starting = true;
+        this.opts.onChange();
+        break;
       case "kick":
         if (m.targetId === this.localId) {
           this.leave();
@@ -245,6 +261,7 @@ export class SquidSession {
   }
 
   private beginRound(stage: StageId, players: SquidStartPlayer[]): void {
+    this.starting = false;
     this.stage = stage;
     this.meta = Object.fromEntries(players.map((p) => [p.id, { name: p.name, colorIndex: p.iconColor }]));
     this.initialWorld = createSquidWorld(stage, players.map((p) => p.id));

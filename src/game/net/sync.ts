@@ -82,6 +82,8 @@ export class SyncEngine {
           mode: this.world.mode,
           players: this.world.players,
           projectiles: this.world.projectiles,
+          enemies: this.world.enemies,
+          survival: this.world.survival,
         }),
       );
       this.opts.onWorld(this.world);

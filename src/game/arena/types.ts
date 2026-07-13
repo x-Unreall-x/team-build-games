@@ -21,10 +21,11 @@ export interface InputState {
   right: boolean;
 }
 
-/** Movement keys plus the action keys (Shift = dash, Space = attack), held state. */
+/** Movement keys plus the action keys, held state. */
 export interface RawInput extends InputState {
   dash: boolean;
   attack: boolean;
+  block: boolean;
   /** Free-aim angle in radians (mouse). Optional: falls back to the facing direction. */
   aim?: number;
 }
@@ -55,6 +56,13 @@ export interface AttackState {
   ttl: number;
 }
 
+/** A short defensive weapon pose; its aim is locked when the block starts. */
+export interface BlockState {
+  aim: number;
+  /** Seconds left in the interception window. */
+  ttl: number;
+}
+
 export interface PlayerState {
   id: PlayerId;
   pos: Vec2;
@@ -71,6 +79,12 @@ export interface PlayerState {
   attack: AttackState | null;
   /** Seconds until the next attack is allowed (0 = ready). */
   attackCooldownRemaining: number;
+  /** Active defensive weapon pose, or null when not blocking. */
+  block: BlockState | null;
+  /** Seconds until another block can start (0 = ready). */
+  blockCooldownRemaining: number;
+  /** Monotonic counter used by renderers to emit one impact sound per blocked hit. */
+  blockImpactSeq: number;
   /** Per-match cumulative stats (render/scoreboard only; never affects the sim). */
   stats: PlayerStats;
 }
@@ -96,6 +110,8 @@ export interface Intent {
   dash: boolean;
   /** Rising-edge: requested an attack this tick. */
   attack: boolean;
+  /** Rising-edge: requested a block this tick. */
+  block: boolean;
 }
 
 /** Per-player memory needed to derive an Intent from raw input (edge detection). */
@@ -103,15 +119,20 @@ export interface InputMemory {
   facing: Direction;
   dashHeld: boolean;
   attackHeld: boolean;
+  blockHeld: boolean;
 }
 
 export type MatchPhase = "lobby" | "countdown" | "playing" | "ended";
 
-/** An in-flight ranged projectile (e.g. a bow arrow). Host-simulated, carried in the World + snapshots. */
+export type ProjectileKind = "arrow" | "crushing-wave" | "solar-wave";
+
+/** An in-flight ranged projectile or expanding attack wave. Host-simulated and snapshot-safe. */
 export interface Projectile {
   /** Deterministic id `${ownerId}#${tick}` — fire rate is cooldown-gated, so it is unique per shot. */
   id: string;
   ownerId: PlayerId;
+  /** Missing on legacy snapshots means `arrow`. */
+  kind?: ProjectileKind;
   pos: Vec2;
   /** Velocity in meters/second. */
   vel: Vec2;
@@ -121,6 +142,14 @@ export interface Projectile {
   damage: number;
   /** Meters the victim is knocked back, along the projectile's heading. */
   knockback: number;
+  /** Collision radius in meters (arrow falls back to the shared projectile radius). */
+  radius?: number;
+  /** Expansion speed for a stationary radial wave. */
+  expansionSpeed?: number;
+  /** Targets already crossed by a piercing/expanding wave. */
+  hitIds?: PlayerId[];
+  /** Whether this attack has connected at least once, for per-attack hit/miss stats. */
+  connected?: boolean;
 }
 
 export interface World {
@@ -134,4 +163,8 @@ export interface World {
   tick: number;
   /** Set when phase === "ended": the survivor, or null if everyone died. */
   winnerId: PlayerId | null;
+  /** Coop Survival only: host-simulated enemies. Absent in versus modes. */
+  enemies?: import("./survival/enemy").EnemyState[];
+  /** Coop Survival only: campaign/run state (seed, level/wave, spawn cursor). Absent in versus modes. */
+  survival?: import("./survival/step").SurvivalState;
 }

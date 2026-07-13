@@ -12,6 +12,7 @@ import { STAGES } from "../../game/squid/stage";
 import type { StageId } from "../../game/squid/stage";
 import { formatTimeMs, type ScoreEntry } from "../../lib/squid/scores";
 import SquidWarmupRoom from "./lobby/SquidWarmupRoom";
+import { COIN_INSERT_MS } from "./lobby/CoinSlot";
 import Countdown from "./hud/Countdown";
 
 const ICE_SERVERS: RTCIceServer[] = buildIceServers(
@@ -190,9 +191,16 @@ export default function Squid() {
     colorRef.current = i;
     sessionRef.current?.setProfile(nameRef.current, i);
   };
-  const startRound = () => {
+  const startRound = (viaCoin = false) => {
     sfxRef.current.resume();
-    sessionRef.current?.start(stage);
+    const session = sessionRef.current;
+    if (!session) return;
+    if (viaCoin) {
+      session.signalCoin();
+      window.setTimeout(() => session.start(stage), COIN_INSERT_MS);
+    } else {
+      session.start(stage);
+    }
   };
   const playAgain = () => {
     if (sessionState?.isHost) startRound();
@@ -218,7 +226,8 @@ export default function Squid() {
           onName={changeName}
           onColor={changeColor}
           onStage={setStage}
-          onStart={startRound}
+          onStart={() => startRound(true)}
+          starting={sessionState!.starting}
           onKick={(id) => sessionRef.current?.kick(id)}
         />
       ) : (

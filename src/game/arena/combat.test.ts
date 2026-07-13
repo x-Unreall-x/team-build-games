@@ -3,7 +3,11 @@ import { inAttackCone, inAttackLine, resolveAttack } from "./combat";
 import { initialDash } from "./dash";
 import { directionAngle } from "./logic";
 import type { Weapon } from "./weapons";
-import { SWORD_REACH_M, ATTACK_CONE_HALF_ANGLE, KNOCKBACK_M } from "../constants";
+import {
+  SWORD_REACH_M,
+  ATTACK_CONE_HALF_ANGLE,
+  KNOCKBACK_M,
+} from "../constants";
 import type { Direction, PlayerState, Vec2 } from "./types";
 
 function player(
@@ -13,12 +17,33 @@ function player(
   status: PlayerState["status"] = "alive",
   weapon: Weapon = "sword",
 ): PlayerState {
-  return { id, pos, facing, aim: directionAngle(facing), weapon, health: 3, status, dash: initialDash(), attack: null, attackCooldownRemaining: 0, stats: { hits: 0, misses: 0, distance: 0 } };
+  return {
+    id,
+    pos,
+    facing,
+    aim: directionAngle(facing),
+    weapon,
+    health: 3,
+    status,
+    dash: initialDash(),
+    attack: null,
+    attackCooldownRemaining: 0,
+    block: null,
+    blockCooldownRemaining: 0,
+    blockImpactSeq: 0,
+    stats: { hits: 0, misses: 0, distance: 0 },
+  };
 }
 
 // Combat is now driven by a free aim ANGLE (radians), not a 4-way facing.
 const cone = (origin: Vec2, dir: Direction, target: Vec2) =>
-  inAttackCone(origin, directionAngle(dir), target, SWORD_REACH_M, ATTACK_CONE_HALF_ANGLE);
+  inAttackCone(
+    origin,
+    directionAngle(dir),
+    target,
+    SWORD_REACH_M,
+    ATTACK_CONE_HALF_ANGLE,
+  );
 
 describe("inAttackCone", () => {
   it("hits a target directly in front within reach", () => {
@@ -30,7 +55,9 @@ describe("inAttackCone", () => {
   });
 
   it("misses a target just beyond the sword reach", () => {
-    expect(cone({ x: 0, y: 0 }, "right", { x: SWORD_REACH_M + 0.1, y: 0 })).toBe(false);
+    expect(
+      cone({ x: 0, y: 0 }, "right", { x: SWORD_REACH_M + 0.1, y: 0 }),
+    ).toBe(false);
   });
 
   it("misses a target directly behind", () => {
@@ -54,9 +81,25 @@ describe("inAttackCone", () => {
   it("aims freely at any angle, not just the 4 cardinals (mouse aim)", () => {
     const half = ATTACK_CONE_HALF_ANGLE;
     // aim down-right (45°): a down-right target is dead-center → hit
-    expect(inAttackCone({ x: 0, y: 0 }, Math.PI / 4, { x: 1, y: 1 }, SWORD_REACH_M, half)).toBe(true);
+    expect(
+      inAttackCone(
+        { x: 0, y: 0 },
+        Math.PI / 4,
+        { x: 1, y: 1 },
+        SWORD_REACH_M,
+        half,
+      ),
+    ).toBe(true);
     // same aim, but an up-right target is 90° off the aim → outside the cone → miss
-    expect(inAttackCone({ x: 0, y: 0 }, Math.PI / 4, { x: 1, y: -1 }, SWORD_REACH_M, half)).toBe(false);
+    expect(
+      inAttackCone(
+        { x: 0, y: 0 },
+        Math.PI / 4,
+        { x: 1, y: -1 },
+        SWORD_REACH_M,
+        half,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -120,7 +163,10 @@ describe("resolveAttack", () => {
 
   it("damages every target inside the cone (one swing, multiple hits)", () => {
     const attacker = player("A", { x: 0, y: 0 }, "right");
-    const targets = [player("B", { x: 0.5, y: 0 }), player("C", { x: 0.7, y: 0.2 })];
+    const targets = [
+      player("B", { x: 0.5, y: 0 }),
+      player("C", { x: 0.7, y: 0.2 }),
+    ];
     const events = resolveAttack(attacker, [attacker, ...targets]);
     expect(events.map((e) => e.targetId).sort()).toEqual(["B", "C"]);
   });
@@ -139,7 +185,13 @@ describe("resolveAttack", () => {
     const attacker = player("A", { x: 0, y: 0 }, "right");
     // an enemy-shaped Hittable (id/pos/status only) in front, in range → hit
     const enemy = { id: "e1-0", pos: { x: 1, y: 0 }, status: "alive" as const };
-    const deadEnemy = { id: "e1-1", pos: { x: 0.5, y: 0 }, status: "dead" as const };
-    expect(resolveAttack(attacker, [enemy, deadEnemy])).toEqual([{ fromId: "A", targetId: "e1-0" }]);
+    const deadEnemy = {
+      id: "e1-1",
+      pos: { x: 0.5, y: 0 },
+      status: "dead" as const,
+    };
+    expect(resolveAttack(attacker, [enemy, deadEnemy])).toEqual([
+      { fromId: "A", targetId: "e1-0" },
+    ]);
   });
 });

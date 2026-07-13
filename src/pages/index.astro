@@ -1,6 +1,7 @@
 ---
 import Footer from "../components/layout/footer.astro";
 import RootLayout from "../components/layout/layout.astro";
+import HeroGameDeck from "../components/games/HeroGameDeck.astro";
 import LikeButton from "../components/games/LikeButton.astro";
 import { ARCADE_GAMES, GAME_SLUGS } from "../lib/games/registry";
 import { getLikeCounts, getMemberLikedSet } from "../lib/wix/gameLikes";
@@ -63,78 +64,71 @@ const features = [
 ---
 
 <RootLayout>
-  {/* ============ HERO — arcade title screen ============ */}
-  <section class="pixel-grid relative overflow-hidden">
+  {/* ============ HERO — pitch first, gameplay immediately visible ============ */}
+  <section class="pixel-grid hero-grid relative overflow-hidden border-b border-white/10">
     <div
-      class="pointer-events-none absolute -top-24 left-1/2 h-72 w-[36rem] -translate-x-1/2 rounded-full bg-cyan-500/15 blur-3xl"
+      class="pointer-events-none absolute -left-32 top-0 h-80 w-80 rounded-full bg-cyan-500/12 blur-3xl"
       aria-hidden="true"
-    >
-    </div>
+    ></div>
     <div
-      class="pointer-events-none absolute -bottom-32 right-0 h-64 w-96 rounded-full bg-fuchsia-500/10 blur-3xl"
+      class="pointer-events-none absolute -right-28 bottom-0 h-96 w-96 rounded-full bg-fuchsia-500/12 blur-3xl"
       aria-hidden="true"
-    >
-    </div>
+    ></div>
 
-    {/* floating player shapes — the actual in-game cosmetics */}
     <span
-      class="animate-float absolute left-[8%] top-24 hidden h-4 w-4 rounded-full bg-cyan-400/80 shadow-[0_0_16px_rgb(34_211_238/0.8)] lg:block"
+      class="animate-float absolute left-[3%] top-20 hidden h-3.5 w-3.5 rounded-full bg-cyan-400/80 shadow-[0_0_16px_rgb(34_211_238/0.8)] xl:block"
       aria-hidden="true"></span>
     <span
-      class="animate-float absolute right-[12%] top-36 hidden h-4 w-4 rotate-45 bg-fuchsia-400/80 shadow-[0_0_16px_rgb(232_121_249/0.8)] [animation-delay:-1.6s] lg:block"
-      aria-hidden="true"></span>
-    <span
-      class="animate-float absolute bottom-24 left-[16%] hidden h-4 w-4 bg-amber-300/80 shadow-[0_0_16px_rgb(252_211_77/0.8)] [animation-delay:-3.2s] [clip-path:polygon(50%_0,100%_100%,0_100%)] lg:block"
-      aria-hidden="true"></span>
-    <span
-      class="animate-float absolute bottom-40 right-[20%] hidden h-3.5 w-3.5 bg-emerald-400/80 shadow-[0_0_16px_rgb(52_211_153/0.8)] [animation-delay:-2.4s] lg:block"
+      class="animate-float absolute bottom-14 right-[4%] hidden h-4 w-4 rotate-45 bg-fuchsia-400/80 shadow-[0_0_16px_rgb(232_121_249/0.8)] [animation-delay:-1.6s] xl:block"
       aria-hidden="true"></span>
 
     <div
-      class="relative mx-auto flex w-full max-w-5xl flex-col items-center px-4 py-16 text-center sm:py-[90px]"
+      class="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-12 lg:grid-cols-[0.92fr_1.08fr] lg:gap-14 lg:px-6 lg:py-14"
     >
-      <p class="eyebrow text-cyan-400">* The office arcade *</p>
-      <h1
-        class="neon mt-6 font-display text-3xl leading-snug text-white sm:text-4xl md:text-5xl md:leading-snug"
-      >
-        TeamBuild<br />
-        <span class="text-cyan-400">Ga</span><span class="text-fuchsia-400"
-          >mes</span
+      <div class="max-w-xl text-center lg:text-left">
+        <p class="eyebrow text-cyan-400">* The 5-minute office arcade *</p>
+        <h1
+          class="mt-5 font-display text-[2rem] leading-[1.35] text-white sm:text-[2.55rem] lg:text-[2.75rem]"
         >
-      </h1>
-      <p class="mt-8 max-w-2xl text-lg leading-relaxed text-neutral-300">
-        Tiny multiplayer games for your next teambuilding. Open a room, drop a
-        link in the team chat, and find out who on the team is secretly
-        cracked at video games.
-      </p>
+          Turn your next team call into a
+          <span class="neon text-fuchsia-400">boss battle.</span>
+        </h1>
+        <p class="mx-auto mt-6 max-w-lg text-base leading-relaxed text-neutral-300 sm:text-lg lg:mx-0">
+          Tiny multiplayer games that replace awkward icebreakers with actual
+          fun. Open a room, share one link, and start playing together.
+        </p>
 
-      <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
-        <a href="/games/arena" class="arcade-btn">▶ Press start</a>
-        <a href="#games" class="arcade-btn arcade-btn-ghost">Browse games</a>
+        <div class="mt-8 flex flex-wrap items-center justify-center gap-4 lg:justify-start">
+          <a href="/games/arena" class="arcade-btn">▶ Play Arena</a>
+          <a href="#games" class="arcade-btn arcade-btn-ghost">Explore games</a>
+        </div>
+
+        <ul
+          class="mt-8 flex flex-wrap justify-center gap-x-5 gap-y-3 text-xs font-medium text-neutral-300 lg:justify-start"
+          aria-label="Game night benefits"
+        >
+          <li class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgb(34_211_238/0.9)]" aria-hidden="true"></span>
+            Up to 8 players
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgb(52_211_153/0.9)]" aria-hidden="true"></span>
+            Starts in seconds
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-fuchsia-400 shadow-[0_0_8px_rgb(232_121_249/0.9)]" aria-hidden="true"></span>
+            No installs
+          </li>
+        </ul>
       </div>
 
-      <div
-        class="mt-14 grid w-full max-w-xl grid-cols-3 gap-3 font-display text-[9px] text-neutral-400"
-      >
-        <div class="border border-white/10 bg-night-900/70 px-3 py-4">
-          <div class="neon text-lg text-cyan-400">8</div>
-          <div class="mt-2">max players</div>
-        </div>
-        <div class="border border-white/10 bg-night-900/70 px-3 py-4">
-          <div class="neon text-lg text-emerald-400">0</div>
-          <div class="mt-2">installs</div>
-        </div>
-        <div class="border border-white/10 bg-night-900/70 px-3 py-4">
-          <div class="neon text-lg text-fuchsia-400">999</div>
-          <div class="mt-2">bragging rights</div>
-        </div>
-      </div>
+      <HeroGameDeck />
     </div>
   </section>
 
   {/* ============ GAME ROSTER — the cabinets ============ */}
   <section id="games" class="scroll-mt-24 border-t border-white/10">
-    <div class="mx-auto w-full max-w-6xl px-4 py-16">
+    <div class="mx-auto w-full max-w-6xl px-4 py-14 lg:px-6">
       <div class="mb-10 flex items-end justify-between gap-4">
         <div>
           <p class="eyebrow text-fuchsia-400">Insert coin</p>
@@ -171,6 +165,22 @@ const features = [
                       loading="lazy"
                     />
                   )}
+                  {game.slug === "overrun" && (
+                    <img
+                      src="/assets/overrun/overrun-screenshot.png"
+                      alt="Overrun gameplay — two players firing at a monster horde"
+                      class="absolute inset-0 h-full w-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  )}
+                  {game.slug === "squid" && (
+                    <img
+                      src="/assets/squid/squid-screenshot.png"
+                      alt="Squid gameplay — the team walking toward the finish arch"
+                      class="absolute inset-0 h-full w-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  )}
                   {game.slug === "survival" && (
                     <div class="absolute inset-0">
                       <span class="absolute left-[46%] top-[42%] h-4 w-4 rounded-full bg-emerald-400 shadow-[0_0_14px_rgb(52_211_153/0.9)]" />
@@ -187,6 +197,16 @@ const features = [
                           class={`absolute ${pos} h-3 w-3 rotate-180 bg-red-500/80 [clip-path:polygon(50%_0,100%_100%,0_100%)]`}
                         />
                       ))}
+                    </div>
+                  )}
+                  {game.slug === "road-madness" && (
+                    <div class="absolute inset-0 overflow-hidden">
+                      <div class="absolute inset-x-[8%] bottom-[16%] top-[18%] -skew-y-3 border-y-4 border-amber-300/45 bg-neutral-800/90 shadow-[0_0_28px_rgb(251_191_36/0.15)]">
+                        <span class="absolute left-[18%] top-[28%] h-5 w-9 rotate-12 rounded bg-cyan-400 shadow-[0_0_12px_rgb(34_211_238/0.65)]" />
+                        <span class="absolute right-[20%] top-[48%] h-6 w-10 -rotate-12 rounded bg-red-500 shadow-[0_0_12px_rgb(239_68_68/0.65)]" />
+                        <span class="absolute left-[47%] top-[58%] h-6 w-11 rotate-90 rounded bg-amber-300 shadow-[0_0_12px_rgb(252_211_77/0.65)]" />
+                        <span class="absolute left-[7%] right-[7%] top-1/2 border-t border-dashed border-white/20" />
+                      </div>
                     </div>
                   )}
                   {game.slug === "tactics" && (

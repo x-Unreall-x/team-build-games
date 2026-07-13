@@ -3,10 +3,16 @@
  *
  * Encodes two rules from the spec:
  *  - facing = the last-moved direction (horizontal takes precedence; kept when idle)
- *  - dash (Shift) and attack (Space) are EDGE-triggered: one action per press, not per held frame.
+ *  - dash, attack, and block are EDGE-triggered: one action per press, not per held frame.
  */
 
-import type { Direction, InputState, Intent, InputMemory, RawInput } from "./types";
+import type {
+  Direction,
+  InputState,
+  Intent,
+  InputMemory,
+  RawInput,
+} from "./types";
 
 /** Derive the new facing from movement keys, falling back to the previous facing. */
 export function nextFacing(input: InputState, prev: Direction): Direction {
@@ -19,7 +25,7 @@ export function nextFacing(input: InputState, prev: Direction): Direction {
 
 /** Fresh per-player input memory (defaults to facing down, no keys held). */
 export function initialMemory(facing: Direction = "down"): InputMemory {
-  return { facing, dashHeld: false, attackHeld: false };
+  return { facing, dashHeld: false, attackHeld: false, blockHeld: false };
 }
 
 /**
@@ -39,8 +45,14 @@ export function inputToIntent(
   const facing = nextFacing(move, mem.facing);
   const dash = raw.dash && !mem.dashHeld;
   const attack = raw.attack && !mem.attackHeld;
+  const block = raw.block && !mem.blockHeld;
   return {
-    intent: { move, facing, aim: raw.aim, dash, attack },
-    memory: { facing, dashHeld: raw.dash, attackHeld: raw.attack },
+    intent: { move, facing, aim: raw.aim, dash, attack, block },
+    memory: {
+      facing,
+      dashHeld: raw.dash,
+      attackHeld: raw.attack,
+      blockHeld: raw.block,
+    },
   };
 }

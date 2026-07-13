@@ -7,6 +7,7 @@ import { defineConfig } from "vitest/config";
  *   npm run test:members  → members-area helpers only
  *   npm run test:merch    → merch/print helpers only
  *   npm run test:squid    → Squid (sim + net + score helpers) only
+ *   npm run test:road     → Road Madness sim only
  *
  * `exclude` drops build output, deps, and — importantly — git worktrees under `.claude/worktrees/*`.
  * Those hold OTHER branches' full checkouts; without this, a `vitest run`
@@ -56,6 +57,14 @@ export default defineConfig({
           environment: "node",
           exclude,
           include: ["src/game/squid/**/*.test.ts", "src/lib/squid/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "road-madness",
+          environment: "node",
+          exclude,
+          include: ["src/game/road-madness/**/*.test.ts"],
         },
       },
     ],

@@ -29,7 +29,7 @@ export interface ModeInfo {
 export const MODES: ModeInfo[] = [
   { id: "ffa", name: "Free For All", blurb: "Last one standing on the open field.", rules: "versus", arena: "open", available: true },
   { id: "labyrinth", name: "Labyrinth", blurb: "Last one standing in a randomized maze.", rules: "versus", arena: "labyrinth", available: false },
-  { id: "coop-survival", name: "Coop Survival", blurb: "Team up against escalating creature waves.", rules: "survival", arena: "open", available: false },
+  { id: "coop-survival", name: "Coop Survival", blurb: "Team up against escalating creature waves.", rules: "survival", arena: "open", available: true },
   { id: "team-versus", name: "Team Versus", blurb: "Pick teams in the waiting room, then clash.", rules: "team", arena: "open", available: false },
 ];
 

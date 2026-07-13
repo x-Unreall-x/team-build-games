@@ -6,11 +6,15 @@ import { OverrunSession } from "../../../game/overrun/net/session";
 import { buildJoinUrl, mintRoomId, parseRoomId } from "../../../game/net/roomLink";
 import { buildIceServers, iceConfigFromEnv } from "../../../game/net/ice";
 import { joinedIds } from "../../../game/net/lobby";
+import { ArenaMusic, type ArenaMusicScene } from "../../../game/audio/music";
+import { AudioSampleBank } from "../../../game/audio/samples";
 import { Sfx } from "../../../game/audio/sfx";
+import { fetchOverrunAssetManifest, type OverrunAssetManifest } from "../../../game/overrun/assets";
 import type { PlayerId, ShooterWorld } from "../../../game/overrun/types";
 import { accuracy, buildOverrunPrintPayload } from "../../../game/overrun/stats";
 import { buildShopUrl, sanitizePayload } from "../../../lib/merch/print";
 import OverrunWarmupRoom from "./OverrunWarmupRoom";
+import { COIN_INSERT_MS } from "../lobby/CoinSlot";
 import OverrunCountdown from "./hud/OverrunCountdown";
 import AmmoBox from "./hud/AmmoBox";
 import XpBar from "./hud/XpBar";
@@ -61,10 +65,16 @@ function teammatesSig(list: OverrunHudState["teammates"]): string {
  * defense → scorecard. The renderer scene is fed the OverrunSession as its driver —
  * same shape as Arena's MatchDriver, but this game owns its own session/HUD/scene.
  */
-export default function Overrun() {
+type OverrunProps = {
+  assetManifestUrl?: string;
+};
+
+export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const sfxRef = useRef<Sfx>(new Sfx());
+  const musicRef = useRef<ArenaMusic | null>(null);
+  const samplesRef = useRef<AudioSampleBank | null>(null);
   const sessionRef = useRef<OverrunSession | null>(null);
   const lastHud = useRef<OverrunHudState | null>(null);
   const nameRef = useRef("Player");
@@ -76,6 +86,31 @@ export default function Overrun() {
   const [name, setName] = useState("Player");
   const [hud, setHud] = useState<OverrunHudState>(FRESH_HUD);
   const [finalWorld, setFinalWorld] = useState<ShooterWorld | null>(null);
+  const [assetManifest, setAssetManifest] = useState<OverrunAssetManifest | null>(null);
+  const [assetsSettled, setAssetsSettled] = useState(!assetManifestUrl);
+
+  useEffect(() => {
+    if (!assetManifestUrl) {
+      setAssetManifest(null);
+      setAssetsSettled(true);
+      return;
+    }
+
+    const controller = new AbortController();
+    const fetcher: typeof fetch = (input, init) => fetch(input, { ...init, signal: controller.signal });
+    setAssetsSettled(false);
+    void fetchOverrunAssetManifest(assetManifestUrl, fetcher)
+      .then((manifest) => setAssetManifest(manifest))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        console.warn("Overrun asset pack unavailable; using procedural fallbacks", error);
+        setAssetManifest(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAssetsSettled(true);
+      });
+    return () => controller.abort();
+  }, [assetManifestUrl]);
 
   // --- create transport + session once (client only) ---
   useEffect(() => {
@@ -141,16 +176,15 @@ export default function Overrun() {
         s.play("go");
         break;
       case "shot":
-        s.play("shoot");
+        if (!samplesRef.current?.play(`shot:${e.gun}`, e.gun === "shotgun" ? 0.58 : 0.48)) s.play("shoot");
         break;
       case "kill":
-        s.play("hit");
         break;
       case "pickup":
-        s.play("join");
+        if (!samplesRef.current?.play(e.item === "medkit" ? "pickup:medkit" : "pickup:weapon", 0.45)) s.play("join");
         break;
       case "levelup":
-        s.play("go");
+        if (!samplesRef.current?.play("levelup", 0.48)) s.play("go");
         break;
       case "downed":
         s.play(e.local ? "gameover" : "hit");
@@ -162,13 +196,13 @@ export default function Overrun() {
         s.play("gameover");
         break;
       case "enemyHit":
-        s.play("hit");
+        if (!samplesRef.current?.play("hit:enemy", 0.34)) s.play("hit");
         break;
       case "playerHit":
-        if (e.local) s.play("hurt");
+        if (e.local && !samplesRef.current?.play("hit:player", 0.55)) s.play("hurt");
         break;
       case "reload":
-        s.play("reload");
+        if (!samplesRef.current?.play(`reload:${e.gun}`, 0.4)) s.play("reload");
         break;
     }
   }, []);
@@ -176,6 +210,9 @@ export default function Overrun() {
   // --- (re)create the Phaser game whenever the active match changes ---
   const sessionState = ready ? sessionRef.current!.getState() : null;
   const inMatch = !!sessionState && sessionState.phase !== "lobby";
+  const musicScene: ArenaMusicScene = inMatch ? "battle" : "lobby";
+  const musicSceneRef = useRef<ArenaMusicScene>(musicScene);
+  musicSceneRef.current = musicScene;
   const gameKey = sessionState && sessionState.phase !== "lobby" ? `n${sessionState.matchEpoch}` : "";
 
   useEffect(() => {
@@ -189,6 +226,7 @@ export default function Overrun() {
     setHud(FRESH_HUD);
     const cfg: OverrunConfig = {
       driver,
+      assets: assetManifest?.visuals,
       onHud,
       onEvent,
       onEnd: (w) => setFinalWorld(w),
@@ -206,7 +244,7 @@ export default function Overrun() {
     gameRef.current = game;
     if (import.meta.env.DEV) (window as unknown as { __overrunGame?: Phaser.Game }).__overrunGame = game;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameKey, onEvent, onHud]);
+  }, [assetManifest, gameKey, onEvent, onHud]);
 
   // --- connect chime: play once when a new remote peer appears in the lobby roster ---
   const rosterIds = sessionState ? sessionState.roster.map((pl) => pl.id) : [];
@@ -220,9 +258,44 @@ export default function Overrun() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rosterKey]);
 
-  // Unlock audio on the first user gesture so lobby SFX (the join chime) are audible pre-match.
   useEffect(() => {
-    const unlock = () => sfxRef.current.resume();
+    if (!assetManifest) return;
+    const music = new ArenaMusic(assetManifest.music);
+    const samples = new AudioSampleBank({
+      "shot:pistol": assetManifest.sfx.shots.pistol,
+      "shot:shotgun": assetManifest.sfx.shots.shotgun,
+      "shot:rifle": assetManifest.sfx.shots.rifle,
+      "reload:pistol": assetManifest.sfx.reload.pistol,
+      "reload:shotgun": assetManifest.sfx.reload.shotgun,
+      "reload:rifle": assetManifest.sfx.reload.rifle,
+      "hit:enemy": assetManifest.sfx.enemyHit,
+      "hit:player": assetManifest.sfx.playerHit,
+      "pickup:weapon": assetManifest.sfx.weaponPickup,
+      "pickup:medkit": assetManifest.sfx.medkitPickup,
+      levelup: assetManifest.sfx.levelUp,
+    });
+    music.setScene(musicSceneRef.current);
+    musicRef.current = music;
+    samplesRef.current = samples;
+    return () => {
+      music.destroy();
+      samples.destroy();
+      if (musicRef.current === music) musicRef.current = null;
+      if (samplesRef.current === samples) samplesRef.current = null;
+    };
+  }, [assetManifest]);
+
+  useEffect(() => {
+    musicRef.current?.setScene(musicScene);
+  }, [musicScene]);
+
+  // Unlock all audio on the first user gesture so room music and SFX work pre-match.
+  useEffect(() => {
+    const unlock = () => {
+      sfxRef.current.resume();
+      musicRef.current?.unlock();
+      samplesRef.current?.unlock();
+    };
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
     return () => {
@@ -239,7 +312,13 @@ export default function Overrun() {
   };
   const startMatch = () => {
     sfxRef.current.resume();
-    sessionRef.current?.start();
+    musicRef.current?.unlock();
+    samplesRef.current?.unlock();
+    const session = sessionRef.current;
+    if (!session) return;
+    // Coin-insert animation plays for everyone in the room, then the match starts.
+    session.signalCoin();
+    window.setTimeout(() => session.start(), COIN_INSERT_MS);
   };
   const playAgain = () => {
     if (sessionState?.isHost) sessionRef.current?.start();
@@ -249,7 +328,7 @@ export default function Overrun() {
     setFinalWorld(null);
   };
 
-  if (!ready) {
+  if (!ready || !assetsSettled) {
     return <div className="py-16 text-center text-neutral-500">Deploying to the front line…</div>;
   }
 
@@ -271,8 +350,11 @@ export default function Overrun() {
           joinUrl={joinUrl}
           onName={changeName}
           onStart={startMatch}
+          starting={sessionState!.starting}
           onKick={(id) => sessionRef.current?.kick(id)}
           onMakeHost={(id) => sessionRef.current?.makeHost(id)}
+          soldierAssetUrl={assetManifest?.visuals.player.idle}
+          weaponAssetUrls={assetManifest?.visuals.weapons}
         />
       ) : (
         <div
