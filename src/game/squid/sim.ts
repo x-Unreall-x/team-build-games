@@ -19,7 +19,7 @@ import {
   SWING_PLANTED_MPS,
 } from "./constants";
 import { claimLeg, cycleLeg, legOf } from "./control";
-import { HEAD, RIG_CONSTRAINTS } from "./octopus";
+import { HEAD, MID_ANCHOR, RIG_CONSTRAINTS, ROOT_ANCHOR, TIP } from "./octopus";
 import { groundYAt, stageById } from "./stage";
 import { integrate, solve } from "./verlet";
 import type { PlayerId, RoundResult, SquidIntent, SquidWorld, VPoint } from "./types";
@@ -69,7 +69,9 @@ export function stepSquid(
   // Second pass: apply motors — lifted legs get tip raised; planted legs get propulsion push
   for (let legIdx = 0; legIdx < legs.length; legIdx++) {
     const leg = legs[legIdx]!;
-    const [root, mid, tip] = leg.pts;
+    const root = leg.pts[ROOT_ANCHOR]!;
+    const mid = leg.pts[MID_ANCHOR]!;
+    const tip = leg.pts[TIP]!;
 
     if (leg.lifted) {
       // raise the tip toward the body (position nudge — verlet turns it into velocity)
@@ -100,7 +102,7 @@ export function stepSquid(
   // lifted legs included — `lifted` only blocks *planting*, it no longer exempts a leg
   // from ground collision, so a lifted leg simply rests on the floor if it sinks to it.
   const pinned: boolean[] = Array(points.length).fill(false);
-  for (const leg of legs) if (leg.planted) pinned[leg.pts[2]] = true;
+  for (const leg of legs) if (leg.planted) pinned[leg.pts[TIP]!] = true;
   let pts = points;
   const sdt = dt / SUBSTEPS;
   const plantedCount = legs.reduce((n, l) => n + (l.planted ? 1 : 0), 0);
@@ -119,7 +121,7 @@ export function stepSquid(
       const dy = accel * sdt * sdt; // position nudge, same style as gravity in integrate()
       pts[HEAD]!.pos.y += dy;
       for (const leg of legs) {
-        if (leg.planted) pts[leg.pts[0]]!.pos.y += dy;
+        if (leg.planted) pts[leg.pts[ROOT_ANCHOR]!]!.pos.y += dy;
       }
     }
     pts = solve(pts, RIG_CONSTRAINTS, pinned, groundAt);
@@ -127,14 +129,14 @@ export function stepSquid(
   // pinned tips must not drift (integrate moves everything): restore them
   for (const leg of legs) {
     if (leg.planted) {
-      const i = leg.pts[2];
+      const i = leg.pts[TIP]!;
       pts[i] = { pos: { ...world.points[i]!.pos }, prev: { ...world.points[i]!.pos } };
     }
   }
 
   // 4) plant rule
   for (const leg of legs) {
-    const tip = pts[leg.pts[2]]!;
+    const tip = pts[leg.pts[TIP]!]!;
     const g = groundAt(tip.pos.x);
     if (leg.lifted || g === null) leg.planted = false;
     else if (tip.pos.y <= g + PLANT_EPS_M) leg.planted = true;

@@ -29,9 +29,9 @@ export interface DistCon {
   len: number;
 }
 
-/** One octopus leg: indices into world.points, [root, mid, tip] (root nearest the head). */
+/** One octopus leg: point indices into world.points, root-nearest-head → tip (length LEG_JOINTS). */
 export interface Leg {
-  pts: [number, number, number];
+  pts: number[];
   /** Tip pinned to the ground (provides support + propulsion leverage). */
   planted: boolean;
   /** Lift key held — tip raised and unpinned. */
@@ -45,7 +45,7 @@ export interface SquidWorld {
   phase: SquidPhase;
   tick: number;
   stage: StageId;
-  /** [0] = head hub; then legs' points in leg order (root, mid, tip per leg). */
+  /** [0] = head hub; then legs' points in leg order (LEG_JOINTS points per leg, root-nearest-head → tip). */
   points: VPoint[];
   legs: Leg[];
   /** Controlling player per leg index (null = unheld). */

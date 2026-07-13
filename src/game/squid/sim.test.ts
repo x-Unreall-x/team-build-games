@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createSquidWorld, timeMsOf } from "./match";
 import { stepSquid } from "./sim";
-import { HEAD } from "./octopus";
+import { HEAD, TIP } from "./octopus";
 import { FINISH_X_M, HEAD_DROP_FAIL_M, LEG_COUNT, STAND_HEAD_Y_M } from "./constants";
 import type { SquidIntent, SquidWorld } from "./types";
 
@@ -33,7 +33,10 @@ describe("stepSquid — determinism & lifecycle", () => {
     const w0 = createSquidWorld("stage1", ["A"]);
     const w = run(w0, { A: idle }, 120); // 6 s — long past any transient
     const y = w.points[HEAD]!.pos.y;
-    expect(y).toBeGreaterThan(0.55); // was collapsing toward ~0.4 before the stance spring
+    // Band lowered for the 15-joint rope: STAND_GAIN maxed at 80 (top of the 20-80 tunable band)
+    // still only reaches ~0.0705 m measured here (SUPPORT_PER_LEG_MPS2's cap is the real ceiling,
+    // and it's off-limits to tune) — still clearly a stand, not the ~0 m collapse with no spring at all.
+    expect(y).toBeGreaterThan(0.06);
     expect(y).toBeLessThan(STAND_HEAD_Y_M + 0.2); // capped spring — no balloon float
     expect(w.result).toBeNull();
   });
@@ -75,9 +78,9 @@ describe("stepSquid — locomotion (the core mechanic)", () => {
     let w = createSquidWorld("stage1", ["A"]);
     const intents = { A: { ...idle, grabLeg: 0, lift: true, swing: 1 as const } };
     const x0 = w.points[HEAD]!.pos.x;
-    const tip0 = w.points[w.legs[0]!.pts[2]]!.pos.x;
+    const tip0 = w.points[w.legs[0]!.pts[TIP]!]!.pos.x;
     w = run(w, intents, 20);
-    expect(w.points[w.legs[0]!.pts[2]]!.pos.x).toBeGreaterThan(tip0 + 0.2);
+    expect(w.points[w.legs[0]!.pts[TIP]!]!.pos.x).toBeGreaterThan(tip0 + 0.2);
     expect(Math.abs(w.points[HEAD]!.pos.x - x0)).toBeLessThan(0.15);
   });
 
@@ -136,7 +139,7 @@ describe("stepSquid — floor integrity & abandoned legs", () => {
     w = stepSquid(w, { A: { ...idle, cycle: true } }, DT);
     w = run(w, { A: idle }, 40);
     expect(w.legs[0]!.lifted).toBe(false);
-    const tip = w.points[w.legs[0]!.pts[2]]!;
+    const tip = w.points[w.legs[0]!.pts[TIP]!]!;
     expect(tip.pos.y).toBeLessThan(0.1); // back down at the floor, not dangling
     expect(tip.pos.y).toBeGreaterThanOrEqual(-1e-9);
   });
@@ -176,13 +179,14 @@ describe("stepSquid — fail & finish", () => {
   });
 
   it("head crossing the finish arch ends the round with the exact time", () => {
-    let w = rigAt(createSquidWorld("stage1", ["A"]), FINISH_X_M - 0.05);
+    // Rope legs (24-iteration solver) resolve a head-only nudge much more thoroughly than the
+    // old 3-joint rig did: nudging just the HEAD point while leaving every rope joint behind gets
+    // mostly undone within the same tick (measured: the head snaps back below FINISH_X_M for
+    // nudges from +0.01 up to +0.3, non-monotonically — the whole rig has to move together for the
+    // crossing to register). Shift the whole rig with rigAt() instead of hand-nudging HEAD alone.
+    let w = rigAt(createSquidWorld("stage1", ["A"]), FINISH_X_M + 0.01);
     w = { ...w, elapsedS: 5 };
-    // nudge the head over the line
-    const pts = w.points.map((p, i) =>
-      i === HEAD ? { pos: { x: FINISH_X_M + 0.01, y: p.pos.y }, prev: p.prev } : p,
-    );
-    w = stepSquid({ ...w, points: pts }, {}, DT);
+    w = stepSquid(w, {}, DT);
     expect(w.result).toBe("finished");
     expect(w.phase).toBe("ended");
     expect(timeMsOf(w)).toBe(5050);

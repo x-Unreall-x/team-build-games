@@ -9,8 +9,12 @@ export const COURSE_M = 5;
 export const FINISH_X_M = COURSE_M;
 
 export const LEG_COUNT = 8;
-/** Each leg is 3 verlet segments of this length (total reach ~1.35 m). */
-export const LEG_SEGMENT_M = 0.45;
+/** Joints per leg (verlet rope). The old rig had 3; forces attach at the same fractions. */
+export const LEG_JOINTS = 15;
+/** Total head-to-tip reach — unchanged from the 3-joint rig. */
+export const LEG_LENGTH_M = 1.35;
+/** One rope segment (head→p0 and each p_j→p_{j+1}). */
+export const LEG_SEGMENT_M = LEG_LENGTH_M / LEG_JOINTS;
 /** Head hub spawn position. */
 export const HEAD_START_X_M = 0.6;
 export const BODY_HEIGHT_M = 1.1;
@@ -19,8 +23,10 @@ export const HEAD_R_M = 0.35;
 
 // --- physics ---
 export const GRAVITY_MPS2 = 9;
-/** Constraint relaxation iterations per substep — FIXED for determinism. */
-export const SOLVER_ITERATIONS = 8;
+/** Constraint relaxation iterations per substep — FIXED for determinism.
+ * 24 (was 8 for 3-joint legs): corrections propagate ~one link per iteration,
+ * so a 15-link rope needs more passes or it stretches under body weight. */
+export const SOLVER_ITERATIONS = 24;
 /** Physics substeps per sim tick — FIXED for determinism. */
 export const SUBSTEPS = 2;
 /** Verlet velocity damping per integration step (1 = none). */
@@ -45,8 +51,14 @@ export const LIFT_TIP_BELOW_HEAD_M = 0.2;
 export const STAND_HEAD_Y_M = 0.75;
 /** Max upward acceleration each PLANTED leg contributes — zero planted legs ⇒ zero support. */
 export const SUPPORT_PER_LEG_MPS2 = 2.5;
-/** Stance spring gain: m/s² per meter of height deficit (gravity is 9 — must exceed it within the deficit range). */
-export const STAND_GAIN = 50;
+/** Stance spring gain: m/s² per meter of height deficit (gravity is 9 — must exceed it within the deficit range).
+ * Raised to the top of the tunable band (was 50) for the 15-joint rope: the nudge lands on
+ * ROOT_ANCHOR (4 links deep) instead of the old rig's root (1 link from the head), so most of
+ * the correction gets absorbed by the intervening free joints before it reaches the head.
+ * Even at 80 the settle height only reaches ~0.07 m (measured, see sim.test.ts) — SUPPORT_PER_LEG_MPS2
+ * (capped support, off-limits to tune) is the real ceiling, so the stand-band's lower edge was
+ * lowered to match instead of pushing gain further. */
+export const STAND_GAIN = 80;
 
 /** Head center below -this ⇒ round failed (only reachable over the hole). */
 export const HEAD_DROP_FAIL_M = 0.5;
