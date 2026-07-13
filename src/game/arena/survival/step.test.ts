@@ -79,6 +79,18 @@ describe("stepSurvival — players vs enemies", () => {
     expect(next.enemies[0]!.health).toBe(0);
   });
 
+  it("a surviving hit monster is staggered and shoved away from the attacker", () => {
+    const base = createSurvivalWorld(["p1"], { seed: 1 });
+    const p = base.players.p1!;
+    // A zombie (4 HP) just to the right survives one sword hit → should reel + get pushed further right.
+    const enemy = createEnemy("e1-1-0", "zombie", { x: p.pos.x + 0.8, y: p.pos.y }, 0);
+    const w: SurvivalWorld = { ...base, enemies: [enemy] };
+    const hit = stepSurvival(w, swingRight("p1"), DT).enemies[0]!;
+    expect(hit.status).toBe("alive");
+    expect(hit.hitStunRemaining).toBeGreaterThan(0); // staggered
+    expect(hit.pos.x).toBeGreaterThan(enemy.pos.x); // shoved away from the attacker (who aims +x)
+  });
+
   it("enemies deal contact damage to a touching player", () => {
     const base = createSurvivalWorld(["p1"], { seed: 1 });
     const p = base.players.p1!;

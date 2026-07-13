@@ -12,14 +12,14 @@
 
 import type { Intent, PlayerId, PlayerState, Projectile, Vec2, World } from "../types";
 import type { GameMode } from "../modes";
-import { clampToField, directionAngle, directionFromInput, directionVector } from "../logic";
+import { aimVector, clampToField, directionAngle, directionFromInput, directionVector } from "../logic";
 import { consumeDashDistance, dashSpeedMultiplier, tickDashCooldown, tryStartDash } from "../dash";
 import { resolveAttack } from "../combat";
 import { advanceProjectile, projectileTarget, spawnArrow } from "../projectile";
 import { createPlayer } from "../match";
 import { WEAPONS } from "../weapons";
 import { ATTACK_TTL_S, FIELD_M, FIGURE_RADIUS_M, RUN_SPEED_MS, START_HEALTH } from "../../constants";
-import { createEnemy, ENEMY_STATS, type EnemyState } from "./enemy";
+import { createEnemy, ENEMY_HIT_PUSHBACK_M, ENEMY_HIT_STUN_S, ENEMY_STATS, type EnemyState } from "./enemy";
 import { stepEnemies, type EnemyTarget } from "./enemyStep";
 import { enemySpawnPoint } from "./spawn";
 import { wavePlan } from "./waves";
@@ -210,10 +210,18 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
     hitRadius: ENEMY_STATS[e.kind].radius,
     hitHeight: ENEMY_STATS[e.kind].hitHeight,
   }));
+  // Damage + a hit "shove" direction per enemy (melee → along the attacker's aim; arrow → its heading).
   const dmgByEnemy: Record<string, number> = {};
+  const pushByEnemy: Record<string, Vec2> = {};
+  const addPush = (id: string, dir: Vec2) => {
+    const p = pushByEnemy[id] ?? { x: 0, y: 0 };
+    pushByEnemy[id] = { x: p.x + dir.x, y: p.y + dir.y };
+  };
   for (const id of swungIds) {
+    const dir = aimVector(players[id]!.aim);
     for (const ev of resolveAttack(players[id]!, enemyHitTargets)) {
       dmgByEnemy[ev.targetId] = (dmgByEnemy[ev.targetId] ?? 0) + 1;
+      addPush(ev.targetId, dir);
     }
   }
   const projectiles: Projectile[] = [];
@@ -222,6 +230,8 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
     const hitId = projectileTarget(moved, enemyHitTargets);
     if (hitId) {
       dmgByEnemy[hitId] = (dmgByEnemy[hitId] ?? 0) + moved.damage;
+      const spd = Math.hypot(moved.vel.x, moved.vel.y) || 1;
+      addPush(hitId, { x: moved.vel.x / spd, y: moved.vel.y / spd });
       continue;
     }
     if (moved.distRemaining <= 0) continue;
@@ -233,7 +243,15 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
       const dmg = dmgByEnemy[e.id];
       if (!dmg || e.status !== "alive") return e;
       const health = Math.max(0, e.health - dmg);
-      return health <= 0 ? { ...e, health: 0, status: "dead" } : { ...e, health };
+      if (health <= 0) return { ...e, health: 0, status: "dead" };
+      // Survivor: stagger it and shove it ENEMY_HIT_PUSHBACK_M away from the hit direction.
+      const push = pushByEnemy[e.id] ?? { x: 0, y: 0 };
+      const mag = Math.hypot(push.x, push.y) || 1;
+      const pos = {
+        x: e.pos.x + (push.x / mag) * ENEMY_HIT_PUSHBACK_M,
+        y: e.pos.y + (push.y / mag) * ENEMY_HIT_PUSHBACK_M,
+      };
+      return { ...e, health, pos, hitStunRemaining: ENEMY_HIT_STUN_S };
     });
   }
 
