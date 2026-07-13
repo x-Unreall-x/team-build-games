@@ -5,7 +5,8 @@
  * cooldown-gated → unique per shot), which keeps spawning deterministic without a mutable counter.
  */
 
-import type { PlayerId, PlayerState, Projectile, Vec2 } from "./types";
+import type { PlayerId, Projectile, Vec2 } from "./types";
+import type { Hittable } from "./combat";
 import { aimVector } from "./logic";
 import { FIGURE_RADIUS_M, PROJECTILE_RADIUS_M } from "../constants";
 
@@ -45,14 +46,15 @@ export function advanceProjectile(p: Projectile, dt: number): Projectile {
 }
 
 /**
- * The nearest alive, non-owner player whose body the projectile overlaps, or null.
- * (Team-agnostic for now — versus is FFA; a team check slots in here for co-op.)
+ * The nearest alive, non-owner target whose body the projectile overlaps, or null. Resolves against
+ * any `Hittable` (id/pos/status) so an arrow lands on other players in versus AND on enemies in
+ * survival. (Team-agnostic for now — versus is FFA; a team check slots in here for co-op.)
  */
-export function projectileTarget(p: Projectile, players: PlayerState[]): PlayerId | null {
+export function projectileTarget(p: Projectile, targets: readonly Hittable[]): PlayerId | null {
   const reach = FIGURE_RADIUS_M + PROJECTILE_RADIUS_M;
   let best: PlayerId | null = null;
   let bestD = Infinity;
-  for (const t of players) {
+  for (const t of targets) {
     if (t.id === p.ownerId || t.status !== "alive") continue;
     const d = Math.hypot(t.pos.x - p.pos.x, t.pos.y - p.pos.y);
     if (d <= reach && d < bestD) {
