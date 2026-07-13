@@ -21,12 +21,27 @@ export interface SpawnArrowSpec {
   knockback: number;
 }
 
+export interface SpawnCrushingWaveSpec extends SpawnArrowSpec {
+  radius: number;
+}
+
+export interface SpawnSolarWaveSpec {
+  ownerId: PlayerId;
+  pos: Vec2;
+  tick: number;
+  radius: number;
+  speed: number;
+  damage: number;
+  knockback: number;
+}
+
 /** Launch an arrow from `pos` along `aim` at `speed`; travels `range` meters before expiring. */
 export function spawnArrow(s: SpawnArrowSpec): Projectile {
   const v = aimVector(s.aim);
   return {
     id: `${s.ownerId}#${s.tick}`,
     ownerId: s.ownerId,
+    kind: "arrow",
     pos: { x: s.pos.x, y: s.pos.y },
     vel: { x: v.x * s.speed, y: v.y * s.speed },
     distRemaining: s.range,
@@ -35,8 +50,45 @@ export function spawnArrow(s: SpawnArrowSpec): Projectile {
   };
 }
 
+/** Launch Neon Ronin's 1 m-diameter, piercing crushing wave. */
+export function spawnCrushingWave(s: SpawnCrushingWaveSpec): Projectile {
+  return {
+    ...spawnArrow(s),
+    kind: "crushing-wave",
+    radius: s.radius,
+    hitIds: [],
+    connected: false,
+  };
+}
+
+/** Start Solar Warden's stationary ground ring, expanding from zero to `radius`. */
+export function spawnSolarWave(s: SpawnSolarWaveSpec): Projectile {
+  return {
+    id: `${s.ownerId}#${s.tick}`,
+    ownerId: s.ownerId,
+    kind: "solar-wave",
+    pos: { ...s.pos },
+    vel: { x: 0, y: 0 },
+    distRemaining: s.radius,
+    damage: s.damage,
+    knockback: s.knockback,
+    radius: 0,
+    expansionSpeed: s.speed,
+    hitIds: [],
+    connected: false,
+  };
+}
+
 /** Advance a projectile one tick, spending range by the distance travelled. */
 export function advanceProjectile(p: Projectile, dt: number): Projectile {
+  if (p.kind === "solar-wave") {
+    const growth = Math.min(p.distRemaining, (p.expansionSpeed ?? 0) * dt);
+    return {
+      ...p,
+      radius: (p.radius ?? 0) + growth,
+      distRemaining: p.distRemaining - growth,
+    };
+  }
   const step = Math.hypot(p.vel.x, p.vel.y) * dt;
   return {
     ...p,
@@ -51,16 +103,19 @@ export function advanceProjectile(p: Projectile, dt: number): Projectile {
  * survival. (Team-agnostic for now — versus is FFA; a team check slots in here for co-op.)
  */
 export function projectileTarget(p: Projectile, targets: readonly Hittable[]): PlayerId | null {
-  const reach = FIGURE_RADIUS_M + PROJECTILE_RADIUS_M;
-  let best: PlayerId | null = null;
-  let bestD = Infinity;
+  return projectileTargets(p, targets)[0] ?? null;
+}
+
+/** Every overlapping target, nearest first. Waves use this to pierce without damaging twice. */
+export function projectileTargets(p: Projectile, targets: readonly Hittable[]): PlayerId[] {
+  const reach = FIGURE_RADIUS_M + (p.radius ?? PROJECTILE_RADIUS_M);
+  const ignored = new Set(p.hitIds ?? []);
+  const hits: Array<{ id: PlayerId; distance: number }> = [];
   for (const t of targets) {
-    if (t.id === p.ownerId || t.status !== "alive") continue;
+    if (t.id === p.ownerId || t.status !== "alive" || ignored.has(t.id)) continue;
     const d = Math.hypot(t.pos.x - p.pos.x, t.pos.y - p.pos.y);
-    if (d <= reach && d < bestD) {
-      bestD = d;
-      best = t.id;
-    }
+    if (d <= reach) hits.push({ id: t.id, distance: d });
   }
-  return best;
+  hits.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
+  return hits.map((hit) => hit.id);
 }

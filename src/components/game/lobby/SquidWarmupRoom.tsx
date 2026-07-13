@@ -7,6 +7,7 @@ import { STAGES } from "../../../game/squid/stage";
 import type { StageId } from "../../../game/squid/stage";
 import { MAX_PLAYERS } from "../../../game/constants";
 import { formatTimeMs, type ScoreEntry } from "../../../lib/squid/scores";
+import CoinSlot from "./CoinSlot";
 
 const hex = (i: number) => `#${(SQUID_PALETTE[i % SQUID_PALETTE.length] ?? 0).toString(16).padStart(6, "0")}`;
 
@@ -25,6 +26,8 @@ interface Props {
   onColor: (i: number) => void;
   onStage: (s: StageId) => void;
   onStart: () => void;
+  /** Synced coin-insert flag — every player in the room sees the drop animation. */
+  starting: boolean;
   onKick: (id: PlayerId) => void;
 }
 
@@ -115,13 +118,12 @@ export default function SquidWarmupRoom(props: Props) {
         </div>
 
         <div className="mt-2">
-          {props.isHost ? (
-            <button onClick={props.onStart} className="rounded-lg bg-sky-500 px-5 py-2 font-semibold text-white hover:bg-sky-400">
-              Start round
-            </button>
-          ) : (
-            <span className="text-sm text-neutral-500">Waiting for the host to start…</span>
-          )}
+          <CoinSlot
+            onInsert={props.onStart}
+            disabled={!props.isHost}
+            inserting={props.starting}
+            hint={props.isHost ? undefined : "The host inserts the coin"}
+          />
         </div>
       </div>
 

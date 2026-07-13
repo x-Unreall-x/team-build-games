@@ -1,8 +1,8 @@
 /**
  * Overrun's fake-2.5D Phaser scene. The sim stays flat top-down in meters; we
- * foreshorten y by Y_SCALE and y-sort by world y for the 2.5D look. EVERY texture
- * is generated procedurally in create() (Graphics + generateTexture) — no asset
- * loads. Military/red-alert palette: camo soldiers, red rushers, slate tanks.
+ * foreshorten y by Y_SCALE and y-sort by world y for the 2.5D look. Wix-hosted
+ * generated assets are loaded when configured; procedural textures remain as a
+ * resilient fallback if the remote pack is unavailable.
  */
 
 import Phaser from "phaser";
@@ -42,21 +42,34 @@ const CAMO_BODY = 0x3f6212;
 /** 8 distinct squad ring colors, indexed by colorIndex. */
 const RING_COLORS = [0xf8fafc, 0xfbbf24, 0x38bdf8, 0xf472b6, 0xa3e635, 0xc084fc, 0xfb923c, 0x2dd4bf];
 const GUN_TINT: Record<GunId, number> = { pistol: 0xd4d4d8, shotgun: 0xf59e0b, rifle: 0x38bdf8 };
-const DOWNED_TINT = 0x64748b;
 const TRACER_COLOR: Record<GunId, number> = { pistol: 0xfef9c3, shotgun: 0xfbbf24, rifle: 0x7dd3fc };
 
-const FLOOR_TEXTURE = "overrun-floor";
-const GUN_TEXTURE = "overrun-gun";
-const soldierTexture = (colorIndex: number) => `overrun-soldier-${colorIndex % RING_COLORS.length}`;
-const enemyTexture = (kind: EnemyKind) => `overrun-enemy-${kind}`;
-const pickupTexture = (kind: PickupKind) => (kind === "medkit" ? "overrun-medkit" : "overrun-gunbox");
+const terrainTexture = (index: number) => `overrun-terrain-${index}`;
+const playerTexture = (state: "idle" | "run-a" | "run-b" | "downed") => `overrun-player-${state}`;
+const gunTexture = (gun: GunId) => `overrun-weapon-${gun}`;
+const enemyTexture = (kind: EnemyKind, state: "alive" | "dead", variant: number) =>
+  `overrun-enemy-${kind}-${state}-${variant}`;
+const MEDKIT_TEXTURE = "overrun-medkit";
+
+const GUN_VIEW: Record<GunId, { width: number; height: number; originX: number }> = {
+  pistol: { width: 34, height: 17, originX: 0.25 },
+  shotgun: { width: 58, height: 29, originX: 0.3 },
+  rifle: { width: 64, height: 32, originX: 0.32 },
+};
 
 interface PlayerView {
   container: Phaser.GameObjects.Container;
+  ring: Phaser.GameObjects.Ellipse;
   body: Phaser.GameObjects.Image;
   gun: Phaser.GameObjects.Image;
   /** White revive-progress ring shown while downed. */
   arc: Phaser.GameObjects.Graphics;
+}
+
+interface EnemyView {
+  image: Phaser.GameObjects.Image;
+  kind: EnemyKind;
+  phase: number;
 }
 
 interface PickupView {
@@ -69,8 +82,11 @@ export class OverrunScene extends Phaser.Scene {
   private cfg!: OverrunConfig;
   private keyboard!: ShooterKeyboardReader;
   private views: Record<PlayerId, PlayerView> = {};
-  private enemyViews: Record<string, Phaser.GameObjects.Image> = {};
+  private enemyViews: Record<string, EnemyView> = {};
   private pickupViews: Record<string, PickupView> = {};
+  private terrain: Phaser.GameObjects.Image | null = null;
+  private target: Phaser.GameObjects.Graphics | null = null;
+  private terrainIndex = -1;
   private prev: ShooterWorld | null = null;
   private lastCountdown = 99;
   private lastProcessedTick = -1;
@@ -82,11 +98,31 @@ export class OverrunScene extends Phaser.Scene {
     super("overrun");
   }
 
+  preload(): void {
+    this.cfg = this.registry.get("cfg") as OverrunConfig;
+    const assets = this.cfg.assets;
+    if (!assets) return;
+
+    assets.terrain.forEach((entry, index) => this.load.image(terrainTexture(index), entry.url));
+    this.load.image(playerTexture("idle"), assets.player.idle);
+    this.load.image(playerTexture("run-a"), assets.player.run[0]);
+    this.load.image(playerTexture("run-b"), assets.player.run[1]);
+    this.load.image(playerTexture("downed"), assets.player.downed);
+    for (const gun of ["pistol", "shotgun", "rifle"] as const) this.load.image(gunTexture(gun), assets.weapons[gun]);
+    for (const kind of ["rusher", "tank"] as const) {
+      for (const state of ["alive", "dead"] as const) {
+        assets.enemies[kind][state].forEach((url, variant) => this.load.image(enemyTexture(kind, state, variant), url));
+      }
+    }
+  }
+
   create(): void {
     this.cfg = this.registry.get("cfg") as OverrunConfig;
     this.keyboard = createShooterKeyboard(this);
     this.makeTextures();
     this.drawField();
+    this.makeTarget();
+    this.game.canvas.style.cursor = "none";
   }
 
   override update(_time: number, deltaMs: number): void {
@@ -94,7 +130,9 @@ export class OverrunScene extends Phaser.Scene {
     const input = this.buildInput();
     const { world, countdown } = this.cfg.driver.frame(dt, input);
 
+    this.renderTarget();
     this.fireCountdownSfx(countdown);
+    this.renderTerrain(world);
     this.enemyHitEmittedThisFrame = false;
     this.detectReload(world);
     this.processEvents(world);
@@ -128,6 +166,41 @@ export class OverrunScene extends Phaser.Scene {
 
   // ---- events / SFX ---------------------------------------------------------------
 
+  private makeTarget(): void {
+    const g = this.add.graphics().setDepth(10_000);
+    const drawTicks = () => {
+      g.lineBetween(-16, 0, -8, 0);
+      g.lineBetween(8, 0, 16, 0);
+      g.lineBetween(0, -16, 0, -8);
+      g.lineBetween(0, 8, 0, 16);
+    };
+
+    g.lineStyle(4, 0x020617, 0.8);
+    drawTicks();
+    g.strokeCircle(0, 0, 11);
+    g.lineStyle(2, 0xf8fafc, 0.95);
+    drawTicks();
+    g.lineStyle(2, 0xfbbf24, 1);
+    for (let quadrant = 0; quadrant < 4; quadrant += 1) {
+      const start = quadrant * Math.PI / 2 + 0.14;
+      g.beginPath();
+      g.arc(0, 0, 11, start, start + Math.PI / 2 - 0.28);
+      g.strokePath();
+    }
+    g.fillStyle(0xef4444, 1);
+    g.fillCircle(0, 0, 2.2);
+    this.target = g;
+  }
+
+  private renderTarget(): void {
+    if (!this.target) return;
+    const pointer = this.input.activePointer;
+    this.target
+      .setPosition(pointer.x, pointer.y)
+      .setRotation(Math.sin(this.time.now * 0.0025) * 0.04)
+      .setVisible(pointer.x >= 0 && pointer.x <= OVERRUN_WIDTH && pointer.y >= 0 && pointer.y <= OVERRUN_HEIGHT);
+  }
+
   private fireCountdownSfx(countdown: number): void {
     if (countdown < this.lastCountdown && countdown >= 0 && this.lastCountdown <= 3) {
       this.cfg.onEvent(countdown > 0 ? { type: "tik", n: countdown } : { type: "go" });
@@ -155,13 +228,13 @@ export class OverrunScene extends Phaser.Scene {
       case "shot":
         this.drawTracer(ev.from, ev.to, ev.gun);
         // SFX only for the local player's own shots (volume sanity in a full squad).
-        if (this.isLocalShot(ev.from, world)) this.cfg.onEvent({ type: "shot" });
+        if (this.isLocalShot(ev.from, world)) this.cfg.onEvent({ type: "shot", gun: ev.gun });
         break;
       case "kill":
         this.cfg.onEvent({ type: "kill" });
         break;
       case "pickup":
-        this.cfg.onEvent({ type: "pickup" });
+        this.cfg.onEvent({ type: "pickup", item: ev.item });
         break;
       case "levelup":
         this.cfg.onEvent({ type: "levelup" });
@@ -192,8 +265,9 @@ export class OverrunScene extends Phaser.Scene {
    */
   private detectReload(world: ShooterWorld): void {
     const prevR = this.prev?.players[this.cfg.driver.localId]?.ammo.reloadRemaining ?? 0;
-    const curR = world.players[this.cfg.driver.localId]?.ammo.reloadRemaining ?? 0;
-    if (prevR === 0 && curR > 0) this.cfg.onEvent({ type: "reload" });
+    const local = world.players[this.cfg.driver.localId];
+    const curR = local?.ammo.reloadRemaining ?? 0;
+    if (local && prevR === 0 && curR > 0) this.cfg.onEvent({ type: "reload", gun: local.gun });
   }
 
   /** Shot events carry no playerId — attribute by whichever player is nearest the muzzle. */
@@ -226,6 +300,15 @@ export class OverrunScene extends Phaser.Scene {
 
   // ---- rendering ------------------------------------------------------------------
 
+  private renderTerrain(world: ShooterWorld): void {
+    if (!this.terrain) return;
+    const count = Math.max(1, this.cfg.assets?.terrain.length ?? 1);
+    const index = Math.abs(world.seed) % count;
+    if (index === this.terrainIndex) return;
+    this.terrainIndex = index;
+    this.terrain.setTexture(terrainTexture(index));
+  }
+
   private renderPlayers(world: ShooterWorld): void {
     for (const p of Object.values(world.players)) {
       const v = this.views[p.id] ?? (this.views[p.id] = this.makePlayerView(p.id));
@@ -237,15 +320,27 @@ export class OverrunScene extends Phaser.Scene {
       v.container.setVisible(true);
       v.container.setPosition(sx(p.pos.x), sy(p.pos.y));
       v.container.setDepth(p.pos.y);
+      const previous = this.prev?.players[p.id];
+      const moving = !!previous && Math.hypot(previous.pos.x - p.pos.x, previous.pos.y - p.pos.y) > 0.003;
+      const runFrame = (Math.floor(world.tick / 5) + this.cfg.driver.getMeta(p.id).colorIndex) % 2;
+      v.body.setTexture(
+        p.status === "downed"
+          ? playerTexture("downed")
+          : moving
+            ? playerTexture(runFrame === 0 ? "run-a" : "run-b")
+            : playerTexture("idle"),
+      );
       v.gun.setRotation(screenAngle(p.aim));
-      v.gun.setTint(GUN_TINT[p.gun]);
+      v.gun.setTexture(gunTexture(p.gun));
+      const gunView = GUN_VIEW[p.gun];
+      v.gun.setDisplaySize(gunView.width, gunView.height).setOrigin(gunView.originX, 0.5);
 
       if (p.status === "downed") {
-        v.body.setTint(DOWNED_TINT);
+        v.body.setDisplaySize(58, 58).setPosition(0, 7);
         v.gun.setVisible(false);
         this.drawReviveArc(v.arc, p.reviveProgress / REVIVE_S);
       } else {
-        v.body.clearTint();
+        v.body.setDisplaySize(60, 68).setPosition(0, 8);
         v.gun.setVisible(true);
         v.arc.clear();
       }
@@ -265,25 +360,36 @@ export class OverrunScene extends Phaser.Scene {
     const live = new Set<string>();
     for (const e of world.enemies) {
       live.add(e.id);
-      let img = this.enemyViews[e.id];
-      if (!img) {
-        img = this.add.image(0, 0, enemyTexture(e.kind));
-        this.enemyViews[e.id] = img;
+      let view = this.enemyViews[e.id];
+      if (!view) {
+        const phase = hashText(e.id) % 3;
+        const image = this.add.image(0, 0, enemyTexture(e.kind, "alive", phase)).setOrigin(0.5, 0.78);
+        view = { image, kind: e.kind, phase };
+        this.enemyViews[e.id] = view;
       }
-      img.setPosition(sx(e.pos.x), sy(e.pos.y));
-      img.setDepth(e.pos.y);
+      const cadence = e.kind === "rusher" ? 4 : 8;
+      const frame = (view.phase + Math.floor(world.tick / cadence)) % 3;
+      view.image.setTexture(enemyTexture(e.kind, "alive", frame));
+      const visualWidth = ENEMIES[e.kind].hitRadius * PX_PER_M * 2;
+      view.image.setDisplaySize(visualWidth, e.kind === "rusher" ? visualWidth : visualWidth * (100 / 104));
+      view.image.setPosition(sx(e.pos.x), sy(e.pos.y) + (e.kind === "rusher" ? 4 : 8));
+      view.image.setDepth(e.pos.y);
     }
     for (const id of Object.keys(this.enemyViews)) {
       if (live.has(id)) continue;
-      const img = this.enemyViews[id]!;
+      const view = this.enemyViews[id]!;
       delete this.enemyViews[id];
-      // Kill pop: quick fade + shrink, then free the sprite.
+      view.image
+        .setTexture(enemyTexture(view.kind, "dead", (view.phase + world.tick) % 3))
+        .setOrigin(0.5)
+        .setDisplaySize(view.kind === "rusher" ? 68 : 110, view.kind === "rusher" ? 54 : 82);
       this.tweens.add({
-        targets: img,
+        targets: view.image,
         alpha: 0,
-        scale: 1.4,
-        duration: 150,
-        onComplete: () => img.destroy(),
+        scale: 0.9,
+        delay: 280,
+        duration: 720,
+        onComplete: () => view.image.destroy(),
       });
     }
   }
@@ -343,10 +449,11 @@ export class OverrunScene extends Phaser.Scene {
   private makePlayerView(id: PlayerId): PlayerView {
     const meta = this.cfg.driver.getMeta(id);
     const shadow = this.add.ellipse(0, PLAYER_R * 0.55, PLAYER_R * 2.1, PLAYER_R * 0.8, 0x000000, 0.28);
-    const body = this.add.image(0, 0, soldierTexture(meta.colorIndex));
-    const gun = this.add.image(0, 0, GUN_TEXTURE).setOrigin(0.15, 0.5).setTint(GUN_TINT.pistol);
+    const ring = this.add.ellipse(0, PLAYER_R * 0.55, PLAYER_R * 2.2, PLAYER_R * 0.88).setStrokeStyle(2, RING_COLORS[meta.colorIndex % RING_COLORS.length]!, 0.95);
+    const body = this.add.image(0, 8, playerTexture("idle")).setOrigin(0.5, 0.78).setDisplaySize(60, 68);
+    const gun = this.add.image(0, -15, gunTexture("pistol")).setOrigin(GUN_VIEW.pistol.originX, 0.5).setDisplaySize(GUN_VIEW.pistol.width, GUN_VIEW.pistol.height);
     const arc = this.add.graphics();
-    const children: Phaser.GameObjects.GameObject[] = [shadow, body, gun, arc];
+    const children: Phaser.GameObjects.GameObject[] = [shadow, ring, body, gun, arc];
     if (id !== this.cfg.driver.localId) {
       const name = this.add
         .text(0, PLAYER_R + 6, meta.name, {
@@ -361,19 +468,15 @@ export class OverrunScene extends Phaser.Scene {
       children.push(name);
     }
     const container = this.add.container(0, 0, children);
-    return { container, body, gun, arc };
+    return { container, ring, body, gun, arc };
   }
 
   private makePickupView(id: string, kind: PickupKind): PickupView {
-    const img = this.add.image(0, 0, pickupTexture(kind));
-    const children: Phaser.GameObjects.GameObject[] = [img];
-    if (kind !== "medkit") {
-      const glyph = this.add
-        .text(0, 0, kind === "shotgun" ? "S" : "R", { fontFamily: "monospace", fontSize: "7px", color: "#451a03", fontStyle: "bold" })
-        .setOrigin(0.5)
-        .setResolution(2);
-      children.push(glyph);
-    }
+    const glow = this.add.ellipse(0, 3, kind === "medkit" ? 24 : 40, kind === "medkit" ? 13 : 17, kind === "medkit" ? 0x22c55e : 0xf59e0b, 0.2);
+    const img = this.add.image(0, 0, kind === "medkit" ? MEDKIT_TEXTURE : gunTexture(kind));
+    if (kind === "medkit") img.setDisplaySize(18, 18);
+    else img.setDisplaySize(kind === "shotgun" ? 38 : 42, kind === "shotgun" ? 19 : 21);
+    const children: Phaser.GameObjects.GameObject[] = [glow, img];
     const container = this.add.container(0, 0, children);
     // Deterministic-enough phase from the id so bobs desync (render-only).
     let h = 0;
@@ -384,71 +487,78 @@ export class OverrunScene extends Phaser.Scene {
   // ---- procedural textures ------------------------------------------------------------
 
   private makeTextures(): void {
-    this.makeFloorTexture();
-    for (let c = 0; c < RING_COLORS.length; c++) this.makeSoldierTexture(c);
-    this.makeGunTexture();
+    for (let index = 0; index < 5; index += 1) this.makeFloorTexture(index);
+    for (const state of ["idle", "run-a", "run-b", "downed"] as const) this.makeSoldierTexture(state);
+    this.makeGunTextures();
     this.makeEnemyTextures();
     this.makePickupTextures();
   }
 
-  private makeFloorTexture(): void {
+  private makeFloorTexture(index: number): void {
+    const key = terrainTexture(index);
+    if (this.textures.exists(key)) return;
     const w = FIELD_PX;
     const h = Math.ceil(FIELD_PX * Y_SCALE);
     const g = this.add.graphics();
-    g.fillStyle(0x181c16, 1); // near-black olive: military night-ops ground
+    const fallbackColors = [0x181c16, 0x25261c, 0x30343b, 0x211b19, 0x252b30];
+    g.fillStyle(fallbackColors[index]!, 1);
     g.fillRect(0, 0, w, h);
     g.lineStyle(1, 0x2a3324, 0.5); // subtle camo-green grid
     const cell = PX_PER_M * 2;
     for (let x = 0; x <= w; x += cell) g.lineBetween(x, 0, x, h);
     for (let y = 0; y <= h; y += cell * Y_SCALE) g.lineBetween(0, y, w, y);
-    g.generateTexture(FLOOR_TEXTURE, w, h);
+    g.generateTexture(key, w, h);
     g.destroy();
   }
 
-  private makeSoldierTexture(colorIndex: number): void {
+  private makeSoldierTexture(state: "idle" | "run-a" | "run-b" | "downed"): void {
+    const key = playerTexture(state);
+    if (this.textures.exists(key)) return;
     const r = PLAYER_R;
     const g = this.add.graphics();
-    g.fillStyle(RING_COLORS[colorIndex]!, 1); // squad ring
-    g.fillCircle(r, r, r);
-    g.fillStyle(CAMO_BODY, 1); // camo-green body
-    g.fillCircle(r, r, r - 3);
+    g.fillStyle(state === "downed" ? 0x64748b : CAMO_BODY, 1);
+    if (state === "downed") g.fillEllipse(r, r + 4, r * 1.8, r * 1.2);
+    else g.fillCircle(r, r, r - 2);
     g.fillStyle(0x365314, 1); // helmet shading
     g.fillCircle(r, r - r * 0.15, r * 0.45);
-    g.generateTexture(soldierTexture(colorIndex), Math.ceil(r * 2), Math.ceil(r * 2));
+    g.generateTexture(key, Math.ceil(r * 2), Math.ceil(r * 2));
     g.destroy();
   }
 
-  private makeGunTexture(): void {
-    const g = this.add.graphics();
-    g.fillStyle(0xffffff, 1); // white — tinted per gun at render time
-    g.fillRect(0, 0, 18, 5);
-    g.generateTexture(GUN_TEXTURE, 18, 5);
-    g.destroy();
+  private makeGunTextures(): void {
+    for (const gun of ["pistol", "shotgun", "rifle"] as const) {
+      const key = gunTexture(gun);
+      if (this.textures.exists(key)) continue;
+      const g = this.add.graphics();
+      g.fillStyle(GUN_TINT[gun], 1);
+      g.fillRect(0, 0, gun === "pistol" ? 14 : gun === "shotgun" ? 22 : 26, gun === "pistol" ? 5 : 6);
+      g.generateTexture(key, gun === "pistol" ? 14 : gun === "shotgun" ? 22 : 26, gun === "pistol" ? 5 : 6);
+      g.destroy();
+    }
   }
 
   private makeEnemyTextures(): void {
-    const rr = ENEMIES.rusher.radius * PX_PER_M;
-    const rg = this.add.graphics();
-    rg.fillStyle(0xef4444, 1); // rusher: alarm red
-    rg.fillCircle(rr, rr, rr);
-    rg.fillStyle(0xfca5a5, 1);
-    rg.fillCircle(rr, rr - rr * 0.25, rr * 0.3);
-    rg.generateTexture(enemyTexture("rusher"), Math.ceil(rr * 2), Math.ceil(rr * 2));
-    rg.destroy();
-
-    const tr = ENEMIES.tank.radius * PX_PER_M;
-    const tg = this.add.graphics();
-    tg.fillStyle(0x1e293b, 1); // darker rim
-    tg.fillCircle(tr, tr, tr);
-    tg.fillStyle(0x334155, 1); // tank: heavy slate
-    tg.fillCircle(tr, tr, tr - 4);
-    tg.fillStyle(0x475569, 1);
-    tg.fillCircle(tr, tr, tr * 0.35);
-    tg.generateTexture(enemyTexture("tank"), Math.ceil(tr * 2), Math.ceil(tr * 2));
-    tg.destroy();
+    for (const kind of ["rusher", "tank"] as const) {
+      const radius = ENEMIES[kind].radius * PX_PER_M;
+      for (const state of ["alive", "dead"] as const) {
+        for (let variant = 0; variant < 3; variant += 1) {
+          const key = enemyTexture(kind, state, variant);
+          if (this.textures.exists(key)) continue;
+          const g = this.add.graphics();
+          g.fillStyle(kind === "rusher" ? 0xef4444 : 0x334155, 1);
+          if (state === "dead") g.fillEllipse(radius, radius, radius * 1.9, radius * 1.1);
+          else g.fillCircle(radius, radius, radius);
+          g.fillStyle(kind === "rusher" ? 0xfca5a5 : 0x64748b, 1);
+          g.fillCircle(radius, radius - radius * 0.2, radius * 0.3);
+          g.generateTexture(key, Math.ceil(radius * 2), Math.ceil(radius * 2));
+          g.destroy();
+        }
+      }
+    }
   }
 
   private makePickupTextures(): void {
+    if (this.textures.exists(MEDKIT_TEXTURE)) return;
     const s = 16;
     const mg = this.add.graphics();
     mg.fillStyle(0xf8fafc, 1); // medkit: white rounded square + red cross
@@ -456,27 +566,31 @@ export class OverrunScene extends Phaser.Scene {
     mg.fillStyle(0xdc2626, 1);
     mg.fillRect(s / 2 - 2, 3, 4, s - 6);
     mg.fillRect(3, s / 2 - 2, s - 6, 4);
-    mg.generateTexture(pickupTexture("medkit"), s, s);
+    mg.generateTexture(MEDKIT_TEXTURE, s, s);
     mg.destroy();
-
-    const gg = this.add.graphics();
-    gg.fillStyle(0xf59e0b, 1); // gun crate: amber square (the "S"/"R" glyph is a Text child)
-    gg.fillRoundedRect(0, 0, s, s, 3);
-    gg.lineStyle(1, 0x92400e, 1);
-    gg.strokeRoundedRect(0.5, 0.5, s - 1, s - 1, 3);
-    gg.generateTexture(pickupTexture("shotgun"), s, s);
-    gg.destroy();
   }
 
   private drawField(): void {
     const h = FIELD_PX * Y_SCALE;
-    this.add
-      .image(MARGIN_X + FIELD_PX / 2, OFFSET_Y + h / 2, FLOOR_TEXTURE)
+    this.terrain = this.add
+      .image(MARGIN_X + FIELD_PX / 2, OFFSET_Y + h / 2, terrainTexture(0))
       .setDisplaySize(FIELD_PX, h)
       .setDepth(-1001);
+    this.add
+      .rectangle(MARGIN_X + FIELD_PX / 2, OFFSET_Y + h / 2, FIELD_PX, h, 0x0f1714, 0.35)
+      .setDepth(-1000.5);
     this.add
       .rectangle(MARGIN_X + FIELD_PX / 2, OFFSET_Y + h / 2, FIELD_PX, h)
       .setStrokeStyle(2, 0xb91c1c, 0.8) // red-alert perimeter
       .setDepth(-1000);
   }
+}
+
+function hashText(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }

@@ -818,6 +818,34 @@ waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.9 m hole at 3 
 
 ---
 
+## Track G — Road Madness (arcade driving party game)
+
+**Full requirements + delivery roadmap:**
+`docs/superpowers/specs/2026-07-10-road-madness-design.md`
+
+**File-level implementation plan:**
+`docs/superpowers/plans/2026-07-10-road-madness.md`
+
+Road Madness targets 1–8 players and one shared deterministic arcade-vehicle core across four
+modes: **Race** (1/3/5 laps, rear/cabin pseudo-3D views), **Last Madman Standing** (Derby vs
+Monster bumper damage), **Carnage** (two-minute destructible monster-zombie city), and **Bomb Tag**
+(ram-to-pass hot potato, the recommended fourth mode). Delivery order is handling/derby local slice
+→ road-specific online room/authority → derby feel → Race → Carnage → Bomb Tag → ship/widen.
+
+Tracking:
+
+- [x] Product requirements, mode rules, multiplayer architecture, UX, performance, and quality gates.
+- [x] Pure fixed-30-Hz driving/collision core; Derby/Monster data; bumper speed/angle/mass damage.
+- [x] Deterministic input-driven bots; Last Madman wreck/win lifecycle; 15 focused unit tests.
+- [x] Procedural angled Phaser pit + React garage/HUD/results at `/games/road-madness`.
+- [x] Playable-alpha arcade registration; production build and headless browser smoke green.
+- [x] Local competitive lifecycle: nitro, sudden death, best-of rounds, and collision juice.
+- [x] Road protocol/codec: namespaced messages, quantized keyframes/deltas, and byte budgets.
+- [ ] Online 1–8 player room, session adapter, interpolation, host migration, and live playtest.
+- [ ] Race, Carnage, Bomb Tag, content/accessibility, cross-browser/TURN, production ship.
+
+---
+
 ## Progress log
 
 - **2026-07-10** — **Track F: Squid playtest-fixes round shipped.** Per
@@ -830,6 +858,30 @@ waiting room. Two stages: **Boardwalk** (flat) and **The Gap** (0.9 m hole at 3 
   all 8 planted, sagging with fewer, zero force with none; and a host-only "Next level ▶" button
   on the finish overlay that chains stage1 → stage2 via the normal `squidStart` broadcast, each
   stage still scoring separately. 456 tests green, tsc clean.
+
+- **2026-07-10** — **Road Madness online foundation (RM2 / Task 7).** Added a Road-owned
+  `rHello`/`rStart`/`rInput`/`rSnap`/`rDelta`/`rEvent` protocol that rejects other-game and invented
+  tags while keeping remote peers at the existing clamped intent-only trust boundary. Added compact,
+  deterministic world keyframes and exact-base deltas: centimetre positions/velocities, milliradian
+  headings, quantized health/timers/nitro, complete round/migration state, stable player ordering, and
+  all impact/wreck/nitro transients. New tests cover every message family, hostile inputs, quantized
+  idempotence, all event shapes, null/final outcomes, stale-delta rejection, roster changes, and a
+  maximum eight-car byte budget. Road suite is 33/33 and Astro typecheck reports zero errors.
+
+- **2026-07-10** — **Road Madness requirements + playable Last Madman alpha (Track G).** Defined
+  the four-mode product and staged roadmap; chose **Bomb Tag** as mode four because its hot-potato
+  chase reuses bumper qualification while staying distinct from damage derby. Implemented a pure
+  deterministic vehicle slice (`src/game/road-madness/`): acceleration/brake→reverse, speed-scaled
+  steering, grip/handbrake/drag, class mass/health/handling, stable circle impulse/separation, authored
+  front/rear bumper arcs, speed+angle+mass damage, pair cooldown, wreck/winner state, and ordinary-input
+  chase bots. Added the procedural angled Phaser pit, Derby/Monster garage, health/speed/damage HUD,
+  visual impacts, countdown, spectate/result/rematch, `/games/road-madness`, and arcade cabinet. Added a
+  validated, expiring local-match checkpoint after a timed trace proved unrelated Vite HMR was remounting
+  the React island at the garage; active matches now restore across HMR/refresh. 15/15 Road tests and Wix
+  production build green; headless Chrome verified garage→Start→live tick/input/car movement and an
+  HMR restore with one canvas and no garage reset. Whole-repo tests/typecheck remain blocked only
+  by unrelated uncommitted Arena Survival WIP (`survival/step.ts`/test); Road Madness has no diagnostics.
+
 - **2026-07-10** — **merge-reconcile(overrun): netcode made per-game.** Merging `main` (which had landed
   Squid's own "netcode per game" resolution — `1fffecb`) into `game/overrun-slice` surfaced the same
   architectural fork on the Overrun side: this branch had made the shared `net/sync.ts` a generic

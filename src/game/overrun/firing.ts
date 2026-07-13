@@ -70,7 +70,8 @@ export function fireTick(
   for (let pellet = 0; pellet < def.pellets; pellet++) {
     const a = p.aim + (hash01(seed, tick, p.id, "spread", pellet) * 2 - 1) * spreadRad;
     const dir = { x: Math.cos(a), y: Math.sin(a) };
-    // collect ray hits: perpendicular distance ≤ enemy radius, 0 ≤ t ≤ range
+    // Collect ray hits against the visible sprite radius, not the smaller physical
+    // contact radius that keeps movement and melee spacing comfortable.
     const hits: { idx: number; t: number }[] = [];
     out.forEach((e, idx) => {
       if (e.health <= 0) return; // already dead from an earlier pellet
@@ -79,7 +80,7 @@ export function fireTick(
       const t = rx * dir.x + ry * dir.y;
       if (t < 0 || t > def.range) return;
       const perp = Math.hypot(rx - t * dir.x, ry - t * dir.y);
-      if (perp <= ENEMIES[e.kind].radius) hits.push({ idx, t });
+      if (perp <= ENEMIES[e.kind].hitRadius) hits.push({ idx, t });
     });
     hits.sort((h1, h2) => h1.t - h2.t || (out[h1.idx]!.id < out[h2.idx]!.id ? -1 : 1));
     const taken = hits.slice(0, def.pierce + 1);

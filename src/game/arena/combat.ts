@@ -6,10 +6,15 @@
  * damage is resolved once, on the tick the swing is initiated.
  */
 
-import type { PlayerId, PlayerState, Vec2 } from "./types";
+import type { PlayerId, PlayerState, Projectile, Vec2 } from "./types";
 import { aimVector } from "./logic";
 import { WEAPONS } from "./weapons";
-import { ATTACK_COOLDOWN_S, FIGURE_RADIUS_M } from "../constants";
+import {
+  ATTACK_COOLDOWN_S,
+  BLOCK_COOLDOWN_S,
+  BLOCK_WIDTH_MULT,
+  FIGURE_RADIUS_M,
+} from "../constants";
 
 export interface DamageEvent {
   fromId: PlayerId;
@@ -28,8 +33,58 @@ export interface Hittable {
 }
 
 /** Attack recharge progress in [0,1]: 0 just after a swing → 1 when ready (UI sweep). */
-export function attackCooldownFraction(remainingS: number, total = ATTACK_COOLDOWN_S): number {
+export function attackCooldownFraction(
+  remainingS: number,
+  total = ATTACK_COOLDOWN_S,
+): number {
   return Math.max(0, Math.min(1, 1 - remainingS / total));
+}
+
+/** Block recharge progress in [0,1]: 0 on use → 1 after one second. */
+export function blockCooldownFraction(remainingS: number): number {
+  return Math.max(0, Math.min(1, 1 - remainingS / BLOCK_COOLDOWN_S));
+}
+
+/**
+ * Whether a blocking defender is covering the direction of `source`. The guard uses the
+ * defender's weapon arc, widened by 20%; thrust and ranged weapons receive the sword-sized
+ * baseline so every loadout has a usable defensive stance.
+ */
+export function blockCoversSource(
+  defender: PlayerState,
+  source: Vec2,
+): boolean {
+  if (defender.status !== "alive" || !defender.block) return false;
+  const weapon = WEAPONS[defender.weapon];
+  const baseHalfAngle = Math.max(Math.PI / 4, weapon.coneHalfAngle);
+  return inAttackCone(
+    defender.pos,
+    defender.block.aim,
+    source,
+    Number.POSITIVE_INFINITY,
+    baseHalfAngle * BLOCK_WIDTH_MULT,
+  );
+}
+
+/** A melee strike is intercepted when its attacker is inside the active front guard. */
+export function blocksMeleeAttack(
+  defender: PlayerState,
+  attacker: PlayerState,
+): boolean {
+  return blockCoversSource(defender, attacker.pos);
+}
+
+/** An arrow is intercepted when it is travelling into the active front guard. */
+export function blocksProjectile(
+  defender: PlayerState,
+  projectile: Projectile,
+): boolean {
+  const speed = Math.hypot(projectile.vel.x, projectile.vel.y);
+  if (speed === 0) return false;
+  return blockCoversSource(defender, {
+    x: defender.pos.x - projectile.vel.x / speed,
+    y: defender.pos.y - projectile.vel.y / speed,
+  });
 }
 
 /**
@@ -81,7 +136,10 @@ export function inAttackLine(
  * alive, non-self target hit. The hit shape comes from the attacker's weapon: a widening cone
  * (sword/knife) or a straight forward band (thrust weapons, e.g. spear). Self is skipped.
  */
-export function resolveAttack(attacker: PlayerState, candidates: readonly Hittable[]): DamageEvent[] {
+export function resolveAttack(
+  attacker: PlayerState,
+  candidates: readonly Hittable[],
+): DamageEvent[] {
   const stats = WEAPONS[attacker.weapon];
   // The whole body is hittable: a target is hit once its body (radius FIGURE_RADIUS_M) overlaps
   // the weapon's reach — not only when its center is in range.
@@ -91,8 +149,20 @@ export function resolveAttack(attacker: PlayerState, candidates: readonly Hittab
     if (t.id === attacker.id) continue;
     if (t.status !== "alive") continue;
     const hit = stats.thrust
-      ? inAttackLine(attacker.pos, attacker.aim, t.pos, bodyReach, stats.thrust.halfWidth + FIGURE_RADIUS_M)
-      : inAttackCone(attacker.pos, attacker.aim, t.pos, bodyReach, stats.coneHalfAngle);
+      ? inAttackLine(
+          attacker.pos,
+          attacker.aim,
+          t.pos,
+          bodyReach,
+          stats.thrust.halfWidth + FIGURE_RADIUS_M,
+        )
+      : inAttackCone(
+          attacker.pos,
+          attacker.aim,
+          t.pos,
+          bodyReach,
+          stats.coneHalfAngle,
+        );
     if (hit) events.push({ fromId: attacker.id, targetId: t.id });
   }
   return events;

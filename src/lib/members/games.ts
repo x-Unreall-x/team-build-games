@@ -15,6 +15,8 @@ export const GAMES: GameMeta[] = [
   { id: "arena", name: "Arena", accent: "from-sky-500/20 to-emerald-500/20" },
   { id: "overrun", name: "Overrun", accent: "from-red-500/20 to-amber-500/20" },
   { id: "squid", name: "Squid", accent: "from-fuchsia-500/20 to-cyan-500/20" },
+  { id: "road-madness", name: "Road Madness", accent: "from-amber-500/20 to-red-500/20" },
+  { id: "survival", name: "Survival", accent: "from-emerald-500/20 to-cyan-500/20" },
 ];
 
 /** Narrow an untrusted value to a known game id (the server-side allowlist for writes). */

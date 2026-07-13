@@ -9,6 +9,7 @@ const RAW: RawInput = {
   right: false,
   dash: false,
   attack: false,
+  block: false,
 };
 
 describe("nextFacing", () => {
@@ -33,7 +34,12 @@ describe("nextFacing", () => {
 describe("inputToIntent", () => {
   it("passes movement through and derives facing", () => {
     const { intent } = inputToIntent({ ...RAW, left: true }, initialMemory());
-    expect(intent.move).toEqual({ up: false, down: false, left: true, right: false });
+    expect(intent.move).toEqual({
+      up: false,
+      down: false,
+      left: true,
+      right: false,
+    });
     expect(intent.facing).toBe("left");
   });
 
@@ -55,6 +61,17 @@ describe("inputToIntent", () => {
     expect(r1.intent.attack).toBe(true);
     const r2 = inputToIntent({ ...RAW, attack: true }, r1.memory);
     expect(r2.intent.attack).toBe(false);
+  });
+
+  it("fires block only on the rising edge of Ctrl or right mouse input", () => {
+    const r1 = inputToIntent({ ...RAW, block: true }, initialMemory());
+    expect(r1.intent.block).toBe(true);
+    const r2 = inputToIntent({ ...RAW, block: true }, r1.memory);
+    expect(r2.intent.block).toBe(false);
+    const released = inputToIntent({ ...RAW, block: false }, r2.memory);
+    expect(
+      inputToIntent({ ...RAW, block: true }, released.memory).intent.block,
+    ).toBe(true);
   });
 
   it("passes the mouse aim angle through to the intent", () => {

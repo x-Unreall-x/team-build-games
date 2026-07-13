@@ -10,6 +10,7 @@ import { getSessionMember } from "../../lib/wix/members";
 const member = await getSessionMember();
 const likeCounts = await getLikeCounts(["overrun"]);
 const liked = member ? (await getMemberLikedSet(member.id)).has("overrun") : false;
+const assetManifestUrl = import.meta.env.PUBLIC_OVERRUN_ASSET_MANIFEST_URL ?? "";
 
 const controls = [
   { keys: "WASD / arrows", action: "Move your soldier" },
@@ -47,7 +48,7 @@ const controls = [
     <div class="mb-6"><GameSwitcher slug="overrun" /></div>
 
     <div class="rounded-2xl border border-red-400/25 bg-night-900 p-3 shadow-[0_0_48px_rgb(239_68_68/0.12)] sm:p-4">
-      <Overrun client:only="react" />
+      <Overrun client:only="react" assetManifestUrl={assetManifestUrl} />
     </div>
 
     <section class="mt-8 rounded-xl border border-white/10 bg-night-900 p-6">

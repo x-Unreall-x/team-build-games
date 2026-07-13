@@ -38,6 +38,15 @@ export const ATTACK_TTL_S = 0.2;
 /** Minimum delay between attacks (seconds). */
 export const ATTACK_COOLDOWN_S = 1;
 
+/** Seconds the defensive weapon pose can intercept an incoming hit. */
+export const BLOCK_TTL_S = 0.2;
+
+/** Seconds between block attempts, measured from the start of the block. */
+export const BLOCK_COOLDOWN_S = 1;
+
+/** Blocking covers an area 20% wider than the weapon's normal attack arc. */
+export const BLOCK_WIDTH_MULT = 1.2;
+
 /** Distance (meters) a victim is knocked back, away from the attacker, on a hit (reach + 1 m). */
 export const KNOCKBACK_M = SWORD_REACH_M + 1;
 
@@ -47,8 +56,8 @@ export const DASH_MULT = 4;
 /** Dash burst distance in meters. */
 export const DASH_DIST_M = 2;
 
-/** Dash cooldown in seconds (icon greys out then brightens over this window). */
-export const DASH_COOLDOWN_S = 3;
+/** Dash cooldown in seconds, 15% faster than the original 3-second recharge. */
+export const DASH_COOLDOWN_S = 2.55;
 
 /** Radius (meters) of a ranged projectile, for its body-overlap hit test. */
 export const PROJECTILE_RADIUS_M = 0.15;

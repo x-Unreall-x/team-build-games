@@ -523,3 +523,11 @@ export async function createCheckoutUrl(postFlowUrl: string) {
 
   return redirectSession?.fullUrl!;
 }
+
+export async function createProductCheckoutUrl(
+  productId: string,
+  postFlowUrl: string,
+) {
+  await addToCart([{ productId, quantity: 1 }]);
+  return createCheckoutUrl(postFlowUrl);
+}

@@ -7,8 +7,8 @@ describe("game modes registry", () => {
     expect(MODES.map((m) => m.name)).toEqual(["Free For All", "Labyrinth", "Coop Survival", "Team Versus"]);
   });
 
-  it("only Free For All is available today; the rest are 'soon'", () => {
-    expect(MODES.filter((m) => m.available).map((m) => m.id)).toEqual(["ffa"]);
+  it("Free For All + Coop Survival are playable; Labyrinth and Team Versus are still 'soon'", () => {
+    expect(MODES.filter((m) => m.available).map((m) => m.id)).toEqual(["ffa", "coop-survival"]);
   });
 
   it("maps each mode to its rules + arena axes", () => {

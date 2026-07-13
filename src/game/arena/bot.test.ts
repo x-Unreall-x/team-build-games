@@ -52,6 +52,7 @@ describe("botIntent", () => {
       facing: "up",
       dash: false,
       attack: false,
+      block: false,
     });
   });
 });

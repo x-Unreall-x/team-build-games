@@ -67,6 +67,8 @@ const NO_INPUT: RawShooterInput = { up: false, down: false, left: false, right: 
 export class OverrunSession {
   readonly localId: PlayerId;
   phase: OverrunPhase = "lobby";
+  /** Coin-insert flag — every player in the room sees the start animation before the match begins. */
+  starting = false;
   matchEpoch = 0;
 
   private readonly t: Transport;
@@ -107,11 +109,20 @@ export class OverrunSession {
     return {
       localId: this.localId,
       phase: this.phase,
+      starting: this.starting,
       matchEpoch: this.matchEpoch,
       roster: rosterList(this.roster),
       hostId,
       isHost: hostId === this.localId,
     };
+  }
+
+  /** Host-only: broadcast "coin inserted" so all peers play the ~1s start animation before `start`. */
+  signalCoin(): void {
+    if (this.hostId() !== this.localId || this.starting) return;
+    this.t.send(encodeLobby({ t: "coin" }));
+    this.starting = true;
+    this.opts.onChange();
   }
 
   setProfile(name: string): void {
@@ -161,6 +172,7 @@ export class OverrunSession {
   /** Return to the warm-up room (after a match ends). */
   toLobby(): void {
     this.phase = "lobby";
+    this.starting = false;
     this.engine = null;
     this.initialWorld = null;
     this.prevSnap = null;
@@ -278,6 +290,10 @@ export class OverrunSession {
         this.explicitHostId = m.hostId;
         this.opts.onChange();
         break;
+      case "coin":
+        this.starting = true;
+        this.opts.onChange();
+        break;
       case "kick":
         if (m.targetId === this.localId) {
           this.leave();
@@ -291,6 +307,7 @@ export class OverrunSession {
   }
 
   private beginMatch(players: { id: PlayerId; name: string }[], seed: number, countdownMs: number): void {
+    this.starting = false; // the coin-insert animation ends as the match world builds
     // colorIndex is DERIVED, never carried on the wire: it's each player's position
     // in this host-ordered array (host built it via rosterList — sorted by id).
     this.meta = Object.fromEntries(players.map((p, i) => [p.id, { name: p.name, colorIndex: i }]));

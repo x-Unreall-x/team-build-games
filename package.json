@@ -16,10 +16,12 @@
     "test:arena": "vitest run --project arena",
     "test:members": "vitest run --project members",
     "test:merch": "vitest run --project merch",
-    "test:squid": "vitest run --project squid"
+    "test:squid": "vitest run --project squid",
+    "test:road": "vitest run --project road-madness"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",
+    "@google/model-viewer": "^4.2.0",
     "@tailwindcss/vite": "^4.1.7",
     "@wix/astro": "^2.13.0",
     "@wix/astro-pages": "^2.0.4",

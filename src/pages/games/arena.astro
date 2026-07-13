@@ -7,6 +7,8 @@ import LikeButton from "../../components/games/LikeButton.astro";
 import { getLikeCounts, getMemberLikedSet } from "../../lib/wix/gameLikes";
 import { getSessionMember } from "../../lib/wix/members";
 import { getGameAvatarSetting } from "../../lib/wix/playerAvatars";
+import { getOwnedArenaSkins } from "../../lib/wix/arenaSkins";
+import { premiumSkinById } from "../../game/arena/cosmetic";
 import { resolveGameAvatar } from "../../lib/members/gameAvatar";
 
 // SSR: resolve this member's Arena avatar (per-game override → profile photo). Passed to the island
@@ -16,6 +18,12 @@ const gameAvatar = member ? await getGameAvatarSetting(member.id, "arena") : nul
 const avatarUrl = member
   ? resolveGameAvatar(gameAvatar?.url, member.avatarUrl, gameAvatar?.disabled)
   : null;
+const ownedPremiumShapes = member ? await getOwnedArenaSkins(member.id) : [];
+const lobbyMusicUrl = import.meta.env.PUBLIC_ARENA_LOBBY_MUSIC_URL ?? "";
+const battleMusicUrl = import.meta.env.PUBLIC_ARENA_BATTLE_MUSIC_URL ?? "";
+const blockSoundUrl = import.meta.env.PUBLIC_ARENA_BLOCK_SOUND_URL ?? "";
+const checkoutState = Astro.url.searchParams.get("checkout");
+const checkoutSkin = premiumSkinById(Astro.url.searchParams.get("skin") ?? "");
 
 // Likes: current count + whether this member already voted.
 const likeCounts = await getLikeCounts(["arena"]);
@@ -26,6 +34,7 @@ const controls = [
   { keys: "Mouse", action: "Aim your weapon" },
   { keys: "Space", action: "Attack" },
   { keys: "Shift", action: "Dash (short cooldown)" },
+  { keys: "Ctrl / right mouse", action: "Block incoming attacks" },
 ];
 ---
 
@@ -73,11 +82,31 @@ const controls = [
       <GameSwitcher slug="arena" />
     </div>
 
+    {
+      checkoutState === "success" && checkoutSkin ? (
+        <p class="mb-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+          {checkoutSkin.name} unlocked. Pick it in the fighter row.
+        </p>
+      ) : checkoutState === "missing-product" && checkoutSkin ? (
+        <p class="mb-4 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+          Checkout is not configured for {checkoutSkin.name} yet. Add its Wix Stores product ID to the Arena skin env vars.
+        </p>
+      ) : null
+    }
+
     {/* cabinet bezel around the game island */}
     <div
       class="rounded-2xl border border-cyan-400/25 bg-night-900 p-3 shadow-[0_0_48px_rgb(34_211_238/0.12)] sm:p-4"
     >
-      <Arena client:only="react" isMember={!!member} avatarUrl={avatarUrl} />
+      <Arena
+        client:only="react"
+        isMember={!!member}
+        avatarUrl={avatarUrl}
+        ownedPremiumShapes={ownedPremiumShapes}
+        lobbyMusicUrl={lobbyMusicUrl}
+        battleMusicUrl={battleMusicUrl}
+        blockSoundUrl={blockSoundUrl}
+      />
     </div>
 
     {/* controls legend */}

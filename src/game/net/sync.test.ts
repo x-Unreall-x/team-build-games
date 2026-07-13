@@ -5,8 +5,20 @@ import { createWorld } from "../arena/match";
 import type { Intent, InputState, World } from "../arena/types";
 
 const NONE: InputState = { up: false, down: false, left: false, right: false };
-const IDLE: Intent = { move: NONE, facing: "down", dash: false, attack: false };
-const RIGHT: Intent = { move: { ...NONE, right: true }, facing: "right", dash: false, attack: false };
+const IDLE: Intent = {
+  move: NONE,
+  facing: "down",
+  dash: false,
+  attack: false,
+  block: false,
+};
+const RIGHT: Intent = {
+  move: { ...NONE, right: true },
+  facing: "right",
+  dash: false,
+  attack: false,
+  block: false,
+};
 
 const spawns = () => [
   { id: "a", pos: { x: 5, y: 15 } },
@@ -64,7 +76,13 @@ describe("SyncEngine — host-controlled bots & peer drop", () => {
       onWorld: (w) => (aWorld = w),
       hostExtraIntents: () => ({ c: RIGHT }), // host drives "c" like a bot
     });
-    const b = new SyncEngine({ transport: hub.join("b"), localId: "b", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: () => {} });
+    const b = new SyncEngine({
+      transport: hub.join("b"),
+      localId: "b",
+      world: createWorld(spawns()),
+      readIntent: () => IDLE,
+      onWorld: () => {},
+    });
     for (let i = 0; i < 3; i++) {
       b.tick(0.1);
       a.tick(0.1);
@@ -84,7 +102,13 @@ describe("SyncEngine — host-controlled bots & peer drop", () => {
       readIntent: () => IDLE,
       onWorld: (w) => (aWorld = w),
     });
-    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns().slice(0, 2)), readIntent: () => IDLE, onWorld: () => {} });
+    const b = new SyncEngine({
+      transport: tb,
+      localId: "b",
+      world: createWorld(spawns().slice(0, 2)),
+      readIntent: () => IDLE,
+      onWorld: () => {},
+    });
 
     a.tick(0.05);
     tb.close(); // b drops → host a marks b dead
@@ -104,9 +128,27 @@ describe("SyncEngine — host migration", () => {
     const ta = hub.join("a");
     const tb = hub.join("b");
     const tc = hub.join("c");
-    const a = new SyncEngine({ transport: ta, localId: "a", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.a = w) });
-    const b = new SyncEngine({ transport: tb, localId: "b", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.b = w) });
-    const c = new SyncEngine({ transport: tc, localId: "c", world: createWorld(spawns()), readIntent: () => IDLE, onWorld: (w) => (worlds.c = w) });
+    const a = new SyncEngine({
+      transport: ta,
+      localId: "a",
+      world: createWorld(spawns()),
+      readIntent: () => IDLE,
+      onWorld: (w) => (worlds.a = w),
+    });
+    const b = new SyncEngine({
+      transport: tb,
+      localId: "b",
+      world: createWorld(spawns()),
+      readIntent: () => IDLE,
+      onWorld: (w) => (worlds.b = w),
+    });
+    const c = new SyncEngine({
+      transport: tc,
+      localId: "c",
+      world: createWorld(spawns()),
+      readIntent: () => IDLE,
+      onWorld: (w) => (worlds.c = w),
+    });
 
     expect(a.isHost).toBe(true);
     for (let i = 0; i < 4; i++) {

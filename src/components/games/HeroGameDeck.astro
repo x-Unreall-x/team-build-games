@@ -1,0 +1,230 @@
+---
+const games = [
+  {
+    slug: "arena",
+    name: "Arena",
+    kind: "Realtime PvP",
+    players: "1–8 players",
+    href: "/games/arena",
+    image: "/assets/arena/arena-screenshot.png",
+    width: 834,
+    height: 640,
+    alt: "Arena gameplay with two warriors facing off on a battlefield",
+    blurb: "Dash, swing, and outlive your coworkers. Last player standing wins.",
+    accent: "text-cyan-300",
+    border: "border-cyan-400/35",
+    play: "bg-cyan-400 border-cyan-300/60 shadow-[0_0_24px_rgb(34_211_238/0.45)]",
+  },
+  {
+    slug: "overrun",
+    name: "Overrun",
+    kind: "Co-op horde shooter",
+    players: "1–8 players",
+    href: "/games/overrun",
+    image: "/assets/overrun/overrun-screenshot.png",
+    width: 1586,
+    height: 992,
+    alt: "Two Overrun players firing at a rock tank and two rushing monsters",
+    blurb: "Hold the field, scavenge guns, and survive the next wave together.",
+    accent: "text-red-300",
+    border: "border-red-400/35",
+    play: "bg-red-400 border-red-300/60 shadow-[0_0_24px_rgb(248_113_113/0.42)]",
+  },
+  {
+    slug: "squid",
+    name: "Squid",
+    kind: "Co-op walker",
+    players: "1–8 players",
+    href: "/games/squid",
+    image: "/assets/squid/squid-screenshot.png",
+    width: 1200,
+    height: 803,
+    alt: "A purple squid walking toward the finish arch with its eight legs",
+    blurb: "One octopus, eight legs, and exactly zero natural coordination.",
+    accent: "text-violet-300",
+    border: "border-violet-400/35",
+    play: "bg-violet-400 border-violet-300/60 shadow-[0_0_24px_rgb(167_139_250/0.42)]",
+  },
+];
+---
+
+<div class="hero-game-deck relative mx-auto w-full max-w-[38rem]" data-hero-game-deck>
+  <div class="relative">
+    {/* The spacer gives the absolutely stacked cards room for their exposed tails. */}
+    <div class="aspect-[4/3] sm:aspect-[16/10]" aria-hidden="true"></div>
+    <div class="h-28 sm:h-32" aria-hidden="true"></div>
+
+    {
+      games.map((game, index) => (
+        <article
+          class={`hero-deck-card absolute inset-x-0 top-0 aspect-[4/3] rounded-2xl border bg-night-900 p-2 shadow-[0_0_60px_rgb(0_0_0/0.38)] sm:aspect-[16/10] ${game.border}`}
+          data-hero-deck-card
+          data-game={game.slug}
+          data-deck-position={index}
+          aria-label={`${game.name} game preview`}
+        >
+          <div class="relative h-full overflow-hidden rounded-xl bg-night-950">
+            <img
+              src={game.image}
+              alt={game.alt}
+              class="absolute inset-0 h-full w-full object-cover object-center"
+              width={game.width}
+              height={game.height}
+              loading={index === 0 ? "eager" : "lazy"}
+              fetchpriority={index === 0 ? "high" : "auto"}
+            />
+            <div
+              class="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_44%,rgb(6_6_16/0.95)_100%)]"
+              aria-hidden="true"
+            ></div>
+
+            <div class="absolute left-4 top-4 flex items-center gap-2 rounded border border-emerald-400/35 bg-night-950/90 px-3 py-2 font-display text-[8px] text-emerald-300 backdrop-blur-sm">
+              <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_7px_rgb(52_211_153/0.9)]" aria-hidden="true"></span>
+              Live now
+            </div>
+            <div class="absolute right-4 top-4 rounded border border-white/15 bg-night-950/90 px-3 py-2 font-display text-[8px] text-neutral-200 backdrop-blur-sm">
+              {game.players}
+            </div>
+
+            <div class="absolute inset-x-0 bottom-0 flex items-end justify-between gap-5 p-5 sm:p-6">
+              <div>
+                <p class={`eyebrow ${game.accent}`}>{game.kind}</p>
+                <h2 class="mt-2 font-display text-xl text-white sm:text-2xl">
+                  {game.name}
+                </h2>
+                <p class="mt-2 hidden max-w-sm text-sm text-neutral-300 sm:block">
+                  {game.blurb}
+                </p>
+              </div>
+              <a
+                href={game.href}
+                class={`hero-deck-play relative z-40 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border text-lg text-night-950 transition hover:scale-110 ${game.play}`}
+                aria-label={`Play ${game.name}`}
+              >
+                ▶
+              </a>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="hero-deck-promote absolute inset-0 z-30 rounded-2xl text-left"
+            data-hero-deck-promote
+            aria-label={`Bring ${game.name} to the top`}
+          >
+            <span class="absolute inset-x-2 bottom-2 flex h-14 items-center justify-between rounded-b-xl border-t border-white/10 bg-night-900/95 px-5 shadow-[0_-8px_22px_rgb(6_6_16/0.55)]">
+              <span class="font-display text-[10px] text-white">{game.name}</span>
+              <span class={`font-display text-[8px] ${game.accent}`}>Draw card ↑</span>
+            </span>
+          </button>
+
+          <span
+            class="pointer-events-none absolute -bottom-3 -left-3 h-8 w-8 border-b-2 border-l-2 border-fuchsia-400/70"
+            aria-hidden="true"
+          ></span>
+          <span
+            class="pointer-events-none absolute -right-3 -top-3 h-8 w-8 border-r-2 border-t-2 border-cyan-400/70"
+            aria-hidden="true"
+          ></span>
+        </article>
+      ))
+    }
+  </div>
+  <p class="mt-1 text-center font-display text-[8px] tracking-wide text-neutral-500">
+    Click a lower card to bring it to the front
+  </p>
+</div>
+
+<script>
+  function wireHeroGameDecks() {
+    document.querySelectorAll<HTMLElement>("[data-hero-game-deck]").forEach((deck) => {
+      if (deck.dataset.wired === "1") return;
+      deck.dataset.wired = "1";
+
+      const cards = Array.from(
+        deck.querySelectorAll<HTMLElement>("[data-hero-deck-card]"),
+      );
+      let order = [...cards];
+
+      const render = () => {
+        order.forEach((card, position) => {
+          card.dataset.deckPosition = String(position);
+          const promote = card.querySelector<HTMLButtonElement>(
+            "[data-hero-deck-promote]",
+          );
+          if (promote) promote.tabIndex = position === 0 ? -1 : 0;
+        });
+      };
+
+      deck.addEventListener("click", (event) => {
+        const target = event.target as HTMLElement | null;
+        const promote = target?.closest<HTMLButtonElement>(
+          "[data-hero-deck-promote]",
+        );
+        if (!promote) return;
+        const card = promote.closest<HTMLElement>("[data-hero-deck-card]");
+        if (!card || card.dataset.deckPosition === "0") return;
+        order = [card, ...order.filter((item) => item !== card)];
+        render();
+      });
+
+      render();
+    });
+  }
+
+  wireHeroGameDecks();
+  document.addEventListener("astro:page-load", wireHeroGameDecks);
+</script>
+
+<style>
+  .hero-deck-card {
+    transform-origin: top center;
+    transition:
+      transform 320ms cubic-bezier(0.2, 0.75, 0.25, 1),
+      filter 320ms ease;
+  }
+
+  .hero-deck-card[data-deck-position="0"] {
+    z-index: 30;
+    transform: translateY(0) rotate(0deg) scale(1);
+    filter: brightness(1);
+  }
+
+  .hero-deck-card[data-deck-position="1"] {
+    z-index: 20;
+    transform: translateY(3.5rem) rotate(-1deg) scale(0.985);
+    filter: brightness(0.82);
+  }
+
+  .hero-deck-card[data-deck-position="2"] {
+    z-index: 10;
+    transform: translateY(7rem) rotate(1deg) scale(0.97);
+    filter: brightness(0.66);
+  }
+
+  .hero-deck-card[data-deck-position="1"]:hover,
+  .hero-deck-card[data-deck-position="2"]:hover {
+    filter: brightness(1);
+  }
+
+  .hero-deck-promote {
+    opacity: 1;
+    transition: opacity 180ms ease;
+  }
+
+  .hero-deck-card[data-deck-position="0"] .hero-deck-promote {
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .hero-deck-card:not([data-deck-position="0"]) .hero-deck-play {
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-deck-card {
+      transition: none;
+    }
+  }
+</style>

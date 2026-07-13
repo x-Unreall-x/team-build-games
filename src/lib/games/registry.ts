@@ -30,6 +30,17 @@ export const ARCADE_GAMES: ArcadeGame[] = [
     chip: "border-cyan-400/40 text-cyan-300",
   },
   {
+    slug: "overrun",
+    name: "Overrun",
+    kind: "Co-op horde shooter",
+    players: "1–8 players",
+    blurb:
+      "The waves don't stop. Scavenge guns, pick perks on the run, and keep your team standing — Crimsonland energy, office-friendly rounds.",
+    href: "/games/overrun",
+    status: "live",
+    chip: "border-red-400/40 text-red-300",
+  },
+  {
     slug: "squid",
     name: "Squid",
     kind: "Co-op walker",
@@ -41,6 +52,17 @@ export const ARCADE_GAMES: ArcadeGame[] = [
     chip: "border-violet-400/40 text-violet-300",
   },
   {
+    slug: "road-madness",
+    name: "Road Madness",
+    kind: "Arcade driving",
+    players: "1-player alpha",
+    blurb:
+      "Speed, steel, and very bad parking. Enter the playable demolition-derby alpha now; live rooms, Race, Carnage, and Bomb Tag are on the road ahead.",
+    href: "/games/road-madness",
+    status: "live",
+    chip: "border-amber-300/40 text-amber-200",
+  },
+  {
     slug: "survival",
     name: "Survival",
     kind: "Co-op horde",
@@ -50,17 +72,6 @@ export const ARCADE_GAMES: ArcadeGame[] = [
     href: "/games/survival",
     status: "soon",
     chip: "border-emerald-400/40 text-emerald-300",
-  },
-  {
-    slug: "overrun",
-    name: "Overrun",
-    kind: "Co-op horde shooter",
-    players: "1–8 players",
-    blurb:
-      "The waves don't stop. Scavenge guns, pick perks on the run, and keep your team standing — Crimsonland energy, office-friendly rounds.",
-    href: "/games/overrun",
-    status: "live",
-    chip: "border-red-400/40 text-red-300",
   },
   {
     slug: "mystery",

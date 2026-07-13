@@ -1,6 +1,8 @@
 /** Contract between the Overrun Phaser scene and whatever drives the match. */
 
 import type { GunId, PerkOffer, PlayerId, RawShooterInput, ShooterStatus, ShooterWorld } from "../types";
+import type { PickupKind } from "../types";
+import type { OverrunVisualAssets } from "../assets";
 
 export interface OverrunMeta {
   name: string;
@@ -48,19 +50,20 @@ export interface OverrunHudState {
 export type OverrunEvent =
   | { type: "tik"; n: number }
   | { type: "go" }
-  | { type: "shot" }
+  | { type: "shot"; gun: GunId }
   | { type: "kill" }
-  | { type: "pickup" }
+  | { type: "pickup"; item: PickupKind }
   | { type: "levelup" }
   | { type: "downed"; local: boolean }
   | { type: "revived" }
   | { type: "gameover" }
   | { type: "enemyHit" }
   | { type: "playerHit"; local: boolean }
-  | { type: "reload" };
+  | { type: "reload"; gun: GunId };
 
 export interface OverrunConfig {
   driver: OverrunDriver;
+  assets?: OverrunVisualAssets;
   onHud: (h: OverrunHudState) => void;
   onEvent: (e: OverrunEvent) => void;
   /** Fired once when the run ends, with the final world (scorecard + merch payload source). */

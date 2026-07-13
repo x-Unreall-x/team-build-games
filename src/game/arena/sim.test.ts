@@ -16,8 +16,20 @@ import {
 import type { Intent, InputState } from "./types";
 
 const NONE: InputState = { up: false, down: false, left: false, right: false };
-const idle = (facing: Intent["facing"] = "down"): Intent => ({ move: NONE, facing, dash: false, attack: false });
-const moveRight: Intent = { move: { ...NONE, right: true }, facing: "right", dash: false, attack: false };
+const idle = (facing: Intent["facing"] = "down"): Intent => ({
+  move: NONE,
+  facing,
+  dash: false,
+  attack: false,
+  block: false,
+});
+const moveRight: Intent = {
+  move: { ...NONE, right: true },
+  facing: "right",
+  dash: false,
+  attack: false,
+  block: false,
+};
 
 describe("stepWorld — movement", () => {
   it("moves a player at run speed in the input direction", () => {
@@ -106,7 +118,13 @@ describe("stepWorld — combat & death", () => {
       { id: "A", pos: { x: 15, y: 15 }, facing: "right" },
       { id: "B", pos: { x: 15.5, y: 15 } },
     ]);
-    const attack: Intent = { move: NONE, facing: "right", dash: false, attack: true };
+    const attack: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const after1 = stepWorld(w, { A: attack, B: idle() }, 0.05);
     expect(after1.players.B.health).toBe(START_HEALTH - 1);
     // next tick A holds nothing → no further damage
@@ -120,7 +138,13 @@ describe("stepWorld — combat & death", () => {
       { id: "B", pos: { x: 15.5, y: 15 } },
     ]);
     w.players.B.health = 1;
-    const attack: Intent = { move: NONE, facing: "right", dash: false, attack: true };
+    const attack: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const next = stepWorld(w, { A: attack, B: idle() }, 0.05);
     expect(next.players.B.status).toBe("dead");
     expect(next.phase).toBe("ended");
@@ -144,7 +168,13 @@ describe("stepWorld — combat & death", () => {
       { id: "B", pos: { x: 15.4, y: 15 } },
       { id: "C", pos: { x: 15.5, y: 15.2 } },
     ]);
-    const attack: Intent = { move: NONE, facing: "right", dash: false, attack: true };
+    const attack: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const next = stepWorld(w, { A: attack, B: idle(), C: idle() }, 0.05);
     expect(next.players.B.health).toBe(START_HEALTH - 1);
     expect(next.players.C.health).toBe(START_HEALTH - 1);
@@ -155,20 +185,39 @@ describe("stepWorld — combat & death", () => {
       { id: "A", pos: { x: 15, y: 15 }, facing: "right" },
       { id: "Z", pos: { x: 1, y: 1 } }, // bystander keeps match playing
     ]);
-    const atk: Intent = { move: NONE, facing: "right", dash: false, attack: true };
+    const atk: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const s1 = stepWorld(w, { A: atk }, 0.05);
-    expect(s1.players.A.attackCooldownRemaining).toBeCloseTo(ATTACK_COOLDOWN_S, 5);
+    expect(s1.players.A.attackCooldownRemaining).toBeCloseTo(
+      ATTACK_COOLDOWN_S,
+      5,
+    );
     expect(s1.players.A.attack?.ttl).toBeCloseTo(ATTACK_TTL_S, 5);
     // re-pressing attack during cooldown does NOT start a new swing (ttl keeps decaying)
     const s2 = stepWorld(s1, { A: atk }, 0.05);
-    expect(s2.players.A.attackCooldownRemaining).toBeCloseTo(ATTACK_COOLDOWN_S - 0.05, 5);
+    expect(s2.players.A.attackCooldownRemaining).toBeCloseTo(
+      ATTACK_COOLDOWN_S - 0.05,
+      5,
+    );
     expect(s2.players.A.attack?.ttl).toBeCloseTo(ATTACK_TTL_S - 0.05, 5);
     // after the cooldown elapses, a new swing fires (ttl reset, cooldown reset)
-    const s3 = stepWorld(s2, { A: { ...atk, attack: false } }, ATTACK_COOLDOWN_S);
+    const s3 = stepWorld(
+      s2,
+      { A: { ...atk, attack: false } },
+      ATTACK_COOLDOWN_S,
+    );
     expect(s3.players.A.attackCooldownRemaining).toBe(0);
     const s4 = stepWorld(s3, { A: atk }, 0.05);
     expect(s4.players.A.attack?.ttl).toBeCloseTo(ATTACK_TTL_S, 5);
-    expect(s4.players.A.attackCooldownRemaining).toBeCloseTo(ATTACK_COOLDOWN_S, 5);
+    expect(s4.players.A.attackCooldownRemaining).toBeCloseTo(
+      ATTACK_COOLDOWN_S,
+      5,
+    );
   });
 
   it("attacks along the free-aim angle, independent of movement facing", () => {
@@ -178,7 +227,14 @@ describe("stepWorld — combat & death", () => {
       { id: "B", pos: { x: 15.6, y: 15.6 } },
       { id: "Z", pos: { x: 1, y: 1 } }, // bystander keeps match playing
     ]);
-    const attack: Intent = { move: NONE, facing: "right", aim: Math.PI / 4, dash: false, attack: true };
+    const attack: Intent = {
+      move: NONE,
+      facing: "right",
+      aim: Math.PI / 4,
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const after = stepWorld(w, { A: attack, B: idle(), Z: idle() }, 0.05);
     expect(after.players.B.health).toBe(START_HEALTH - 1); // hit despite facing 'right'
     expect(after.players.A.facing).toBe("right"); // body still faces movement
@@ -193,9 +249,20 @@ describe("stepWorld — combat & death", () => {
         { id: "B", pos: { x: 13, y: 15 } },
         { id: "Z", pos: { x: 1, y: 1 } },
       ]);
-    const atk: Intent = { move: NONE, facing: "right", aim: 0, dash: false, attack: true };
-    expect(stepWorld(world("spear"), { A: atk }, 0.05).players.B.health).toBe(START_HEALTH - 1);
-    expect(stepWorld(world("knife"), { A: atk }, 0.05).players.B.health).toBe(START_HEALTH);
+    const atk: Intent = {
+      move: NONE,
+      facing: "right",
+      aim: 0,
+      dash: false,
+      attack: true,
+      block: false,
+    };
+    expect(stepWorld(world("spear"), { A: atk }, 0.05).players.B.health).toBe(
+      START_HEALTH - 1,
+    );
+    expect(stepWorld(world("knife"), { A: atk }, 0.05).players.B.health).toBe(
+      START_HEALTH,
+    );
   });
 
   it("knocks the victim KNOCKBACK_M away from the attacker on a hit", () => {
@@ -203,7 +270,13 @@ describe("stepWorld — combat & death", () => {
       { id: "A", pos: { x: 15, y: 15 }, facing: "right" },
       { id: "B", pos: { x: 15.5, y: 15 } },
     ]);
-    const atk: Intent = { move: NONE, facing: "right", dash: false, attack: true };
+    const atk: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const s = stepWorld(w, { A: atk, B: idle() }, 0.05);
     expect(s.players.B.health).toBe(START_HEALTH - 1);
     expect(s.players.B.pos.x).toBeCloseTo(15.5 + KNOCKBACK_M, 5); // pushed away (+x)
@@ -215,7 +288,13 @@ describe("stepWorld — combat & death", () => {
       { id: "A", pos: { x: FIELD_M - 1.4, y: 15 }, facing: "right" },
       { id: "B", pos: { x: FIELD_M - 0.6, y: 15 } }, // 0.8m ahead, near the wall
     ]);
-    const atk: Intent = { move: NONE, facing: "right", dash: false, attack: true };
+    const atk: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const s = stepWorld(w, { A: atk, B: idle() }, 0.05);
     // +1m knockback would overshoot the wall → clamped to field - radius
     expect(s.players.B.pos.x).toBeCloseTo(FIELD_M - FIGURE_RADIUS_M, 5);
@@ -228,8 +307,20 @@ describe("stepWorld — combat & death", () => {
     ]);
     w.players.A.health = 1;
     w.players.B.health = 1;
-    const aAtk: Intent = { move: NONE, facing: "right", dash: false, attack: true };
-    const bAtk: Intent = { move: NONE, facing: "left", dash: false, attack: true };
+    const aAtk: Intent = {
+      move: NONE,
+      facing: "right",
+      dash: false,
+      attack: true,
+      block: false,
+    };
+    const bAtk: Intent = {
+      move: NONE,
+      facing: "left",
+      dash: false,
+      attack: true,
+      block: false,
+    };
     const next = stepWorld(w, { A: aAtk, B: bAtk }, 0.05);
     expect(next.players.A.status).toBe("dead");
     expect(next.players.B.status).toBe("dead");
@@ -239,7 +330,14 @@ describe("stepWorld — combat & death", () => {
 });
 
 describe("stepWorld — ranged (bow) projectiles", () => {
-  const bowAtk: Intent = { move: NONE, facing: "right", aim: 0, dash: false, attack: true };
+  const bowAtk: Intent = {
+    move: NONE,
+    facing: "right",
+    aim: 0,
+    dash: false,
+    attack: true,
+    block: false,
+  };
 
   it("looses a traveling arrow instead of a melee hit, and puts the bow on cooldown", () => {
     const w = createWorld([
@@ -281,6 +379,57 @@ describe("stepWorld — ranged (bow) projectiles", () => {
   });
 });
 
+describe("stepWorld — premium weapon waves", () => {
+  const attackRight: Intent = {
+    move: NONE,
+    facing: "right",
+    aim: 0,
+    dash: false,
+    attack: true,
+    block: false,
+  };
+
+  it("launches a 1 m-diameter katana wave that pierces targets across its 10 m path", () => {
+    let w = createWorld([
+      { id: "A", pos: { x: 5, y: 15 }, weapon: "katana" },
+      { id: "B", pos: { x: 9, y: 15 } },
+      { id: "C", pos: { x: 14.7, y: 15 } },
+      { id: "D", pos: { x: 17, y: 15 } },
+      { id: "Z", pos: { x: 2, y: 2 } },
+    ]);
+    w = stepWorld(w, { A: attackRight }, 0.05);
+    expect(w.projectiles[0]).toMatchObject({
+      kind: "crushing-wave",
+      radius: 0.5,
+    });
+    for (let i = 0; i < 30 && w.projectiles.length > 0; i += 1) {
+      w = stepWorld(w, {}, 0.05);
+    }
+    expect(w.players.B.health).toBe(START_HEALTH - 1);
+    expect(w.players.C.health).toBe(START_HEALTH - 1);
+    expect(w.players.D.health).toBe(START_HEALTH);
+    expect(w.players.A.stats.hits).toBe(1);
+  });
+
+  it("expands the hammer wave to 3 m in every direction and no farther", () => {
+    let w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 }, weapon: "solar-hammer" },
+      { id: "east", pos: { x: 17.8, y: 15 } },
+      { id: "north", pos: { x: 15, y: 12.2 } },
+      { id: "far", pos: { x: 19.2, y: 15 } },
+    ]);
+    w = stepWorld(w, { A: attackRight }, 0.05);
+    expect(w.projectiles[0]?.kind).toBe("solar-wave");
+    for (let i = 0; i < 10 && w.projectiles.length > 0; i += 1) {
+      w = stepWorld(w, {}, 0.05);
+    }
+    expect(w.players.east.health).toBe(START_HEALTH - 1);
+    expect(w.players.north.health).toBe(START_HEALTH - 1);
+    expect(w.players.far.health).toBe(START_HEALTH);
+    expect(w.players.A.stats.hits).toBe(1);
+  });
+});
+
 describe("stepWorld — lifecycle invariants", () => {
   it("is a no-op once the match has ended (returns the same world)", () => {
     const ended = createWorld([{ id: "A", pos: { x: 15, y: 15 } }], "ended");
@@ -294,16 +443,38 @@ describe("stepWorld — lifecycle invariants", () => {
     ]);
     const kept = stepWorld(w, {}, 0.1);
     expect(kept.players.A.facing).toBe("right");
-    const turned = stepWorld(w, { A: { move: { ...NONE, left: true }, facing: "left", dash: false, attack: false } }, 0.1);
+    const turned = stepWorld(
+      w,
+      {
+        A: {
+          move: { ...NONE, left: true },
+          facing: "left",
+          dash: false,
+          attack: false,
+          block: false,
+        },
+      },
+      0.1,
+    );
     expect(turned.players.A.facing).toBe("left");
   });
 });
 
 describe("stepWorld — per-player stats (hits / misses / distance)", () => {
-  const attack = (aim: number): Intent => ({ move: NONE, facing: "right", aim, dash: false, attack: true });
+  const attack = (aim: number): Intent => ({
+    move: NONE,
+    facing: "right",
+    aim,
+    dash: false,
+    attack: true,
+    block: false,
+  });
 
   it("starts everyone at zero and accumulates distance for movers only", () => {
-    const w = createWorld([{ id: "A", pos: { x: 15, y: 15 } }, { id: "B", pos: { x: 5, y: 5 } }]);
+    const w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 } },
+      { id: "B", pos: { x: 5, y: 5 } },
+    ]);
     expect(w.players.A.stats).toEqual({ hits: 0, misses: 0, distance: 0 });
     const n = stepWorld(w, { A: moveRight }, 0.1);
     expect(n.players.A.stats.distance).toBeCloseTo(RUN_SPEED_MS * 0.1, 5);
@@ -312,7 +483,10 @@ describe("stepWorld — per-player stats (hits / misses / distance)", () => {
   });
 
   it("counts a melee swing that connects as a hit", () => {
-    const w = createWorld([{ id: "A", pos: { x: 15, y: 15 } }, { id: "B", pos: { x: 16, y: 15 } }]);
+    const w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 } },
+      { id: "B", pos: { x: 16, y: 15 } },
+    ]);
     const n = stepWorld(w, { A: attack(0) }, 0.05); // aim +x (right); B is 1m right, within reach
     expect(n.players.A.stats.hits).toBe(1);
     expect(n.players.A.stats.misses).toBe(0);
@@ -320,7 +494,10 @@ describe("stepWorld — per-player stats (hits / misses / distance)", () => {
   });
 
   it("counts a melee swing that hits nobody as a miss", () => {
-    const w = createWorld([{ id: "A", pos: { x: 15, y: 15 } }, { id: "B", pos: { x: 15, y: 11 } }]);
+    const w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 } },
+      { id: "B", pos: { x: 15, y: 11 } },
+    ]);
     const n = stepWorld(w, { A: attack(0) }, 0.05); // aim right; B is straight up → outside the cone
     expect(n.players.A.stats.misses).toBe(1);
     expect(n.players.A.stats.hits).toBe(0);
@@ -328,17 +505,33 @@ describe("stepWorld — per-player stats (hits / misses / distance)", () => {
   });
 
   it("credits a bow hit to the shooter when the arrow connects", () => {
-    let w = createWorld([{ id: "A", pos: { x: 8, y: 15 }, weapon: "bow" }, { id: "B", pos: { x: 18, y: 15 } }]);
+    let w = createWorld([
+      { id: "A", pos: { x: 8, y: 15 }, weapon: "bow" },
+      { id: "B", pos: { x: 18, y: 15 } },
+    ]);
     w = stepWorld(w, { A: attack(0) }, 0.05); // fire toward +x; B is 10m right
     expect(w.players.A.stats.hits).toBe(0); // not counted at fire time
-    for (let i = 0; i < 40 && w.players.A.stats.hits === 0 && w.phase === "playing"; i++) w = stepWorld(w, {}, 0.05);
+    for (
+      let i = 0;
+      i < 40 && w.players.A.stats.hits === 0 && w.phase === "playing";
+      i++
+    )
+      w = stepWorld(w, {}, 0.05);
     expect(w.players.A.stats.hits).toBe(1);
   });
 
   it("counts a bow arrow that expires without hitting as a miss", () => {
-    let w = createWorld([{ id: "A", pos: { x: 15, y: 15 }, weapon: "bow" }, { id: "B", pos: { x: 2, y: 2 } }]);
+    let w = createWorld([
+      { id: "A", pos: { x: 15, y: 15 }, weapon: "bow" },
+      { id: "B", pos: { x: 2, y: 2 } },
+    ]);
     w = stepWorld(w, { A: attack(0) }, 0.05); // fire toward +x; nobody in the path
-    for (let i = 0; i < 60 && w.players.A.stats.misses === 0 && w.phase === "playing"; i++) w = stepWorld(w, {}, 0.05);
+    for (
+      let i = 0;
+      i < 60 && w.players.A.stats.misses === 0 && w.phase === "playing";
+      i++
+    )
+      w = stepWorld(w, {}, 0.05);
     expect(w.players.A.stats.misses).toBe(1);
   });
 });

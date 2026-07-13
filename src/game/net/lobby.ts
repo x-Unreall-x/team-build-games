@@ -16,6 +16,7 @@ export interface LobbyPlayer {
   shape: Shape; // cosmetic fighter selection (render-only)
   weapon: Weapon; // equipped weapon (sim-relevant)
   avatarUrl?: string | null; // signed-in member's face photo (render-only)
+  ownedPremiumShapes?: Shape[]; // member-owned paid cosmetics, used by the host to sanitize starts
 }
 
 export type Roster = Record<PlayerId, LobbyPlayer>;
