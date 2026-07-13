@@ -181,6 +181,27 @@ describe("resolveAttack", () => {
     expect(resolveAttack(attacker, [attacker, clear]).length).toBe(0);
   });
 
+  it("extends melee reach for a straight-up swing (foreshortened 2.5D vertical axis)", () => {
+    // Horizontal body-reach is SWORD_REACH_M + FIGURE_RADIUS_M = 2.75 m; a vertical swing adds
+    // VERTICAL_REACH_BONUS_M (→ 3.5 m). A target at 3.2 m is out of horizontal reach but within it up.
+    const up = { ...player("A", { x: 0, y: 0 }), aim: directionAngle("up") };
+    expect(resolveAttack(up, [player("B", { x: 0, y: -3.2 })]).length).toBe(1);
+    // Same distance to the side (horizontal aim, no bonus) stays out of reach.
+    const right = { ...player("A", { x: 0, y: 0 }), aim: 0 };
+    expect(resolveAttack(right, [player("C", { x: 3.2, y: 0 })]).length).toBe(0);
+  });
+
+  it("fans the melee arc wider for a vertical-ish aim (covers the tall figure), but not unlimited", () => {
+    const target = player("B", { x: 1.4, y: 0 }); // dead to the right, in range
+    // Aiming 50° up-right is beyond the 45° base half-angle from the target — only the vertical
+    // widening lets it connect.
+    const steep = { ...player("A", { x: 0, y: 0 }), aim: (50 * Math.PI) / 180 };
+    expect(resolveAttack(steep, [target]).length).toBe(1);
+    // 80° off is still outside even the widened arc.
+    const tooSteep = { ...player("A", { x: 0, y: 0 }), aim: (80 * Math.PI) / 180 };
+    expect(resolveAttack(tooSteep, [target]).length).toBe(0);
+  });
+
   it("resolves against generic Hittable targets, not just players (survival: attacks hit enemies)", () => {
     const attacker = player("A", { x: 0, y: 0 }, "right");
     // an enemy-shaped Hittable (id/pos/status only) in front, in range → hit

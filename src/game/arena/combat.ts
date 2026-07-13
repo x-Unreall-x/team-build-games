@@ -14,6 +14,9 @@ import {
   BLOCK_COOLDOWN_S,
   BLOCK_WIDTH_MULT,
   FIGURE_RADIUS_M,
+  MAX_MELEE_HALF_ANGLE,
+  VERTICAL_ARC_BONUS,
+  VERTICAL_REACH_BONUS_M,
 } from "../constants";
 
 export interface DamageEvent {
@@ -143,7 +146,13 @@ export function resolveAttack(
   const stats = WEAPONS[attacker.weapon];
   // The whole body is hittable: a target is hit once its body (radius FIGURE_RADIUS_M) overlaps
   // the weapon's reach — not only when its center is in range.
-  const bodyReach = stats.reach + FIGURE_RADIUS_M;
+  //
+  // 2.5D compensation: figures are drawn tall and the depth axis is foreshortened, so an up/down
+  // swing visually strikes head/legs that sit off the flat footprint. Scale the reach + arc by how
+  // vertical the aim is (|sin| → 0 horizontal, 1 straight up/down) so vertical hits register.
+  const verticality = Math.abs(Math.sin(attacker.aim));
+  const bodyReach = stats.reach + FIGURE_RADIUS_M + VERTICAL_REACH_BONUS_M * verticality;
+  const arcMult = 1 + VERTICAL_ARC_BONUS * verticality;
   const events: DamageEvent[] = [];
   for (const t of candidates) {
     if (t.id === attacker.id) continue;
@@ -154,14 +163,14 @@ export function resolveAttack(
           attacker.aim,
           t.pos,
           bodyReach,
-          stats.thrust.halfWidth + FIGURE_RADIUS_M,
+          (stats.thrust.halfWidth + FIGURE_RADIUS_M) * arcMult,
         )
       : inAttackCone(
           attacker.pos,
           attacker.aim,
           t.pos,
           bodyReach,
-          stats.coneHalfAngle,
+          Math.min(stats.coneHalfAngle * arcMult, MAX_MELEE_HALF_ANGLE),
         );
     if (hit) events.push({ fromId: attacker.id, targetId: t.id });
   }

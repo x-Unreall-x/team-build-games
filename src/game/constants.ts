@@ -32,6 +32,18 @@ export const SWORD_REACH_M = 2;
 /** Half-angle (radians) of the attack cone; 45° → a 90° forward arc. */
 export const ATTACK_CONE_HALF_ANGLE = Math.PI / 4;
 
+/**
+ * 2.5D vertical-aim compensation for melee. The sim is flat top-down (a target is a circle at its
+ * foot point), but figures are drawn TALL with the depth axis foreshortened, so a swing aimed up or
+ * down visually strikes a head/legs that sit off the hittable footprint. A vertical swing therefore
+ * reaches `VERTICAL_REACH_BONUS_M` further and fans its arc up to `VERTICAL_ARC_BONUS` wider, scaled
+ * by |sin(aim)| (0 = horizontal → unchanged, 1 = straight up/down → full bonus). Feel-only tuning.
+ */
+export const VERTICAL_REACH_BONUS_M = 0.75;
+export const VERTICAL_ARC_BONUS = 0.35;
+/** Hard cap on the widened half-angle so a vertical swing never exceeds a near-hemisphere. */
+export const MAX_MELEE_HALF_ANGLE = (Math.PI / 12) * 5; // 75°
+
 /** Seconds the swing visual stays up (damage itself resolves on the initiation tick). */
 export const ATTACK_TTL_S = 0.2;
 
