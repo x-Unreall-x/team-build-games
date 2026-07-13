@@ -361,7 +361,9 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
           style={{
             position: "relative",
             width: "100%",
-            maxWidth: OVERRUN_WIDTH,
+            // Render at 1.4× the native canvas — matches Arena's on-screen px/metre so the game is the
+            // same size on the page (Arena bakes the same 1.4 into its render scale).
+            maxWidth: OVERRUN_WIDTH * 1.4,
             aspectRatio: `${OVERRUN_WIDTH} / ${OVERRUN_HEIGHT}`,
           }}
         >
