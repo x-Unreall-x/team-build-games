@@ -202,6 +202,16 @@ describe("resolveAttack", () => {
     expect(resolveAttack(tooSteep, [target]).length).toBe(0);
   });
 
+  it("uses each target's own hitRadius so the hit-zone matches its sprite, not the player body", () => {
+    const attacker = { ...player("A", { x: 0, y: 0 }), aim: 0 }; // sword reach 2, horizontal (no vertical bonus)
+    // A small enemy (radius 0.4) at 2.5 m is beyond reach+0.4 = 2.4 → miss.
+    const small = { id: "e", pos: { x: 2.5, y: 0 }, status: "alive" as const, hitRadius: 0.4 };
+    expect(resolveAttack(attacker, [small])).toEqual([]);
+    // A big enemy (radius 1.05, e.g. the dino) at the same spot is within reach+1.05 = 3.05 → hit.
+    const big = { id: "d", pos: { x: 2.5, y: 0 }, status: "alive" as const, hitRadius: 1.05 };
+    expect(resolveAttack(attacker, [big]).length).toBe(1);
+  });
+
   it("resolves against generic Hittable targets, not just players (survival: attacks hit enemies)", () => {
     const attacker = player("A", { x: 0, y: 0 }, "right");
     // an enemy-shaped Hittable (id/pos/status only) in front, in range → hit

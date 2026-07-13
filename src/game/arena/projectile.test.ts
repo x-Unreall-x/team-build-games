@@ -103,4 +103,12 @@ describe("projectileTarget", () => {
     const enemy = { id: "e1-0", pos: { x: 2 + FIGURE_RADIUS_M, y: 2 }, status: "alive" as const };
     expect(projectileTarget(arrow, [enemy])).toBe("e1-0");
   });
+
+  it("uses each target's own hitRadius so the overlap matches its sprite", () => {
+    // A target 1.5 m ahead: a tiny-radius enemy is out of overlap; a large-radius one is caught.
+    const tiny = { id: "t", pos: { x: 3.5, y: 2 }, status: "alive" as const, hitRadius: 0.1 };
+    expect(projectileTarget(arrow, [tiny])).toBeNull();
+    const huge = { id: "h", pos: { x: 3.5, y: 2 }, status: "alive" as const, hitRadius: 2.0 };
+    expect(projectileTarget(arrow, [huge])).toBe("h");
+  });
 });

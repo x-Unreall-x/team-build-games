@@ -108,11 +108,13 @@ export function projectileTarget(p: Projectile, targets: readonly Hittable[]): P
 
 /** Every overlapping target, nearest first. Waves use this to pierce without damaging twice. */
 export function projectileTargets(p: Projectile, targets: readonly Hittable[]): PlayerId[] {
-  const reach = FIGURE_RADIUS_M + (p.radius ?? PROJECTILE_RADIUS_M);
+  const projRadius = p.radius ?? PROJECTILE_RADIUS_M;
   const ignored = new Set(p.hitIds ?? []);
   const hits: Array<{ id: PlayerId; distance: number }> = [];
   for (const t of targets) {
     if (t.id === p.ownerId || t.status !== "alive" || ignored.has(t.id)) continue;
+    // Each target's own body radius (defaults to the player figure) so the overlap matches its sprite.
+    const reach = (t.hitRadius ?? FIGURE_RADIUS_M) + projRadius;
     const d = Math.hypot(t.pos.x - p.pos.x, t.pos.y - p.pos.y);
     if (d <= reach) hits.push({ id: t.id, distance: d });
   }

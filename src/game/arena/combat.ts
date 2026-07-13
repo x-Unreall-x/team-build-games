@@ -33,6 +33,12 @@ export interface Hittable {
   id: PlayerId;
   pos: Vec2;
   status: "alive" | "dead";
+  /**
+   * Body radius (metres) for the hit test — so each target's zone matches its own sprite. Defaults
+   * to the player figure radius; survival enemies pass their per-kind radius (a bat is small, the
+   * dino large), which is what makes the hit-zone line up with what's drawn.
+   */
+  hitRadius?: number;
 }
 
 /** Attack recharge progress in [0,1]: 0 just after a swing → 1 when ready (UI sweep). */
@@ -144,32 +150,34 @@ export function resolveAttack(
   candidates: readonly Hittable[],
 ): DamageEvent[] {
   const stats = WEAPONS[attacker.weapon];
-  // The whole body is hittable: a target is hit once its body (radius FIGURE_RADIUS_M) overlaps
-  // the weapon's reach — not only when its center is in range.
+  // The whole body is hittable: a target is hit once its body (its own `hitRadius`) overlaps the
+  // weapon's reach — not only when its center is in range.
   //
-  // 2.5D compensation: figures are drawn tall and the depth axis is foreshortened, so an up/down
-  // swing visually strikes head/legs that sit off the flat footprint. Scale the reach + arc by how
-  // vertical the aim is (|sin| → 0 horizontal, 1 straight up/down) so vertical hits register.
+  // 2.5D compensation: figures/creatures are drawn tall and the depth axis is foreshortened, so an
+  // up/down swing visually strikes parts that sit off the flat footprint. Scale the reach + arc by
+  // how vertical the aim is (|sin| → 0 horizontal, 1 straight up/down) so vertical hits register.
   const verticality = Math.abs(Math.sin(attacker.aim));
-  const bodyReach = stats.reach + FIGURE_RADIUS_M + VERTICAL_REACH_BONUS_M * verticality;
+  const vReach = VERTICAL_REACH_BONUS_M * verticality;
   const arcMult = 1 + VERTICAL_ARC_BONUS * verticality;
   const events: DamageEvent[] = [];
   for (const t of candidates) {
     if (t.id === attacker.id) continue;
     if (t.status !== "alive") continue;
+    const bodyRadius = t.hitRadius ?? FIGURE_RADIUS_M;
+    const reach = stats.reach + bodyRadius + vReach;
     const hit = stats.thrust
       ? inAttackLine(
           attacker.pos,
           attacker.aim,
           t.pos,
-          bodyReach,
-          (stats.thrust.halfWidth + FIGURE_RADIUS_M) * arcMult,
+          reach,
+          (stats.thrust.halfWidth + bodyRadius) * arcMult,
         )
       : inAttackCone(
           attacker.pos,
           attacker.aim,
           t.pos,
-          bodyReach,
+          reach,
           Math.min(stats.coneHalfAngle * arcMult, MAX_MELEE_HALF_ANGLE),
         );
     if (hit) events.push({ fromId: attacker.id, targetId: t.id });

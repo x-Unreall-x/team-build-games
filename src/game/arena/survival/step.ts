@@ -19,7 +19,7 @@ import { advanceProjectile, projectileTarget, spawnArrow } from "../projectile";
 import { createPlayer } from "../match";
 import { WEAPONS } from "../weapons";
 import { ATTACK_TTL_S, FIELD_M, FIGURE_RADIUS_M, RUN_SPEED_MS, START_HEALTH } from "../../constants";
-import { createEnemy, type EnemyState } from "./enemy";
+import { createEnemy, ENEMY_STATS, type EnemyState } from "./enemy";
 import { stepEnemies, type EnemyTarget } from "./enemyStep";
 import { enemySpawnPoint } from "./spawn";
 import { wavePlan } from "./waves";
@@ -201,16 +201,24 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
   let enemies = spawned.enemies;
 
   // 3) Resolve player attacks (melee cones + arrows) against enemies → damage per enemy.
+  //    Each enemy is hit at its OWN per-kind body radius so the zone matches its sprite (a bat is
+  //    small, the dino large) rather than the default player figure.
+  const enemyHitTargets = enemies.map((e) => ({
+    id: e.id,
+    pos: e.pos,
+    status: e.status,
+    hitRadius: ENEMY_STATS[e.kind].radius,
+  }));
   const dmgByEnemy: Record<string, number> = {};
   for (const id of swungIds) {
-    for (const ev of resolveAttack(players[id]!, enemies)) {
+    for (const ev of resolveAttack(players[id]!, enemyHitTargets)) {
       dmgByEnemy[ev.targetId] = (dmgByEnemy[ev.targetId] ?? 0) + 1;
     }
   }
   const projectiles: Projectile[] = [];
   for (const proj of [...world.projectiles, ...newProjectiles]) {
     const moved = advanceProjectile(proj, dt);
-    const hitId = projectileTarget(moved, enemies);
+    const hitId = projectileTarget(moved, enemyHitTargets);
     if (hitId) {
       dmgByEnemy[hitId] = (dmgByEnemy[hitId] ?? 0) + moved.damage;
       continue;
