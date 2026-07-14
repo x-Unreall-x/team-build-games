@@ -26,6 +26,11 @@ export interface EnemyStats {
   hitHeight: number;
 }
 
+/** Seconds a monster is staggered (reeling, can't chase or bite) after being hit. */
+export const ENEMY_HIT_STUN_S = 0.2;
+/** Metres a monster is shoved away from the attacker on a hit. */
+export const ENEMY_HIT_PUSHBACK_M = 0.5;
+
 /** Per-kind stat table. `crawler` mirrors the ant for old snapshots and tests. */
 export const ENEMY_STATS: Record<SurvivalEnemyKind, EnemyStats> = {
   crawler: { maxHealth: 2, speed: 2.4, contactDamage: 1, hitCooldown: 0.8, radius: 0.55, hitHeight: 1.3 },
@@ -46,6 +51,12 @@ export interface EnemyState {
   maxHealth: number;
   status: "alive" | "dead";
   hitCooldownRemaining: number;
+  /**
+   * Seconds of hit-stagger left. While > 0 the monster is reeling — it doesn't chase or bite, having
+   * just been shoved back. Also the "hit state" the renderer reads to flash / (later) swap to a hit
+   * sprite. 0 = acting normally.
+   */
+  hitStunRemaining: number;
   spawnTick: number;
 }
 
@@ -65,6 +76,7 @@ export function createEnemy(id: string, kind: SurvivalEnemyKind, pos: Vec2, spaw
     maxHealth: stats.maxHealth,
     status: "alive",
     hitCooldownRemaining: 0,
+    hitStunRemaining: 0,
     spawnTick,
   };
 }
@@ -88,6 +100,7 @@ export function coerceEnemy(raw: unknown): EnemyState {
     maxHealth,
     status: health > 0 && r.status === "alive" ? "alive" : "dead",
     hitCooldownRemaining: Math.max(0, num(r.hitCooldownRemaining, 0)),
+    hitStunRemaining: Math.max(0, num(r.hitStunRemaining, 0)),
     spawnTick: Math.max(0, Math.floor(num(r.spawnTick, 0))),
   };
 }

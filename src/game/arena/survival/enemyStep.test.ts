@@ -12,6 +12,15 @@ describe("stepEnemies (pure enemy AI: chase nearest ally, separate, contact)", (
     expect(contacts).toHaveLength(0); // too far to touch
   });
 
+  it("a staggered enemy reels in place — no chase, no bite — and ticks its stun down", () => {
+    // Adjacent to the player (would normally bite), but freshly hit → reeling.
+    const e = { ...createEnemy("e1-0", "crawler", { x: 1, y: 0 }, 0), hitStunRemaining: 0.2 };
+    const { enemies, contacts } = stepEnemies([e], [alive("p", 0, 0)], 0.1);
+    expect(enemies[0]!.pos).toEqual({ x: 1, y: 0 }); // did not advance on the player
+    expect(enemies[0]!.hitStunRemaining).toBeCloseTo(0.1); // stun ticked down by dt
+    expect(contacts).toEqual([]); // can't bite while reeling
+  });
+
   it("leaves dead enemies and no-players ticks in place (cooldown still ticks)", () => {
     const dead = { ...createEnemy("e1-1", "crawler", { x: 2, y: 2 }, 0), status: "dead" as const };
     const lonely = { ...createEnemy("e1-2", "crawler", { x: 2, y: 2 }, 0), hitCooldownRemaining: 0.5 };

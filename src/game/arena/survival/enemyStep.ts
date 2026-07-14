@@ -59,6 +59,14 @@ export function stepEnemies(
     }
     const stats = ENEMY_STATS[e.kind];
     const cooldown = Math.max(0, e.hitCooldownRemaining - dt);
+
+    // Hit-stagger: a freshly-struck monster reels in place — no chase, no bite — while its stun
+    // ticks down. It keeps the position it was shoved to (applied by the step reducer on the hit).
+    if (e.hitStunRemaining > 0) {
+      out.push({ ...e, hitCooldownRemaining: cooldown, hitStunRemaining: Math.max(0, e.hitStunRemaining - dt) });
+      continue;
+    }
+
     const target = nearestPlayer(e.pos, players);
     if (!target) {
       out.push({ ...e, hitCooldownRemaining: cooldown });
