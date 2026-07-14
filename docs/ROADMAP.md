@@ -848,6 +848,17 @@ Tracking:
 
 ## Progress log
 
+- **2026-07-13** — **Track F: Squid rope-leg renderer shipped.** Per
+  `docs/superpowers/specs/2026-07-13-squid-rope-legs-design.md`: each leg now a 15-joint rope
+  with anchors at the old root/mid/tip fractions (indices into `leg.pts`), renderer hit-test
+  expanded to the lower half (from the old pts[1..2] two-point slice), planted-tip dot now draws
+  at `pts[TIP]` (index 14). Joints are invisible — the rope renders as a smooth polyline only,
+  no dot markers. Solver iterations doubled 8→24 to stabilize the longer chains; stance spring
+  now lifts head + each planted leg's upper chain (`pts[0..ROOT_ANCHOR]`) as a single block with
+  `STAND_GAIN=80`, achieving 8-planted equilibrium ≈0.60 m head height. Walk advance improved
+  0.45 m/2s → 0.55 m/2s. Stage times are not comparable with the 3-joint era. 542+ tests green,
+  tsc clean.
+
 - **2026-07-10** — **Track F: Squid playtest-fixes round shipped.** Per
   `docs/superpowers/specs/2026-07-10-squid-playtest-fixes-design.md`: force-unlift legs with no
   controller each tick and dropped `skipGround` from `solve()` so no point ever ends a tick below

@@ -8,7 +8,7 @@
 import Phaser from "phaser";
 import { SQUID_PALETTE } from "./palette";
 import { COURSE_M, FINISH_X_M, HEAD_R_M, SQUID_PX_PER_M } from "../constants";
-import { HEAD } from "../octopus";
+import { HEAD, TIP } from "../octopus";
 import { stageById } from "../stage";
 import { timeMsOf } from "../match";
 import { legOf } from "../control";
@@ -73,7 +73,7 @@ export class SquidScene extends Phaser.Scene {
       const click = fromPx(p.x, p.y);
       let best: { leg: number; d: number } | null = null;
       world.legs.forEach((leg, i) => {
-        for (const pi of [leg.pts[1], leg.pts[2]]) {
+        for (const pi of leg.pts.slice(Math.floor(leg.pts.length / 2))) {
           const pt = world.points[pi]!.pos;
           const d = Math.hypot(pt.x - click.x, pt.y - click.y);
           if (d < 0.45 && (!best || d < best.d)) best = { leg: i, d };
@@ -169,7 +169,7 @@ export class SquidScene extends Phaser.Scene {
       g.lineStyle(5, color, holder ? 1 : 0.7);
       this.strokeChain(chain);
       if (leg.planted) {
-        const tip = world.points[leg.pts[2]]!.pos;
+        const tip = world.points[leg.pts[TIP]!]!.pos;
         g.fillStyle(color, 1).fillCircle(toX(tip.x), toY(tip.y), 4);
       }
     });

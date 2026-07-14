@@ -115,7 +115,7 @@ describe("stepSquid — locomotion (the core mechanic)", () => {
     const head = w.points[HEAD]!.pos;
     for (const pi of w.legs[0]!.pts) {
       const p = w.points[pi]!.pos;
-      // full chain is 3 × LEG_SEGMENT_M ≈ 1.35 m; allow modest solver slack
+      // full chain is 15 × LEG_SEGMENT_M ≈ 1.35 m; allow modest solver slack
       expect(Math.hypot(p.x - head.x, p.y - head.y)).toBeLessThan(2);
     }
   });
