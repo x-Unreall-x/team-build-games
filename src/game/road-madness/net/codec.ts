@@ -60,7 +60,7 @@ export type QCar = [
   number,
 ];
 
-/** Event tuples are discriminated by index 1: impact=0, wrecked=1, nitro=2. */
+/** Event tuples: impact=0, wrecked=1, nitro=2, speed-pad=3, tower-hit=4. */
 export type QEvent = (number | string)[];
 
 export interface QRoadWorld {
@@ -80,6 +80,7 @@ export interface QRoadWorld {
   dm: number;
   c: QCar[];
   ic: [string, number][];
+  ac: [string, number][];
   ev: QEvent[];
   wi: string;
 }
@@ -100,6 +101,7 @@ export interface RoadDelta {
   dm: number;
   c: QCar[];
   ic: [string, number][];
+  ac: [string, number][];
   ev: QEvent[];
   wi: string;
 }
@@ -169,7 +171,28 @@ function qEvent(event: RoadEvent): QEvent {
       cm(event.point.y),
     ];
   }
-  return [event.tick, 2, event.carId, cm(event.point.x), cm(event.point.y)];
+  if (event.kind === "nitro") {
+    return [event.tick, 2, event.carId, cm(event.point.x), cm(event.point.y)];
+  }
+  if (event.kind === "speed-pad") {
+    return [
+      event.tick,
+      3,
+      event.carId,
+      event.padId,
+      cm(event.point.x),
+      cm(event.point.y),
+    ];
+  }
+  return [
+    event.tick,
+    4,
+    event.carId,
+    event.towerId,
+    cm(event.point.x),
+    cm(event.point.y),
+    centi(event.damage),
+  ];
 }
 
 function unqEvent(event: QEvent): RoadEvent {
@@ -194,11 +217,30 @@ function unqEvent(event: QEvent): RoadEvent {
       point: { x: meters(event[4] as number), y: meters(event[5] as number) },
     };
   }
+  if (event[1] === 2) {
+    return {
+      tick,
+      kind: "nitro",
+      carId: event[2] as string,
+      point: { x: meters(event[3] as number), y: meters(event[4] as number) },
+    };
+  }
+  if (event[1] === 3) {
+    return {
+      tick,
+      kind: "speed-pad",
+      carId: event[2] as string,
+      padId: event[3] as string,
+      point: { x: meters(event[4] as number), y: meters(event[5] as number) },
+    };
+  }
   return {
     tick,
-    kind: "nitro",
+    kind: "tower-hit",
     carId: event[2] as string,
-    point: { x: meters(event[3] as number), y: meters(event[4] as number) },
+    towerId: event[3] as string,
+    point: { x: meters(event[4] as number), y: meters(event[5] as number) },
+    damage: uncenti(event[6] as number),
   };
 }
 
@@ -242,6 +284,9 @@ export function qWorld(world: RoadWorld): QRoadWorld {
     ic: Object.keys(world.impactCooldowns)
       .sort()
       .map((key) => [key, cs(world.impactCooldowns[key]!)] as [string, number]),
+    ac: Object.keys(world.arenaCooldowns ?? {})
+      .sort()
+      .map((key) => [key, cs(world.arenaCooldowns[key]!)] as [string, number]),
     ev: world.events.map(qEvent),
     wi: world.winnerId ?? "",
   };
@@ -272,6 +317,9 @@ export function unqWorld(world: QRoadWorld): RoadWorld {
     impactCooldowns: Object.fromEntries(
       world.ic.map(([key, remaining]) => [key, seconds(remaining)]),
     ),
+    arenaCooldowns: Object.fromEntries(
+      world.ac.map(([key, remaining]) => [key, seconds(remaining)]),
+    ),
     events: world.ev.map(unqEvent),
     winnerId: world.wi === "" ? null : world.wi,
   };
@@ -293,6 +341,7 @@ export function diffWorld(previous: QRoadWorld, current: QRoadWorld): RoadDelta 
     dm: current.dm,
     c: current.c,
     ic: current.ic,
+    ac: current.ac,
     ev: current.ev,
     wi: current.wi,
   };
@@ -317,6 +366,7 @@ export function applyDelta(previous: RoadWorld, delta: RoadDelta): RoadWorld {
     dm: delta.dm,
     c: delta.c,
     ic: delta.ic,
+    ac: delta.ac,
     ev: delta.ev,
     wi: delta.wi,
   });

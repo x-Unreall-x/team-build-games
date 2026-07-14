@@ -6,6 +6,7 @@ import {
   WRECK_LINGER_TICKS,
 } from "./constants";
 import { IDLE_DRIVE_INTENT } from "./intent";
+import { arenaFeaturesForRound } from "./arena";
 import { createRoadWorld, startNextRoadRound } from "./match";
 import { stepRoadWorld } from "./sim";
 
@@ -84,6 +85,63 @@ describe("Road Madness simulation", () => {
       enabled = stepRoadWorld(enabled, { player: IDLE_DRIVE_INTENT }, ROAD_DT);
     }
     expect(enabled.cars.player!.nitro).toBeGreaterThan(0.1);
+  });
+
+  it("launches a car from a speed pad once per cooldown window", () => {
+    let world = createRoadWorld([{ id: "player", vehicle: "derby" }]);
+    const pad = arenaFeaturesForRound(world.roundNumber).speedPads[0];
+    world.cars.player = {
+      ...world.cars.player!,
+      pos: { ...pad.pos },
+      vel: { x: 0, y: 0 },
+      heading: 0,
+    };
+    world = stepRoadWorld(world, { player: IDLE_DRIVE_INTENT }, ROAD_DT);
+    expect(world.cars.player!.vel.x).toBeGreaterThanOrEqual(8.5);
+    expect(
+      world.events.some(
+        (event) => event.kind === "speed-pad" && event.carId === "player",
+      ),
+    ).toBe(true);
+
+    world.cars.player = {
+      ...world.cars.player!,
+      pos: { ...pad.pos },
+      vel: { x: 0, y: 0 },
+    };
+    world = stepRoadWorld(world, { player: IDLE_DRIVE_INTENT }, ROAD_DT);
+    expect(
+      world.events.some(
+        (event) => event.tick === world.tick && event.kind === "speed-pad",
+      ),
+    ).toBe(false);
+  });
+
+  it("bounces and damages a car that drives into a spike tower", () => {
+    let world = createRoadWorld([
+      { id: "player", vehicle: "derby" },
+      { id: "rival", vehicle: "monster" },
+    ]);
+    const tower = arenaFeaturesForRound(world.roundNumber).towers[0];
+    world.cars.player = {
+      ...world.cars.player!,
+      pos: { x: tower.pos.x - 1.72, y: tower.pos.y },
+      vel: { x: 8, y: 0 },
+      heading: 0,
+    };
+    world.cars.rival = {
+      ...world.cars.rival!,
+      pos: { x: 26, y: 16 },
+      vel: { x: 0, y: 0 },
+    };
+    world = stepRoadWorld(world, {}, ROAD_DT);
+    expect(world.cars.player!.health).toBeLessThan(world.cars.player!.maxHealth);
+    expect(world.cars.player!.vel.x).toBeLessThan(0);
+    expect(
+      world.events.some(
+        (event) => event.kind === "tower-hit" && event.carId === "player",
+      ),
+    ).toBe(true);
   });
 
   it("keeps a wreck as an obstacle for five seconds, then removes it from play", () => {
@@ -222,6 +280,7 @@ describe("Road Madness simulation", () => {
     expect(world.roundWinnerId).toBe("a");
     expect(world.roundWins.a).toBe(1);
     expect(world.winnerId).toBeNull();
+    world.arenaCooldowns = { '["pad","a","speed-a"]': 1 };
 
     world = startNextRoadRound(world);
     expect(world.phase).toBe("playing");
@@ -230,6 +289,7 @@ describe("Road Madness simulation", () => {
     expect(world.cars.a!.health).toBe(world.cars.a!.maxHealth);
     expect(world.cars.a!.damageDealt).toBe(17);
     expect(world.cars.a!.roundDamageDealt).toBe(0);
+    expect(world.arenaCooldowns).toEqual({});
 
     world.cars.b = { ...world.cars.b!, status: "wrecked", health: 0, wreckedAtTick: world.tick };
     world = stepRoadWorld(world, {}, ROAD_DT);

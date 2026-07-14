@@ -30,3 +30,13 @@ export const SUDDEN_DEATH_MAX_INSET_X_M = 7.5;
 export const SUDDEN_DEATH_MAX_INSET_Y_M = 5;
 export const SUDDEN_DEATH_MAX_DAMAGE_MULT = 2.5;
 export const ROUND_BREAK_S = 2.4;
+
+/** Arena feature tuning. Towers are half the Derby car's collision radius. */
+export const SPIKE_TOWER_RADIUS_M = 0.54;
+export const SPIKE_TOWER_RESTITUTION = 0.62;
+export const SPIKE_TOWER_DAMAGE_PER_MS = 4.2;
+export const SPIKE_TOWER_COOLDOWN_S = 0.45;
+export const SPEED_PAD_RADIUS_M = 1.25;
+export const SPEED_PAD_MIN_LAUNCH_MS = 8.5;
+export const SPEED_PAD_BONUS_MS = 4.5;
+export const SPEED_PAD_COOLDOWN_S = 1.1;

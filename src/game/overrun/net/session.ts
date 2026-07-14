@@ -69,6 +69,8 @@ export class OverrunSession {
   phase: OverrunPhase = "lobby";
   /** Coin-insert flag — every player in the room sees the start animation before the match begins. */
   starting = false;
+  /** True from the campaign-intro broadcast until the match begins — drives the synced intro comic. */
+  introPlaying = false;
   matchEpoch = 0;
 
   private readonly t: Transport;
@@ -110,6 +112,7 @@ export class OverrunSession {
       localId: this.localId,
       phase: this.phase,
       starting: this.starting,
+      introPlaying: this.introPlaying,
       matchEpoch: this.matchEpoch,
       roster: rosterList(this.roster),
       hostId,
@@ -122,6 +125,14 @@ export class OverrunSession {
     if (this.hostId() !== this.localId || this.starting) return;
     this.t.send(encodeLobby({ t: "coin" }));
     this.starting = true;
+    this.opts.onChange();
+  }
+
+  /** Host-only: tell every peer to play the campaign intro comic before the match starts. */
+  signalIntro(): void {
+    if (this.hostId() !== this.localId || this.introPlaying) return;
+    this.t.send(encode({ t: "oIntro" }));
+    this.introPlaying = true;
     this.opts.onChange();
   }
 
@@ -173,6 +184,7 @@ export class OverrunSession {
   toLobby(): void {
     this.phase = "lobby";
     this.starting = false;
+    this.introPlaying = false;
     this.engine = null;
     this.initialWorld = null;
     this.prevSnap = null;
@@ -275,6 +287,11 @@ export class OverrunSession {
           this.opts.onChange();
           break;
         }
+        case "oIntro":
+          // Peer mirror of the host inserting the coin for a campaign match — show the intro comic.
+          this.introPlaying = true;
+          this.opts.onChange();
+          break;
         case "oStart":
           this.beginMatch(om.players, om.seed, om.countdownMs);
           break;
@@ -308,6 +325,7 @@ export class OverrunSession {
 
   private beginMatch(players: { id: PlayerId; name: string }[], seed: number, countdownMs: number): void {
     this.starting = false; // the coin-insert animation ends as the match world builds
+    this.introPlaying = false; // and so does the campaign intro comic
     // colorIndex is DERIVED, never carried on the wire: it's each player's position
     // in this host-ordered array (host built it via rosterList — sorted by id).
     this.meta = Object.fromEntries(players.map((p, i) => [p.id, { name: p.name, colorIndex: i }]));

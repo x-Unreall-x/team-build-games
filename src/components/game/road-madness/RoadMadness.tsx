@@ -46,11 +46,11 @@ const FRESH_HUD: RoadHudState = {
   damageMultiplier: 1,
 };
 
-const LOCAL_MATCH_KEY = "road-madness:local-match:v3";
+const LOCAL_MATCH_KEY = "road-madness:local-match:v4";
 const LOCAL_MATCH_MAX_AGE_MS = 30 * 60 * 1000;
 
 interface PersistedLocalMatch {
-  version: 3;
+  version: 4;
   savedAt: number;
   vehicle: "derby" | "monster";
   nitroEnabled: boolean;
@@ -67,7 +67,7 @@ function loadPersistedMatch(): PersistedLocalMatch | null {
     const value = JSON.parse(raw) as Partial<PersistedLocalMatch>;
     const world = value.snapshot?.world;
     const valid =
-      value.version === 3 &&
+      value.version === 4 &&
       typeof value.savedAt === "number" &&
       Date.now() - value.savedAt <= LOCAL_MATCH_MAX_AGE_MS &&
       (value.vehicle === "derby" || value.vehicle === "monster") &&
@@ -84,6 +84,7 @@ function loadPersistedMatch(): PersistedLocalMatch | null {
       typeof world.rules?.nitroEnabled === "boolean" &&
       typeof world.roundNumber === "number" &&
       typeof world.roundWins === "object" &&
+      typeof world.arenaCooldowns === "object" &&
       typeof world.cars.driver.nitro === "number";
     if (valid) return value as PersistedLocalMatch;
   } catch {
@@ -246,7 +247,7 @@ export default function RoadMadness() {
       const driver = driverRef.current;
       if (!driver) return;
       const payload: PersistedLocalMatch = {
-        version: 3,
+        version: 4,
         savedAt: Date.now(),
         vehicle: vehicle === "monster" ? "monster" : "derby",
         nitroEnabled,
@@ -467,9 +468,10 @@ export default function RoadMadness() {
         tabIndex={0}
         aria-label="Road Madness game. Use WASD or arrow keys to drive, Space to handbrake, and Shift for nitro."
         className="relative w-full overflow-hidden rounded-xl bg-[#130f12] outline-none focus:ring-2 focus:ring-amber-300/60"
-        style={{ maxWidth: ROAD_WIDTH, aspectRatio: `${ROAD_WIDTH} / ${ROAD_HEIGHT}` }}
+        // 1.4× native matches Arena's on-screen px/metre so the game is the same page size
+        style={{ maxWidth: ROAD_WIDTH * 1.4, aspectRatio: `${ROAD_WIDTH} / ${ROAD_HEIGHT}` }}
       >
-        <div ref={hostRef} className="absolute inset-0" />
+        <div ref={hostRef} className="road-madness-canvas-tilt absolute inset-0" />
 
         <div className="pointer-events-none absolute inset-0 font-mono text-white">
           <div className="absolute left-3 top-3 min-w-40 rounded-md border border-white/15 bg-black/55 p-2.5 backdrop-blur-sm">

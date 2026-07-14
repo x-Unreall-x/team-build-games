@@ -47,6 +47,25 @@ describe("OverrunSession lifecycle", () => {
     expect(sessions[0]!.phase).toBe("lobby");
   });
 
+  it("host signalIntro flips introPlaying on every peer", () => {
+    const { sessions } = makeParty(3);
+    sessions[0]!.signalIntro();
+    expect(sessions.every((s) => s.getState().introPlaying)).toBe(true);
+  });
+
+  it("non-host signalIntro is a no-op", () => {
+    const { sessions } = makeParty(2);
+    sessions[1]!.signalIntro();
+    expect(sessions.some((s) => s.getState().introPlaying)).toBe(false);
+  });
+
+  it("starting the match clears introPlaying everywhere", () => {
+    const { sessions } = makeParty(2);
+    sessions[0]!.signalIntro();
+    sessions[0]!.start();
+    expect(sessions.every((s) => s.getState().introPlaying)).toBe(false);
+  });
+
   it("clients converge on the host's quantized world and never spawn enemies of their own", () => {
     const { sessions } = makeParty(3);
     sessions[0]!.start();

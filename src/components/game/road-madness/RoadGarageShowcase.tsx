@@ -7,8 +7,8 @@ interface Props {
 }
 
 const MODEL_URL: Record<"derby" | "monster", string> = {
-  derby: "/assets/road-madness/models/derby.glb",
-  monster: "/assets/road-madness/models/monster.glb",
+  derby: "/assets/road-madness/models/derby-cyber.glb",
+  monster: "/assets/road-madness/models/monster-cyber.glb",
 };
 
 function GarageCarModel({ vehicle, name }: { vehicle: "derby" | "monster"; name: string }) {
@@ -33,31 +33,33 @@ function GarageCarModel({ vehicle, name }: { vehicle: "derby" | "monster"; name:
   }, []);
 
   if (!viewerReady) {
-    return <div className="road-car-model-loading font-display text-[8px] text-cyan-200">Loading 3D chassis…</div>;
+    return <div className="road-car-model-loading font-display text-[8px] text-cyan-200">Loading cyber chassis…</div>;
   }
 
   return createElement("model-viewer", {
     key: vehicle,
     className: `road-car-model-viewer road-car-model-viewer--${vehicle}`,
     src: MODEL_URL[vehicle],
-    alt: `${name} low-poly 3D car model`,
+    alt: `${name} cyber demolition derby 3D model`,
     "auto-rotate": reduceMotion ? undefined : true,
     "auto-rotate-delay": "0",
-    "rotation-per-second": "18deg",
+    "rotation-per-second": "20deg",
     "camera-controls": true,
     "disable-pan": true,
     "disable-zoom": true,
     "interaction-prompt": "none",
-    "shadow-intensity": "1.3",
-    "shadow-softness": "0.7",
-    exposure: "0.9",
+    "shadow-intensity": "1.45",
+    "shadow-softness": "0.72",
+    exposure: vehicle === "monster" ? "1.05" : "1.12",
     "environment-image": "neutral",
-    "camera-orbit": vehicle === "monster" ? "35deg 69deg 4.2m" : "35deg 69deg 3.9m",
-    "field-of-view": "28deg",
+    "camera-orbit": vehicle === "monster" ? "36deg 67deg 4.45m" : "36deg 67deg 4.1m",
+    "min-camera-orbit": "auto 62deg auto",
+    "max-camera-orbit": "auto 73deg auto",
+    "field-of-view": "27deg",
   });
 }
 
-/** Real glTF turntable model backed by the CC0 Kenney Car Kit. */
+/** Cyber-styled real GLB garage preview, with PNG sprites kept for in-game readability. */
 export default function RoadGarageShowcase({ vehicle }: Props) {
   const def = VEHICLES[vehicle];
   const displayVehicle = vehicle === "monster" ? "monster" : "derby";

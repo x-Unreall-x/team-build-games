@@ -15,6 +15,7 @@ import { accuracy, buildOverrunPrintPayload } from "../../../game/overrun/stats"
 import { buildShopUrl, sanitizePayload } from "../../../lib/merch/print";
 import OverrunWarmupRoom from "./OverrunWarmupRoom";
 import { COIN_INSERT_MS } from "../lobby/CoinSlot";
+import OverrunComic from "./OverrunComic";
 import OverrunCountdown from "./hud/OverrunCountdown";
 import AmmoBox from "./hud/AmmoBox";
 import XpBar from "./hud/XpBar";
@@ -84,6 +85,7 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
   const [ready, setReady] = useState(false);
   const [roomId, setRoomId] = useState("");
   const [name, setName] = useState("Player");
+  const [mode, setMode] = useState<"campaign" | "survival">("campaign");
   const [hud, setHud] = useState<OverrunHudState>(FRESH_HUD);
   const [finalWorld, setFinalWorld] = useState<ShooterWorld | null>(null);
   const [assetManifest, setAssetManifest] = useState<OverrunAssetManifest | null>(null);
@@ -310,15 +312,25 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
     nameRef.current = n;
     sessionRef.current?.setProfile(n);
   };
-  const startMatch = () => {
+  const startMatch = (selectedMode: "campaign" | "survival" = "survival") => {
     sfxRef.current.resume();
     musicRef.current?.unlock();
     samplesRef.current?.unlock();
     const session = sessionRef.current;
     if (!session) return;
-    // Coin-insert animation plays for everyone in the room, then the match starts.
-    session.signalCoin();
-    window.setTimeout(() => session.start(), COIN_INSERT_MS);
+    if (selectedMode === "campaign") {
+      // Play the intro comic (synced to all peers) first; the host starts the match when it ends.
+      session.signalIntro();
+    } else {
+      // Survival: coin-insert animation for everyone, then start.
+      session.signalCoin();
+      window.setTimeout(() => session.start(), COIN_INSERT_MS);
+    }
+  };
+  // Host advances to the real match once the intro comic finishes (or is skipped).
+  const onIntroDone = () => {
+    const session = sessionRef.current;
+    if (session?.getState().isHost) session.start();
   };
   const playAgain = () => {
     if (sessionState?.isHost) sessionRef.current?.start();
@@ -340,7 +352,16 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {!inMatch ? (
+      {sessionState?.introPlaying && !inMatch ? (
+        <div className="w-full">
+          <OverrunComic onDone={onIntroDone} />
+          {!sessionState.isHost && (
+            <p className="mt-3 text-center font-display text-[9px] text-neutral-500">
+              The host is starting the mission…
+            </p>
+          )}
+        </div>
+      ) : !inMatch ? (
         <OverrunWarmupRoom
           roster={sessionState!.roster}
           localId={sessionState!.localId}
@@ -348,6 +369,8 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
           isHost={sessionState!.isHost}
           name={name}
           joinUrl={joinUrl}
+          mode={mode}
+          onMode={setMode}
           onName={changeName}
           onStart={startMatch}
           starting={sessionState!.starting}

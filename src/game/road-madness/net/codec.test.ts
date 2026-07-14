@@ -71,6 +71,21 @@ function fullWorld(): RoadWorld {
       carId: ids[2]!,
       point: { x: 4.567, y: 3.456 },
     },
+    {
+      tick: 150,
+      kind: "speed-pad",
+      carId: ids[3]!,
+      padId: "speed-a",
+      point: { x: 15, y: 5.5 },
+    },
+    {
+      tick: 150,
+      kind: "tower-hit",
+      carId: ids[4]!,
+      towerId: "tower-b",
+      point: { x: 19.54, y: 12 },
+      damage: 11.234,
+    },
   ];
 
   return {
@@ -90,6 +105,10 @@ function fullWorld(): RoadWorld {
         0.01 + index * 0.011,
       ]),
     ),
+    arenaCooldowns: {
+      "pad:player-1:speed-a": 0.87,
+      "tower:player-4:tower-b": 0.23,
+    },
     events,
   };
 }
@@ -118,6 +137,8 @@ describe("Road Madness quantized snapshots", () => {
       "impact",
       "wrecked",
       "nitro",
+      "speed-pad",
+      "tower-hit",
     ]);
     expect(unqWorld(qWorld(rebuilt))).toEqual(rebuilt);
   });

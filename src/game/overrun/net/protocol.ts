@@ -14,6 +14,8 @@ import type { PlayerId } from "../types";
 
 export type OverrunNetMessage =
   | { t: "oHello"; name: string; hostId?: PlayerId | null }
+  // Host → peers: play the campaign intro comic in the room before the match starts.
+  | { t: "oIntro" }
   | { t: "oStart"; countdownMs: number; seed: number; players: { id: PlayerId; name: string }[] }
   | { t: "oInput"; intent: unknown }
   | { t: "oSnap"; w: unknown }

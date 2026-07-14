@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CONCURRENT_ENEMIES, waveEnemyCount, wavePlan } from "./waves";
+import { enemyKindForSpawn, MAX_CONCURRENT_ENEMIES, waveEnemyCount, wavePlan } from "./waves";
 
 describe("Survival wave planning", () => {
   it("is deterministic for the same seed and wave coordinates", () => {
@@ -22,5 +22,15 @@ describe("Survival wave planning", () => {
       expect(spawn.angle).toBeLessThan(Math.PI * 2);
       if (i > 0) expect(spawn.atTick).toBeGreaterThan(plan.spawns[i - 1]!.atTick);
     }
+  });
+
+  it("unlocks the fantasy roster across campaign levels", () => {
+    const kinds = new Set(
+      Array.from({ length: 500 }, (_, index) =>
+        enemyKindForSpawn(77, 5, 3, index, `enemy-${index}`),
+      ),
+    );
+    expect(kinds).toEqual(new Set(["ant", "zombie", "bat", "clawed", "dino"]));
+    expect(enemyKindForSpawn(77, 1, 1, 0, "early")).not.toMatch(/bat|clawed|dino/);
   });
 });

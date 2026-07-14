@@ -19,6 +19,10 @@ describe("overrun protocol messages", () => {
     expect(decode(encode(delta))).toEqual(delta);
   });
 
+  it("round-trips the oIntro campaign-intro signal", () => {
+    expect(decode(encode({ t: "oIntro" }))).toEqual({ t: "oIntro" });
+  });
+
   it("ignores non-overrun traffic and garbage (lobby messages stay with the shared protocol)", () => {
     expect(decode(encodeLobby({ t: "kick", targetId: "A" }))).toBeNull();
     expect(decode("not json")).toBeNull();

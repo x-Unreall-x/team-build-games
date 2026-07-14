@@ -368,12 +368,15 @@ button:focus-visible {
 .road-car-model-shell {
   position: absolute;
   z-index: 7;
-  left: 50%;
-  bottom: -32px;
-  width: min(480px, 62%);
-  height: 285px;
-  transform: translateX(-50%);
-  filter: drop-shadow(0 22px 14px rgb(0 0 0 / 0.68));
+  left: calc(50% + 36px);
+  bottom: -12px;
+  width: min(560px, 76%);
+  height: 320px;
+  transform: translateX(-50%) perspective(820px) rotateX(4deg);
+  transform-origin: 50% 78%;
+  filter:
+    drop-shadow(0 26px 18px rgb(0 0 0 / 0.72))
+    drop-shadow(0 0 24px rgb(34 211 238 / 0.13));
 }
 
 .road-car-model-viewer {
@@ -381,9 +384,18 @@ button:focus-visible {
   height: 100%;
   outline: none;
   background: transparent;
+  transform-origin: 50% 76%;
   --poster-color: transparent;
   --progress-bar-color: #22d3ee;
   --progress-bar-height: 2px;
+}
+
+.road-car-model-viewer--derby {
+  transform: translateY(10px) rotateZ(-2deg) scale(1.03);
+}
+
+.road-car-model-viewer--monster {
+  transform: translateY(-2px) rotateZ(-1deg) scale(1.06);
 }
 
 .road-car-model-loading {
@@ -396,6 +408,15 @@ button:focus-visible {
 
 @keyframes road-model-load {
   50% { opacity: 0.45; }
+}
+
+.road-madness-canvas-tilt {
+  transform: perspective(1200px) rotateX(2.6deg) scale(1.018);
+  transform-origin: 50% 58%;
+}
+
+.road-madness-canvas-tilt canvas {
+  border-radius: inherit;
 }
 
 .road-garage-workbench {
@@ -1946,9 +1967,16 @@ button:focus-visible {
     width: 310px;
   }
   .road-car-model-shell {
-    bottom: -22px;
-    width: min(420px, 88%);
-    height: 245px;
+    left: calc(50% + 16px);
+    bottom: -8px;
+    width: min(420px, 90%);
+    height: 250px;
+  }
+  .road-car-model-viewer--derby {
+    transform: translateY(12px) rotateZ(-2deg) scale(1.02);
+  }
+  .road-car-model-viewer--monster {
+    transform: translateY(6px) rotateZ(-1deg) scale(1.02);
   }
   .road-garage-workbench,
   .road-garage-equipment {

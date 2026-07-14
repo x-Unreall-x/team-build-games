@@ -88,7 +88,16 @@ export type RoadEvent =
       bumper: Exclude<Bumper, "side">;
     }
   | { tick: number; kind: "wrecked"; carId: PlayerId; byId: PlayerId | null; point: Vec2 }
-  | { tick: number; kind: "nitro"; carId: PlayerId; point: Vec2 };
+  | { tick: number; kind: "nitro"; carId: PlayerId; point: Vec2 }
+  | { tick: number; kind: "speed-pad"; carId: PlayerId; padId: string; point: Vec2 }
+  | {
+      tick: number;
+      kind: "tower-hit";
+      carId: PlayerId;
+      towerId: string;
+      point: Vec2;
+      damage: number;
+    };
 
 export interface RoadWorld {
   tick: number;
@@ -108,6 +117,8 @@ export interface RoadWorld {
   cars: Record<PlayerId, CarState>;
   /** Seconds until this unordered car pair may deal authored ram damage again. */
   impactCooldowns: Record<string, number>;
+  /** Seconds until a car may retrigger a tower or speed pad. */
+  arenaCooldowns: Record<string, number>;
   events: RoadEvent[];
   winnerId: PlayerId | null;
 }

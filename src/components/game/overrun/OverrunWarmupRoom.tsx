@@ -23,8 +23,11 @@ interface Props {
   isHost: boolean;
   name: string;
   joinUrl: string;
+  /** Campaign = finite staged run w/ intro comic; Survival = today's endless run. */
+  mode: "campaign" | "survival";
+  onMode: (mode: "campaign" | "survival") => void;
   onName: (n: string) => void;
-  onStart: () => void;
+  onStart: (mode: "campaign" | "survival") => void;
   /** Synced coin-insert flag — every player in the room sees the drop animation. */
   starting: boolean;
   onKick: (id: PlayerId) => void;
@@ -102,9 +105,32 @@ export default function OverrunWarmupRoom(props: Props) {
           <span className="font-display text-[7px] text-emerald-300/70">
             Squad staged above · {props.roster.length}/{MAX_OVERRUN_PLAYERS}
           </span>
+          {props.isHost ? (
+            <div className="flex gap-2" role="group" aria-label="Game mode">
+              {(["campaign", "survival"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => props.onMode(m)}
+                  aria-pressed={props.mode === m}
+                  className={`rounded-md border px-3 py-2 font-display text-[9px] uppercase transition ${
+                    props.mode === m
+                      ? "border-red-400/70 bg-red-500/10 text-red-300"
+                      : "border-white/15 text-neutral-400 hover:border-white/40"
+                  }`}
+                >
+                  {m === "campaign" ? "Campaign" : "Survival"}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="font-display text-[7px] text-neutral-500">
+              Mode · {props.mode === "campaign" ? "Campaign" : "Survival"}
+            </span>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <CoinSlot
-              onInsert={props.onStart}
+              onInsert={() => props.onStart(props.mode)}
               disabled={!props.isHost || !canStart}
               inserting={props.starting}
               hint={props.isHost ? undefined : "The host inserts the coin"}

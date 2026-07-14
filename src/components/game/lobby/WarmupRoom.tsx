@@ -384,81 +384,94 @@ export default function WarmupRoom(props: Props) {
             </span>
             {props.isHost ? (
               <div className="flex flex-col gap-4">
-                {/* Difficulty — named stakes set the bot count; stepper fine-tunes. */}
-                <div className="flex flex-col gap-2">
-                  <span className="font-display text-[7px] text-neutral-500">
-                    Difficulty · {bots} {bots === 1 ? "bot" : "bots"}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {DIFFICULTY_PRESETS.map((p) => {
-                      const target = Math.min(p.bots, maxBots);
-                      const active = bots === target;
-                      return (
-                        <button
-                          key={p.key}
-                          onClick={() => setBots(target)}
-                          aria-pressed={active}
-                          className={`rounded-md border px-3 py-2 font-display text-[9px] transition ${
-                            active ? p.tint : "border-white/15 text-neutral-400 hover:border-white/40"
-                          }`}
-                        >
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                    <div className="flex items-center gap-1 rounded-md border border-white/15 px-1">
-                      <button
-                        onClick={() => setBots(Math.max(0, bots - 1))}
-                        aria-label="Fewer bots"
-                        className="px-2 py-1 font-display text-[10px] text-neutral-400 hover:text-cyan-300"
-                      >
-                        −
-                      </button>
-                      <span className="w-5 text-center font-display text-[10px] tabular-nums text-neutral-200">
-                        {bots}
+                {isSurvival ? (
+                  <div className="border-l-2 border-emerald-400/50 py-1 pl-3">
+                    <span className="font-display text-[8px] text-emerald-300">Coop campaign</span>
+                    <p className="mt-1 text-xs text-neutral-400">
+                      {props.roster.length} {props.roster.length === 1 ? "ally" : "allies"} against escalating creature waves.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Difficulty — named stakes set the bot count; stepper fine-tunes. */}
+                    <div className="flex flex-col gap-2">
+                      <span className="font-display text-[7px] text-neutral-500">
+                        Difficulty · {bots} {bots === 1 ? "bot" : "bots"}
                       </span>
-                      <button
-                        onClick={() => setBots(Math.min(maxBots, bots + 1))}
-                        aria-label="More bots"
-                        className="px-2 py-1 font-display text-[10px] text-neutral-400 hover:text-cyan-300"
-                      >
-                        +
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {DIFFICULTY_PRESETS.map((p) => {
+                          const target = Math.min(p.bots, maxBots);
+                          const active = bots === target;
+                          return (
+                            <button
+                              key={p.key}
+                              onClick={() => setBots(target)}
+                              aria-pressed={active}
+                              className={`rounded-md border px-3 py-2 font-display text-[9px] transition ${
+                                active ? p.tint : "border-white/15 text-neutral-400 hover:border-white/40"
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
+                        <div className="flex items-center gap-1 rounded-md border border-white/15 px-1">
+                          <button
+                            onClick={() => setBots(Math.max(0, bots - 1))}
+                            aria-label="Fewer bots"
+                            className="px-2 py-1 font-display text-[10px] text-neutral-400 hover:text-cyan-300"
+                          >
+                            −
+                          </button>
+                          <span className="w-5 text-center font-display text-[10px] tabular-nums text-neutral-200">
+                            {bots}
+                          </span>
+                          <button
+                            onClick={() => setBots(Math.min(maxBots, bots + 1))}
+                            aria-label="More bots"
+                            className="px-2 py-1 font-display text-[10px] text-neutral-400 hover:text-cyan-300"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Rounds — best-of tokens. */}
-                <div className="flex flex-col gap-2">
-                  <span className="font-display text-[7px] text-neutral-500">Rounds</span>
-                  <div className="flex flex-wrap gap-2">
-                    {ROUND_TOKENS.map((t) => {
-                      const active = rounds === t.rounds;
-                      return (
-                        <button
-                          key={t.rounds}
-                          onClick={() => setRounds(t.rounds)}
-                          aria-pressed={active}
-                          className={`rounded-md border px-3 py-2 font-display text-[9px] transition ${
-                            active
-                              ? "border-amber-300/60 bg-amber-300/10 text-amber-200"
-                              : "border-white/15 text-neutral-400 hover:border-white/40"
-                          }`}
-                        >
-                          {t.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                    {/* Rounds — best-of tokens. */}
+                    <div className="flex flex-col gap-2">
+                      <span className="font-display text-[7px] text-neutral-500">Rounds</span>
+                      <div className="flex flex-wrap gap-2">
+                        {ROUND_TOKENS.map((t) => {
+                          const active = rounds === t.rounds;
+                          return (
+                            <button
+                              key={t.rounds}
+                              onClick={() => setRounds(t.rounds)}
+                              aria-pressed={active}
+                              className={`rounded-md border px-3 py-2 font-display text-[9px] transition ${
+                                active
+                                  ? "border-amber-300/60 bg-amber-300/10 text-amber-200"
+                                  : "border-white/15 text-neutral-400 hover:border-white/40"
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <CoinSlot
-                  onInsert={() => props.onStart(bots, rounds, props.mode)}
+                  onInsert={() => props.onStart(isSurvival ? 0 : bots, isSurvival ? 1 : rounds, props.mode)}
                   disabled={!canStart}
                   inserting={props.starting}
                   hint={
                     !canStart
-                      ? "Need 2+ fighters — add bots or share the invite link"
+                      ? isSurvival
+                        ? "Need at least one ally"
+                        : "Need 2+ fighters — add bots or share the invite link"
                       : undefined
                   }
                 />

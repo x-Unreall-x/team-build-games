@@ -8,6 +8,7 @@ import {
   CAR_RESTITUTION,
   EVENT_TTL_TICKS,
   IMPACT_COOLDOWN_S,
+  MIN_DAMAGE_SPEED_MS,
   NITRO_ACCELERATION_MULT,
   NITRO_DRAIN_PER_S,
   NITRO_MAX_SPEED_MULT,
@@ -20,9 +21,21 @@ import {
   SUDDEN_DEATH_MAX_INSET_Y_M,
   SUDDEN_DEATH_SHRINK_S,
   SUDDEN_DEATH_START_S,
+  SPEED_PAD_BONUS_MS,
+  SPEED_PAD_COOLDOWN_S,
+  SPEED_PAD_MIN_LAUNCH_MS,
+  SPIKE_TOWER_COOLDOWN_S,
+  SPIKE_TOWER_DAMAGE_PER_MS,
+  SPIKE_TOWER_RESTITUTION,
   WALL_RESTITUTION,
   WRECK_LINGER_TICKS,
 } from "./constants";
+import {
+  arenaFeatureCooldownKey,
+  arenaFeaturesForRound,
+  type SpeedPad,
+  type SpikeTower,
+} from "./arena";
 import { carImpactDamage, forwardVector, pairKey } from "./collision";
 import { IDLE_DRIVE_INTENT } from "./intent";
 import { roundsToWin } from "./match";
@@ -276,6 +289,106 @@ function resolvePair(
   return { a: resultA, b: resultB, events, damaged: damageToA.actual > 0 || damageToB.actual > 0 };
 }
 
+function resolveSpikeTower(
+  car: CarState,
+  tower: SpikeTower,
+  canDamage: boolean,
+  tick: number,
+  damageMultiplier: number,
+): { car: CarState; events: RoadEvent[]; damaged: boolean } {
+  if (car.status === "removed") return { car, events: [], damaged: false };
+  const carRadius = vehicleDef(car.vehicle).collisionRadius;
+  let dx = car.pos.x - tower.pos.x;
+  let dy = car.pos.y - tower.pos.y;
+  let distance = Math.hypot(dx, dy);
+  const minDistance = carRadius + tower.radius;
+  if (distance >= minDistance) return { car, events: [], damaged: false };
+  if (distance < 1e-6) {
+    dx = car.id < tower.id ? -1 : 1;
+    dy = 0;
+    distance = 1;
+  }
+
+  const normal = { x: dx / distance, y: dy / distance };
+  const next = cloneCar(car);
+  const overlap = minDistance - distance;
+  next.pos.x += normal.x * overlap;
+  next.pos.y += normal.y * overlap;
+
+  const normalSpeed = dot(next.vel, normal);
+  const impactSpeed = Math.max(0, -normalSpeed);
+  if (normalSpeed < 0) {
+    next.vel.x -= normal.x * normalSpeed * (1 + SPIKE_TOWER_RESTITUTION);
+    next.vel.y -= normal.y * normalSpeed * (1 + SPIKE_TOWER_RESTITUTION);
+  }
+  if (!canDamage || car.status !== "alive" || impactSpeed <= MIN_DAMAGE_SPEED_MS) {
+    return { car: next, events: [], damaged: false };
+  }
+
+  const damage =
+    (impactSpeed - MIN_DAMAGE_SPEED_MS) *
+    SPIKE_TOWER_DAMAGE_PER_MS *
+    damageMultiplier;
+  const result = applyDamage(next, damage, tick);
+  const point = {
+    x: tower.pos.x + normal.x * tower.radius,
+    y: tower.pos.y + normal.y * tower.radius,
+  };
+  const events: RoadEvent[] = [];
+  if (result.actual > 0) {
+    events.push({
+      tick,
+      kind: "tower-hit",
+      carId: car.id,
+      towerId: tower.id,
+      point,
+      damage: result.actual,
+    });
+  }
+  if (result.wrecked) {
+    events.push({ tick, kind: "wrecked", carId: car.id, byId: null, point });
+  }
+  return { car: result.target, events, damaged: result.actual > 0 };
+}
+
+function applySpeedPad(
+  car: CarState,
+  pad: SpeedPad,
+  canTrigger: boolean,
+  tick: number,
+): { car: CarState; event: RoadEvent | null; triggered: boolean } {
+  if (!canTrigger || car.status !== "alive") {
+    return { car, event: null, triggered: false };
+  }
+  const dx = car.pos.x - pad.pos.x;
+  const dy = car.pos.y - pad.pos.y;
+  if (dx * dx + dy * dy > pad.radius * pad.radius) {
+    return { car, event: null, triggered: false };
+  }
+
+  const next = cloneCar(car);
+  const forward = forwardVector(next.heading);
+  const forwardSpeed = Math.max(0, dot(next.vel, forward));
+  const maxLaunch = vehicleDef(next.vehicle).maxSpeed * 1.35;
+  const launchSpeed = Math.min(
+    maxLaunch,
+    Math.max(SPEED_PAD_MIN_LAUNCH_MS, forwardSpeed + SPEED_PAD_BONUS_MS),
+  );
+  next.vel = { x: forward.x * launchSpeed, y: forward.y * launchSpeed };
+  next.boosting = true;
+  return {
+    car: next,
+    event: {
+      tick,
+      kind: "speed-pad",
+      carId: car.id,
+      padId: pad.id,
+      point: { ...pad.pos },
+    },
+    triggered: true,
+  };
+}
+
 export function stepRoadWorld(
   world: RoadWorld,
   intents: Record<PlayerId, DriveIntent>,
@@ -310,10 +423,39 @@ export function stepRoadWorld(
     const remaining = Math.max(0, value - dt);
     if (remaining > 0) impactCooldowns[key] = remaining;
   }
+  const arenaCooldowns: Record<string, number> = {};
+  for (const [key, value] of Object.entries(world.arenaCooldowns ?? {})) {
+    const remaining = Math.max(0, value - dt);
+    if (remaining > 0) arenaCooldowns[key] = remaining;
+  }
   const events = [
     ...world.events.filter((event) => event.tick > tick - EVENT_TTL_TICKS),
     ...nitroEvents,
   ];
+
+  const arena = arenaFeaturesForRound(world.roundNumber);
+  for (const id of ids) {
+    for (const tower of arena.towers) {
+      const key = arenaFeatureCooldownKey("tower", id, tower.id);
+      const result = resolveSpikeTower(
+        cars[id]!,
+        tower,
+        !(key in arenaCooldowns),
+        tick,
+        suddenDeath.damageMultiplier,
+      );
+      cars[id] = result.car;
+      events.push(...result.events);
+      if (result.damaged) arenaCooldowns[key] = SPIKE_TOWER_COOLDOWN_S;
+    }
+    for (const pad of arena.speedPads) {
+      const key = arenaFeatureCooldownKey("pad", id, pad.id);
+      const result = applySpeedPad(cars[id]!, pad, !(key in arenaCooldowns), tick);
+      cars[id] = result.car;
+      if (result.event) events.push(result.event);
+      if (result.triggered) arenaCooldowns[key] = SPEED_PAD_COOLDOWN_S;
+    }
+  }
 
   for (let i = 0; i < ids.length; i += 1) {
     for (let j = i + 1; j < ids.length; j += 1) {
@@ -374,6 +516,7 @@ export function stepRoadWorld(
     damageMultiplier: suddenDeath.damageMultiplier,
     cars,
     impactCooldowns,
+    arenaCooldowns,
     events,
     winnerId: matchWinnerId,
   };

@@ -23,6 +23,14 @@ import {
   type Shape,
 } from "../cosmetic";
 import type { ArenaEvent, HudState, MatchDriver } from "./contract";
+import {
+  deadEnemyFrame,
+  ENEMY_ANIMATIONS,
+  ENEMY_ATLAS_FRAME_SIZE,
+  ENEMY_ATLAS_KINDS,
+  ENEMY_DEATH_TOTAL_MS,
+  livingEnemyFrame,
+} from "./enemyAnimation";
 
 export type { ArenaEvent, HudState, PlayerMeta, MatchDriver } from "./contract";
 
@@ -188,6 +196,19 @@ interface ProjectileView {
   kind: ProjectileKind;
 }
 
+interface EnemyView {
+  container: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Sprite;
+  shadow: Phaser.GameObjects.Ellipse;
+  kind: keyof typeof ENEMY_ANIMATIONS;
+  lastX: number;
+  lastY: number;
+  lastTick: number;
+  moving: boolean;
+  dyingSince: number | null;
+  present: boolean;
+}
+
 const sx = (xm: number) => MARGIN_X + xm * RENDER_PX_PER_M;
 const sy = (ym: number) => OFFSET_Y + ym * RENDER_PX_PER_M * Y_SCALE;
 
@@ -196,10 +217,7 @@ export class ArenaScene extends Phaser.Scene {
   private keyboard!: KeyboardReader;
   private views: Record<PlayerId, PlayerView> = {};
   private projViews: Record<string, ProjectileView> = {};
-  private enemyViews: Record<
-    string,
-    { container: Phaser.GameObjects.Container; body: Phaser.GameObjects.Ellipse }
-  > = {};
+  private enemyViews: Record<string, EnemyView> = {};
   private prev: World | null = null;
   private lastCountdown = 99;
   private ended = false;
@@ -224,6 +242,13 @@ export class ArenaScene extends Phaser.Scene {
     }
     for (const weapon of WEAPON_LIST) {
       this.load.image(weaponTexture(weapon), WEAPON_INFO[weapon].asset);
+    }
+    for (const kind of ENEMY_ATLAS_KINDS) {
+      const spec = ENEMY_ANIMATIONS[kind];
+      this.load.spritesheet(spec.texture, spec.asset, {
+        frameWidth: ENEMY_ATLAS_FRAME_SIZE,
+        frameHeight: ENEMY_ATLAS_FRAME_SIZE,
+      });
     }
   }
 
@@ -526,9 +551,13 @@ export class ArenaScene extends Phaser.Scene {
           // Sword/knife: sweep the cone from the player center (rest pose points along the aim).
           const half = stats.coneHalfAngle;
           const ang = atk ? aim - half + progress * 2 * half : aim;
+          // Draw to the TRUE melee reach — the blade lands out to reach + a body radius, so extend
+          // the sprite (and its swept arc) that far rather than the shorter nominal reach, which read
+          // too small against the range it actually hits.
+          const visualReachM = stats.reach + FIGURE_RADIUS_M;
           // Project onto the foreshortened ground plane (y * Y_SCALE) so on-screen reach matches.
-          const tipX = Math.cos(ang) * stats.reach * RENDER_PX_PER_M;
-          const tipY = Math.sin(ang) * stats.reach * RENDER_PX_PER_M * Y_SCALE;
+          const tipX = Math.cos(ang) * visualReachM * RENDER_PX_PER_M;
+          const tipY = Math.sin(ang) * visualReachM * RENDER_PX_PER_M * Y_SCALE;
           const projectedLength = Math.max(1, Math.hypot(tipX, tipY));
           const ux = tipX / projectedLength;
           const uy = tipY / projectedLength;
@@ -577,41 +606,82 @@ export class ArenaScene extends Phaser.Scene {
     this.renderEnemies(world);
   }
 
-  /**
-   * Pooled procedural survival enemies (Track E art replaces these): a dark, red-rimmed crawler with
-   * glowing eyes, y-sorted with the fighters, idle-pulsing. Dead enemies drop their view.
-   */
+  /** Pooled six-frame Survival enemies: walk/idle/attack on row one, local death playback on row two. */
   private renderEnemies(world: World): void {
     const enemies = world.enemies ?? [];
-    const live = new Set<string>();
+    const now = this.time.now;
+    for (const view of Object.values(this.enemyViews)) view.present = false;
+
     for (const e of enemies) {
-      if (e.status !== "alive") continue;
-      live.add(e.id);
       let view = this.enemyViews[e.id];
+      if (!view && e.status !== "alive") continue;
       if (!view) {
+        const spec = ENEMY_ANIMATIONS[e.kind];
         const shadow = this.add.ellipse(
           0,
-          0.22 * RENDER_PX_PER_M,
-          0.7 * RENDER_PX_PER_M,
-          0.7 * RENDER_PX_PER_M * Y_SCALE,
+          0,
+          spec.shadowWidthM * RENDER_PX_PER_M,
+          spec.shadowHeightM * RENDER_PX_PER_M * Y_SCALE,
           0x000000,
-          0.28,
+          e.kind === "bat" ? 0.18 : 0.3,
         );
         const body = this.add
-          .ellipse(0, 0, 0.8 * RENDER_PX_PER_M, 0.8 * RENDER_PX_PER_M * Y_SCALE, 0x8f1d1d)
-          .setStrokeStyle(2 * DISPLAY_SCALE, 0xff5252, 0.9);
-        const eyeL = this.add.circle(-0.14 * RENDER_PX_PER_M, -0.04 * RENDER_PX_PER_M, 0.075 * RENDER_PX_PER_M, 0xffe14d);
-        const eyeR = this.add.circle(0.14 * RENDER_PX_PER_M, -0.04 * RENDER_PX_PER_M, 0.075 * RENDER_PX_PER_M, 0xffe14d);
-        view = { container: this.add.container(0, 0, [shadow, body, eyeL, eyeR]), body };
+          .sprite(0, -spec.liftM * RENDER_PX_PER_M, spec.texture, 1)
+          .setOrigin(0.5, spec.originY)
+          .setDisplaySize(spec.displayM * RENDER_PX_PER_M, spec.displayM * RENDER_PX_PER_M);
+        view = {
+          container: this.add.container(0, 0, [shadow, body]),
+          body,
+          shadow,
+          kind: e.kind,
+          lastX: e.pos.x,
+          lastY: e.pos.y,
+          lastTick: world.tick,
+          moving: false,
+          dyingSince: null,
+          present: true,
+        };
         this.enemyViews[e.id] = view;
+      }
+      view.present = true;
+
+      if (e.status === "dead") {
+        view.dyingSince ??= now;
+        continue;
+      }
+
+      if (view.lastTick !== world.tick) {
+        view.moving = Math.hypot(e.pos.x - view.lastX, e.pos.y - view.lastY) > 0.002;
+        view.lastX = e.pos.x;
+        view.lastY = e.pos.y;
+        view.lastTick = world.tick;
       }
       view.container.setPosition(sx(e.pos.x), sy(e.pos.y));
       view.container.setDepth(e.pos.y);
-      view.body.setScale(1 + Math.sin(world.tick * 0.4 + e.pos.x) * 0.04);
+      view.body
+        .setFrame(livingEnemyFrame(e.kind, view.moving, e.hitCooldownRemaining, now))
+        .setFlipX(Math.cos(e.aim) < 0);
+      const spec = ENEMY_ANIMATIONS[e.kind];
+      const hover = e.kind === "bat" ? Math.sin(now / 115 + e.pos.x) * 0.08 * RENDER_PX_PER_M : 0;
+      view.body.setY(-spec.liftM * RENDER_PX_PER_M + hover);
+      view.shadow.setScale(e.kind === "bat" ? 0.9 + Math.sin(now / 115 + e.pos.x) * 0.06 : 1);
     }
+
     for (const id of Object.keys(this.enemyViews)) {
-      if (!live.has(id)) {
-        this.enemyViews[id]!.container.destroy(true);
+      const view = this.enemyViews[id]!;
+      if (!view.present) view.dyingSince ??= now;
+      if (view.dyingSince === null) continue;
+
+      const elapsed = now - view.dyingSince;
+      view.body.setFrame(deadEnemyFrame(elapsed));
+      view.shadow.setAlpha(Math.max(0, 0.3 * (1 - elapsed / ENEMY_DEATH_TOTAL_MS)));
+      view.container.setAlpha(Math.max(0, 1 - Math.max(0, elapsed - 430) / 220));
+      if (elapsed >= ENEMY_DEATH_TOTAL_MS) {
+        if (view.present) {
+          view.container.setVisible(false);
+          continue;
+        }
+        view.container.destroy(true);
         delete this.enemyViews[id];
       }
     }

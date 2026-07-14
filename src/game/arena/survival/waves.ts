@@ -1,6 +1,8 @@
 import { survivalRandom } from "./rng";
 
-export type SurvivalEnemyKind = "crawler";
+/** `crawler` is retained as a wire-compatible alias for old Survival snapshots. */
+export type SurvivalEnemyKind = "crawler" | "ant" | "zombie" | "bat" | "dino" | "clawed";
+export type SpawnableSurvivalEnemyKind = Exclude<SurvivalEnemyKind, "crawler">;
 
 export interface PlannedEnemySpawn {
   id: string;
@@ -19,6 +21,26 @@ export interface SurvivalWavePlan {
 }
 
 export const MAX_CONCURRENT_ENEMIES = 64;
+
+const KINDS_BY_LEVEL: readonly (readonly SpawnableSurvivalEnemyKind[])[] = [
+  ["ant", "zombie"],
+  ["ant", "zombie", "bat"],
+  ["ant", "zombie", "bat", "clawed"],
+  ["ant", "zombie", "bat", "clawed", "dino"],
+];
+
+/** Deterministic roster progression: agile and heavy creatures enter on later levels. */
+export function enemyKindForSpawn(
+  seed: number,
+  level: number,
+  wave: number,
+  index: number,
+  id: string,
+): SpawnableSurvivalEnemyKind {
+  const roster = KINDS_BY_LEVEL[Math.min(KINDS_BY_LEVEL.length, Math.max(1, level)) - 1]!;
+  const roll = survivalRandom(seed, wave * 10_000 + index, id, "enemy-kind");
+  return roster[Math.min(roster.length - 1, Math.floor(roll * roster.length))]!;
+}
 
 /** Sub-linear party scaling keeps larger groups busy without multiplying the horde eightfold. */
 export function waveEnemyCount(level: number, wave: number, partySize: number): number {
@@ -43,7 +65,7 @@ export function wavePlan(
     const id = `e${level}-${wave}-${index}`;
     return {
       id,
-      kind: "crawler",
+      kind: enemyKindForSpawn(seed, level, wave, index, id),
       atTick: index * spacingTicks,
       angle: survivalRandom(seed, index, id, "spawn-angle") * Math.PI * 2,
     };

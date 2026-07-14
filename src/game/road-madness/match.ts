@@ -100,6 +100,7 @@ export function createRoadWorld(
     damageMultiplier: 1,
     cars,
     impactCooldowns: {},
+    arenaCooldowns: {},
     events: [],
     winnerId: null,
   };
@@ -127,6 +128,7 @@ export function startNextRoadRound(world: RoadWorld): RoadWorld {
     damageMultiplier: 1,
     cars: buildCars(specs, world.roundNumber, world.cars),
     impactCooldowns: {},
+    arenaCooldowns: {},
     events: [],
     winnerId: null,
   };
