@@ -90,3 +90,17 @@ reducers are index-based and unchanged (grabLeg indexes legs, not points).
 
 Per-joint rendering effects (taper, gradients); leg self-collision; variable joint counts per
 stage; touch controls.
+
+## As built (2026-07-14)
+
+1. **Stance nudge**: the spec's "head + each planted leg's ROOT_ANCHOR" push collapses on rope
+   legs — the free joints between head and anchor absorb the lift (measured settle ~0.07 m). As
+   built, the nudge lifts the head + each planted leg's upper chain `pts[0..ROOT_ANCHOR]` as one
+   block (constraints inside the block stay at rest length, so the solver cancels nothing);
+   `STAND_GAIN=80`; measured 8-planted equilibrium ≈0.60 m.
+2. **Wire reality**: a rope snapshot encodes to ≈14 KB (was ≈3 KB), and snapshots were being
+   broadcast every render frame, not at the "20 Hz cadence" the spec assumed — the engine now
+   throttles broadcasts to 20 Hz (≈2.3 Mbps per client; coordinate quantization is the noted
+   follow-up if this needs to shrink further).
+3. **Test fixture**: the finish-line test teleports the whole rig (`rigAt`) instead of nudging
+   the head alone — the 24-iteration solver relaxes a single-point teleport back within one tick.

@@ -7,6 +7,8 @@ import { electHost } from "../../net/election";
 import { stepSquid } from "../sim";
 import { coerceSquidIntent } from "../intent";
 import { releasePlayer } from "../control";
+import { POINT_COUNT } from "../octopus";
+import { LEG_JOINTS } from "../constants";
 import type { SquidIntent, SquidWorld } from "../types";
 
 export const squidSyncAdapter: SyncAdapter<SquidWorld, SquidIntent> = {
@@ -18,7 +20,14 @@ export const squidSyncAdapter: SyncAdapter<SquidWorld, SquidIntent> = {
     const m = decodeSquid(data);
     if (!m) return null;
     if (m.t === "squidInput") return { kind: "input", intent: m.intent };
-    if (m.t === "squidSnapshot") return { kind: "snapshot", world: m.world };
+    if (m.t === "squidSnapshot") {
+      const { world } = m;
+      // Mixed-build guard: a stale pre-rope build's 25-point snapshot (or any other
+      // shape mismatch) would crash the renderer/sim if applied as-is. Degrading to
+      // "ignore" (treat as not-ours) freezes gracefully instead.
+      if (world.points?.length !== POINT_COUNT || world.legs?.[0]?.pts?.length !== LEG_JOINTS) return null;
+      return { kind: "snapshot", world };
+    }
     return null;
   },
   // Everyone is always "alive" in squid — plain lowest-connected-id election.

@@ -12,6 +12,14 @@
 import type { PlayerId } from "../types";
 import type { PeerId, Transport } from "../../net/transport";
 
+/**
+ * Host broadcast cadence cap. Render/stepping stays per-frame (60-120 Hz); only the
+ * snapshot broadcast is throttled — a rope-leg snapshot is ~14 KB, so at 20 Hz that's
+ * ~2.3 Mbps per client, versus up to ~47 Mbps host upload in an 8-player round if every
+ * render frame were broadcast.
+ */
+const SNAPSHOT_INTERVAL_S = 1 / 20;
+
 /** Everything game-specific the engine needs. Implementations must be pure/stateless. */
 export interface SyncAdapter<W, I> {
   step(world: W, intents: Record<PlayerId, I>, dt: number): W;
@@ -45,6 +53,12 @@ export class SyncEngine<W, I> {
   private hostId: PeerId | null;
   /** Host buffer: latest intent received per peer (rate-limited to one-per-tick by overwrite). */
   private inputs = new Map<PeerId, I>();
+  /**
+   * Seeded to the interval so the host's very first tick of a round sends a snapshot
+   * immediately (late joiners/clients shouldn't be blank for 50 ms). On every send we
+   * subtract (not zero) the interval, which keeps the average broadcast cadence exact.
+   */
+  private snapshotAccum = SNAPSHOT_INTERVAL_S;
 
   constructor(private readonly opts: SyncOptions<W, I>) {
     this.world = opts.world;
@@ -81,7 +95,11 @@ export class SyncEngine<W, I> {
       this.inputs.set(this.opts.localId, intent);
       const intents = { ...this.opts.hostExtraIntents?.(), ...Object.fromEntries(this.inputs) };
       this.world = this.opts.adapter.step(this.world, intents, dt);
-      this.opts.transport.send(this.opts.adapter.encodeSnapshot(this.world));
+      this.snapshotAccum += dt;
+      if (this.snapshotAccum >= SNAPSHOT_INTERVAL_S) {
+        this.snapshotAccum -= SNAPSHOT_INTERVAL_S;
+        this.opts.transport.send(this.opts.adapter.encodeSnapshot(this.world));
+      }
       this.opts.onWorld(this.world);
     } else {
       this.opts.transport.send(
