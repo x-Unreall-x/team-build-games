@@ -41,7 +41,8 @@ import {
   playableWeapon,
   type Weapon,
 } from "../../game/arena/weapons";
-import { DEFAULT_MODE, type GameMode } from "../../game/arena/modes";
+import { DEFAULT_MODE, modeInfo, type GameMode } from "../../game/arena/modes";
+import { SURVIVAL_PARTY_WINNER } from "../../game/arena/survival/step";
 import { buildShopUrl, matchResultPayload } from "../../lib/merch/print";
 import { BODY_ASSET } from "../../game/arena/cosmetic";
 import MerchPreviewInline from "../merch/MerchPreviewInline";
@@ -505,13 +506,18 @@ export default function Arena({
   const youWonMatch =
     board?.podium.some((p) => p.place === 1 && p.players.includes(localId)) ??
     false;
+  // Coop Survival ends on the co-op "party" win sentinel or a wipe (winnerId null) — NOT a versus
+  // podium. Derive the outcome from that so a lost run never reads as "YOU WON!".
+  const survivalMatch = modeInfo(sessionState?.mode ?? DEFAULT_MODE).rules === "survival";
+  const survivalWon = survivalMatch && result?.winnerId === SURVIVAL_PARTY_WINNER;
+  const localWon = survivalMatch ? survivalWon : youWonMatch;
   const standingsOrder = board ? board.podium.flatMap((pl) => pl.players) : [];
   const localStats = board?.stats[localId];
   const loserNames = standingsOrder
     .filter((id) => id !== matchWinnerId)
     .map(nameOf);
   const matchPayload = matchResultPayload({
-    youWon: youWonMatch,
+    youWon: localWon,
     winnerId: matchWinnerId,
     winnerName: matchWinnerId ? nameOf(matchWinnerId) : null,
     loserNames,
@@ -722,20 +728,24 @@ export default function Arena({
                       fontWeight: 700,
                       fontSize: "0.95rem",
                       lineHeight: 1.3,
-                      color: youWonMatch
+                      color: localWon
                         ? "#fcd34d"
-                        : matchWinnerId
+                        : survivalMatch || matchWinnerId
                           ? "#fca5a5"
                           : "#e2e8f0",
                     }}
                   >
-                    {youWonMatch
-                      ? "YOU WON!"
-                      : matchWinnerId
-                        ? `YOU LOST TO ${nameOf(matchWinnerId).toUpperCase()}`
-                        : "MUTUAL DESTRUCTION"}
+                    {survivalMatch
+                      ? survivalWon
+                        ? "CAMPAIGN CLEARED!"
+                        : "WIPED OUT"
+                      : youWonMatch
+                        ? "YOU WON!"
+                        : matchWinnerId
+                          ? `YOU LOST TO ${nameOf(matchWinnerId).toUpperCase()}`
+                          : "MUTUAL DESTRUCTION"}
                   </p>
-                  {youWonMatch && loserNames.length > 0 && (
+                  {!survivalMatch && youWonMatch && loserNames.length > 0 && (
                     <p
                       style={{
                         fontSize: "0.7rem",
@@ -746,7 +756,7 @@ export default function Arena({
                       {"Defeated: " + loserNames.join(", ")}
                     </p>
                   )}
-                  {!youWonMatch && matchWinnerId && (
+                  {!survivalMatch && !youWonMatch && matchWinnerId && (
                     <p
                       style={{
                         fontSize: "0.7rem",
