@@ -855,9 +855,9 @@ Tracking:
   at `pts[TIP]` (index 14). Joints are invisible — the rope renders as a smooth polyline only,
   no dot markers. Solver iterations doubled 8→24 to stabilize the longer chains; stance spring
   now lifts head + each planted leg's upper chain (`pts[0..ROOT_ANCHOR]`) as a single block with
-  `STAND_GAIN=80`, achieving 8-planted equilibrium ≈0.60 m head height. Walk advance improved
-  0.45 m/2s → 0.55 m/2s. Stage times are not comparable with the 3-joint era. 542+ tests green,
-  tsc clean.
+  `STAND_GAIN=80`, achieving 8-planted equilibrium ≈0.60 m head height. Walk advance 0.55 m per 2 s
+  (the review probe measured 0.4536 m on the 3-joint rig under identical inputs). Stage times are not
+  comparable with the 3-joint era. 547 tests green, tsc clean.
 
 - **2026-07-10** — **Track F: Squid playtest-fixes round shipped.** Per
   `docs/superpowers/specs/2026-07-10-squid-playtest-fixes-design.md`: force-unlift legs with no
