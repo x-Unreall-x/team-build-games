@@ -315,10 +315,10 @@ export function stepWorld(
   for (const id of Object.keys(players))
     players[id] = { ...players[id]!, stats: stats[id] ?? players[id]!.stats };
 
-  // 4) Win condition: one (or zero) left → match ends.
+  // 4) Win condition: one (or zero) left → match ends. The dev sandbox never auto-ends.
   const next: World = { ...world, players, projectiles, tick: world.tick + 1 };
   const aliveIds = Object.values(players).filter((p) => p.status === "alive");
-  if (aliveIds.length <= 1) {
+  if (aliveIds.length <= 1 && !world.sandbox) {
     next.phase = "ended";
     next.winnerId = soleSurvivor(next);
   }

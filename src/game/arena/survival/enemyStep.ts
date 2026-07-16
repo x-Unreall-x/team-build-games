@@ -44,7 +44,7 @@ export function stepEnemies(
   enemies: EnemyState[],
   players: EnemyTarget[],
   dt: number,
-  opts: { separationDist?: number } = {},
+  opts: { separationDist?: number; frozen?: boolean } = {},
 ): EnemyStepResult {
   const alivePositions = enemies.filter((e) => e.status === "alive").map((e) => ({ id: e.id, pos: e.pos }));
   const sorted = [...enemies].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -60,9 +60,10 @@ export function stepEnemies(
     const stats = ENEMY_STATS[e.kind];
     const cooldown = Math.max(0, e.hitCooldownRemaining - dt);
 
-    // Hit-stagger: a freshly-struck monster reels in place — no chase, no bite — while its stun
-    // ticks down. It keeps the position it was shoved to (applied by the step reducer on the hit).
-    if (e.hitStunRemaining > 0) {
+    // Hold position — no chase, no bite — when frozen (dev sandbox) OR mid hit-stagger. A struck
+    // monster keeps the position it was shoved to (applied by the step reducer on the hit) while its
+    // stun ticks down; a frozen one simply stands there (but still staggers + knocks back on a hit).
+    if (opts.frozen || e.hitStunRemaining > 0) {
       out.push({ ...e, hitCooldownRemaining: cooldown, hitStunRemaining: Math.max(0, e.hitStunRemaining - dt) });
       continue;
     }

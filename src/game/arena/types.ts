@@ -167,4 +167,6 @@ export interface World {
   enemies?: import("./survival/enemy").EnemyState[];
   /** Coop Survival only: campaign/run state (seed, level/wave, spawn cursor). Absent in versus modes. */
   survival?: import("./survival/step").SurvivalState;
+  /** Dev sandbox (versus sub-mode): the sole-survivor win-condition is skipped — the match never ends. */
+  sandbox?: boolean;
 }

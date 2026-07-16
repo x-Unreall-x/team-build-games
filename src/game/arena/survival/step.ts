@@ -49,6 +49,10 @@ export interface SurvivalWorld {
   spawnCursor: number;
   /** In-flight projectiles (bow arrows), host-owned — shared shape with versus. */
   projectiles: Projectile[];
+  /** Dev sandbox: enemies stand still (no chase/bite) but still stagger + knock back when hit. */
+  frozen?: boolean;
+  /** Dev sandbox: no wave spawning and no wave/level/wipe progression — the run never auto-ends. */
+  sandbox?: boolean;
 }
 
 const NO_INPUT = { up: false, down: false, left: false, right: false } as const;
@@ -197,7 +201,10 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
   }
 
   // 2) Spawn any due enemies (post-movement positions are what combat resolves against).
-  const spawned = spawnDueEnemies({ ...world, players });
+  // Sandbox freezes the roster: no new spawns (targets are pre-placed and stay put).
+  const spawned = world.sandbox
+    ? { enemies: [...world.enemies], spawnCursor: world.spawnCursor }
+    : spawnDueEnemies({ ...world, players });
   let enemies = spawned.enemies;
 
   // 3) Resolve player attacks (melee cones + arrows) against enemies → damage per enemy.
@@ -256,8 +263,9 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
   }
 
   // 4) Enemy AI: chase the nearest ally, emit contacts; apply contact damage → player deaths.
+  //    In the sandbox, enemies are frozen (they hold position but still stagger/knock back on a hit).
   const targets: EnemyTarget[] = Object.values(players).map((p) => ({ id: p.id, pos: p.pos, status: p.status }));
-  const enemyStep = stepEnemies(enemies, targets, dt);
+  const enemyStep = stepEnemies(enemies, targets, dt, { frozen: world.frozen });
   enemies = enemyStep.enemies;
   const dmgByPlayer: Record<string, number> = {};
   for (const c of enemyStep.contacts) dmgByPlayer[c.playerId] = (dmgByPlayer[c.playerId] ?? 0) + c.damage;
@@ -277,31 +285,34 @@ export function stepSurvival(world: SurvivalWorld, intentsById: Record<string, I
   let outcome: SurvivalOutcome = null;
   let phase: SurvivalWorld["phase"] = "playing";
 
-  const planLen = wavePlan(world.seed, run.level, run.wave, partySizeThisWave).spawns.length;
-  const waveCleared = spawnCursor >= planLen && !enemies.some((e) => e.status === "alive");
-  if (waveCleared) {
-    const cleared = clearWave(run);
-    run = cleared.run;
-    waveStartTick = world.tick + 1;
-    spawnCursor = 0;
-    enemies = [];
-    if (cleared.leveled) {
-      for (const id of Object.keys(players)) {
-        players[id] = { ...players[id]!, health: START_HEALTH, status: "alive", attack: null };
+  // The sandbox has no waves, level-ups, wins, or wipes — it never auto-ends (stays "playing").
+  if (!world.sandbox) {
+    const planLen = wavePlan(world.seed, run.level, run.wave, partySizeThisWave).spawns.length;
+    const waveCleared = spawnCursor >= planLen && !enemies.some((e) => e.status === "alive");
+    if (waveCleared) {
+      const cleared = clearWave(run);
+      run = cleared.run;
+      waveStartTick = world.tick + 1;
+      spawnCursor = 0;
+      enemies = [];
+      if (cleared.leveled) {
+        for (const id of Object.keys(players)) {
+          players[id] = { ...players[id]!, health: START_HEALTH, status: "alive", attack: null };
+        }
+      }
+      // Freeze the next wave's party size to the allies alive at its start (rides snapshots + migration).
+      partySizeThisWave = Math.max(1, Object.values(players).filter((p) => p.status === "alive").length);
+      if (run.phase === "won") {
+        phase = "ended";
+        outcome = "won";
       }
     }
-    // Freeze the next wave's party size to the allies alive at its start (rides snapshots + migration).
-    partySizeThisWave = Math.max(1, Object.values(players).filter((p) => p.status === "alive").length);
-    if (run.phase === "won") {
-      phase = "ended";
-      outcome = "won";
-    }
-  }
 
-  if (phase === "playing" && !Object.values(players).some((p) => p.status === "alive")) {
-    run = wipe(run);
-    phase = "ended";
-    outcome = "lost";
+    if (phase === "playing" && !Object.values(players).some((p) => p.status === "alive")) {
+      run = wipe(run);
+      phase = "ended";
+      outcome = "lost";
+    }
   }
 
   return {
@@ -337,6 +348,10 @@ export interface SurvivalState {
   waveStartTick: number;
   spawnCursor: number;
   outcome: SurvivalOutcome;
+  /** Dev sandbox: freeze enemies (no chase/bite). Toggled live by the sandbox controls. */
+  frozen?: boolean;
+  /** Dev sandbox: no waves / progression / auto-end. */
+  sandbox?: boolean;
 }
 
 /** The `winnerId` sentinel a survival World carries when the co-op party wins the campaign. */
@@ -357,6 +372,8 @@ function worldToSurvivalWorld(w: World): SurvivalWorld {
     waveStartTick: s.waveStartTick,
     spawnCursor: s.spawnCursor,
     projectiles: w.projectiles,
+    frozen: s.frozen,
+    sandbox: s.sandbox,
   };
 }
 
@@ -377,6 +394,8 @@ function survivalWorldToWorld(sw: SurvivalWorld, mode: GameMode): World {
       waveStartTick: sw.waveStartTick,
       spawnCursor: sw.spawnCursor,
       outcome: sw.outcome,
+      frozen: sw.frozen,
+      sandbox: sw.sandbox,
     },
   };
 }

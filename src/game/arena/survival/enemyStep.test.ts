@@ -12,6 +12,13 @@ describe("stepEnemies (pure enemy AI: chase nearest ally, separate, contact)", (
     expect(contacts).toHaveLength(0); // too far to touch
   });
 
+  it("holds position and never bites when frozen (dev sandbox), even adjacent to a player", () => {
+    const e = createEnemy("e1-0", "crawler", { x: 1, y: 0 }, 0);
+    const { enemies, contacts } = stepEnemies([e], [alive("p", 0, 0)], 0.1, { frozen: true });
+    expect(enemies[0]!.pos).toEqual({ x: 1, y: 0 }); // did not chase
+    expect(contacts).toEqual([]); // did not bite
+  });
+
   it("a staggered enemy reels in place — no chase, no bite — and ticks its stun down", () => {
     // Adjacent to the player (would normally bite), but freshly hit → reeling.
     const e = { ...createEnemy("e1-0", "crawler", { x: 1, y: 0 }, 0), hitStunRemaining: 0.2 };

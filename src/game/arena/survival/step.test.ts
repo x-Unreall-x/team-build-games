@@ -164,6 +164,29 @@ describe("stepSurvival — frozen party size", () => {
   });
 });
 
+describe("stepSurvival — sandbox", () => {
+  it("does not spawn waves or auto-end, even with the whole party down", () => {
+    const base = createSurvivalWorld(["p1"], { seed: 1 });
+    const deadP = { ...base.players.p1!, health: 0, status: "dead" as const };
+    // waveStartTick far in the past would normally dump the whole wave in one tick — sandbox suppresses it.
+    const w: SurvivalWorld = { ...base, players: { p1: deadP }, sandbox: true, waveStartTick: -1000 };
+    const next = stepSurvival(w, noIntent(), DT);
+    expect(next.enemies).toEqual([]); // no auto-spawn
+    expect(next.phase).toBe("playing"); // no wipe / auto-end
+    expect(next.outcome).toBeNull();
+  });
+
+  it("keeps a frozen enemy in place but still staggers + shoves it on a hit", () => {
+    const base = createSurvivalWorld(["p1"], { seed: 1 });
+    const p = base.players.p1!;
+    const enemy = createEnemy("e0", "zombie", { x: p.pos.x + 0.8, y: p.pos.y }, 0); // 4 HP, survives one hit
+    const w: SurvivalWorld = { ...base, sandbox: true, frozen: true, enemies: [enemy] };
+    const next = stepSurvival(w, swingRight("p1"), DT).enemies[0]!;
+    expect(next.hitStunRemaining).toBeGreaterThan(0); // reacted to the hit
+    expect(next.pos.x).toBeGreaterThan(enemy.pos.x); // shoved despite being frozen
+  });
+});
+
 describe("stepSurvival — determinism", () => {
   it("same seed + same intents → identical enemies and players", () => {
     const a = run(createSurvivalWorld(["p1", "p2"], { seed: 42 }), 40);

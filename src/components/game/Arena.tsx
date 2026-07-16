@@ -19,6 +19,9 @@ import type {
 } from "../../game/arena/render/contract";
 import { Session } from "../../game/net/session";
 import { SoloDriver } from "../../game/arena/soloDriver";
+import { SandboxDriver } from "../../game/arena/sandboxDriver";
+import { parseSandboxConfig } from "../../game/arena/sandbox";
+import SandboxControls from "./SandboxControls";
 import { buildJoinUrl, mintRoomId, parseRoomId } from "../../game/net/roomLink";
 import { buildIceServers, iceConfigFromEnv } from "../../game/net/ice";
 import { joinedIds } from "../../game/net/lobby";
@@ -131,6 +134,13 @@ export default function Arena({
   const [mode, setMode] = useState<GameMode>(DEFAULT_MODE);
   const [practiceDriver, setPracticeDriver] = useState<SoloDriver | null>(null);
   const [practiceEpoch, setPracticeEpoch] = useState(0);
+  // Dev-only test harness: `?sandbox` (dev builds only) drops straight into a local sandbox driver,
+  // skipping the lobby/session. Config comes entirely from the query (see sandbox.ts).
+  const [sandboxDriver] = useState<SandboxDriver | null>(() => {
+    if (!import.meta.env.DEV || typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.has("sandbox") ? new SandboxDriver(parseSandboxConfig(params)) : null;
+  });
   const [hud, setHud] = useState<HudState>(FRESH_HUD);
   const [result, setResult] = useState<{ winnerId: PlayerId | null } | null>(
     null,
@@ -138,6 +148,7 @@ export default function Arena({
 
   // --- create transport + session once (client only) ---
   useEffect(() => {
+    if (sandboxDriver) return; // sandbox runs a local driver — no room/session/RTC
     let cancelled = false;
     let session: Session | null = null;
     (async () => {
@@ -176,7 +187,7 @@ export default function Arena({
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };
-  }, [bump]);
+  }, [bump, sandboxDriver]);
 
   const onHud = useCallback((h: HudState) => {
     const p = lastHud.current;
@@ -210,16 +221,19 @@ export default function Arena({
   // --- (re)create the Phaser game whenever the active match changes ---
   const sessionState = ready ? sessionRef.current!.getState() : null;
   const inMatch =
-    !!practiceDriver || (!!sessionState && sessionState.phase !== "lobby");
+    !!sandboxDriver || !!practiceDriver || (!!sessionState && sessionState.phase !== "lobby");
   const musicScene: ArenaMusicScene = inMatch ? "battle" : "lobby";
   const musicSceneRef = useRef<ArenaMusicScene>(musicScene);
   musicSceneRef.current = musicScene;
-  const gameKey = practiceDriver
-    ? `p${practiceEpoch}`
-    : sessionState && sessionState.phase !== "lobby"
-      ? `n${sessionState.matchEpoch}`
-      : "";
+  const gameKey = sandboxDriver
+    ? "sbx"
+    : practiceDriver
+      ? `p${practiceEpoch}`
+      : sessionState && sessionState.phase !== "lobby"
+        ? `n${sessionState.matchEpoch}`
+        : "";
   activeDriverRef.current =
+    sandboxDriver ??
     practiceDriver ??
     (sessionState && sessionState.phase !== "lobby"
       ? sessionRef.current
@@ -489,9 +503,11 @@ export default function Arena({
     window.location.pathname,
     roomId,
   );
-  const localId = practiceDriver
-    ? practiceDriver.localId
-    : sessionState!.localId;
+  const localId = sandboxDriver
+    ? sandboxDriver.localId
+    : practiceDriver
+      ? practiceDriver.localId
+      : sessionState!.localId;
   const youWon = result?.winnerId === localId;
   const canRematch = !!practiceDriver || !!sessionState?.isHost;
 
@@ -583,6 +599,8 @@ export default function Arena({
               background: "#0f172a",
             }}
           />
+
+          {sandboxDriver && <SandboxControls driver={sandboxDriver} />}
 
           <div
             style={{
