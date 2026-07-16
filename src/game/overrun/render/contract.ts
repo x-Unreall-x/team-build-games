@@ -42,6 +42,8 @@ export interface OverrunHudState {
   /** Total campaign stages, for the "STAGE n/N" readout. */
   stagesTotal: number;
   intermission: number;
+  /** Campaign only: seconds left of the synced between-stage comic beat (0/absent = none). */
+  stageIntroRemaining?: number;
   score: number;
   xp: number;
   xpNext: number;

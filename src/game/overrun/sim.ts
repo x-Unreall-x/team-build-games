@@ -14,14 +14,16 @@ import {
   PLAYER_RADIUS_M, PLAYER_SPEED_MS, REVIVE_HEALTH, REVIVE_RANGE_M, REVIVE_S,
   MEDKIT_HEAL, SPAWNS_PER_TICK, SWAP_GUARD_S, WAVE1_SPEED_MULT,
   ENEMY_SEPARATION_M, ENEMY_LEAD_TICKS, ENEMY_LEAD_MAX_M, ENEMY_ATTACK_FREEZE_S,
-  ENEMY_CONTACT_SLACK_M,
+  ENEMY_CONTACT_SLACK_M, COMIC_INTERSTITIAL_S,
+  RUSH_COOLDOWN_S, RUSH_HIT_RADIUS_M, RUSH_HIT_FRACTION,
 } from "./constants";
-import { ENEMIES, nearestAlive, stepEnemy } from "./enemies";
+import { ENEMIES, nearestAlive, stepEnemy, stepTank } from "./enemies";
 import { fireTick, tickAmmo, tryStartReload } from "./firing";
 import { effectiveStats, rollOffer, xpToNext } from "./perks";
 import { rollDrop } from "./drops";
 import { composeWave, spawnPos } from "./waves";
-import { CAMPAIGN_WAVES } from "./stages";
+import { CAMPAIGN_WAVES, stageForWave } from "./stages";
+import { resetPartyForStage } from "./match";
 import { freshAmmo, GUNS } from "./weapons";
 import type { Enemy, Pickup, PlayerId, ShooterEvent, ShooterIntent, ShooterPhase, ShooterPlayer, ShooterWorld } from "./types";
 
@@ -44,6 +46,7 @@ export function stepShooter(
   let pickups: Pickup[] = [...world.pickups];
   let { score, pity, spawnSeq, wave, partySize, intermission } = world;
   let pending = world.pending;
+  let stageIntroRemaining = world.stageIntroRemaining ?? 0;
 
   // 3. perk picks
   for (const id of ids) {
@@ -167,10 +170,32 @@ export function stepShooter(
     const sepLen = Math.hypot(sepX, sepY);
     const separation = sepLen > 1 ? { x: sepX / sepLen, y: sepY / sepLen } : { x: sepX, y: sepY };
 
-    let stepped = stepEnemy(e, aimPos, dt, speedMult, separation);
-    if (target) {
+    // Tanks run the Rush state machine (charge to a locked ground point); everything else chases.
+    let stepped: Enemy;
+    let rushLanded = false;
+    if (e.kind === "tank") {
+      const r = stepTank(e, aimPos, target ? target.pos : null, dt, speedMult, separation);
+      stepped = r.enemy;
+      rushLanded = r.landed;
+    } else {
+      stepped = stepEnemy(e, aimPos, dt, speedMult, separation);
+    }
+    const rushing = (stepped.special ?? "none") !== "none";
+
+    // Rush landing: a 50%-max-HP area hit to every alive player near the charge's endpoint.
+    if (rushLanded) {
+      for (const p of aliveSorted()) {
+        if (Math.hypot(p.pos.x - stepped.pos.x, p.pos.y - stepped.pos.y) > RUSH_HIT_RADIUS_M) continue;
+        const health = Math.max(0, p.health - effectiveStats(p.perks).maxHealth * RUSH_HIT_FRACTION);
+        players[p.id] = health === 0 ? { ...p, health: 0, status: "downed", reviveProgress: 0 } : { ...p, health };
+        events.push(health === 0 ? { tick, kind: "downed", playerId: p.id } : { tick, kind: "playerHit", playerId: p.id });
+      }
+    }
+
+    // Normal contact damage — keyed off the REAL target position (lead is only for movement). Skipped
+    // while a tank is mid-Rush; its landing hit stands in for contact during the charge.
+    if (target && !rushing) {
       const def = ENEMIES[e.kind];
-      // Contact damage keys off the REAL target position (the lead point is only for movement).
       const d = Math.hypot(target.pos.x - stepped.pos.x, target.pos.y - stepped.pos.y);
       if (d <= def.radius + PLAYER_RADIUS_M + ENEMY_CONTACT_SLACK_M && stepped.attackCooldown === 0 && stepped.stunRemaining <= 0) {
         const t = players[target.id]!;
@@ -251,10 +276,17 @@ export function stepShooter(
   // 10. waves + spawning
   const partyCount = () => ids.filter((id) => players[id]!.status !== "dead").length;
   if (phase === "playing") {
-    if (wave === 0) {
+    if (stageIntroRemaining > 0) {
+      // Between-stage comic beat: hold (no spawning) until it elapses, then compose the held wave.
+      stageIntroRemaining = Math.max(0, stageIntroRemaining - dt);
+      if (stageIntroRemaining === 0) {
+        partySize = partyCount();
+        pending = composeWave(seed, wave, partySize, { campaign: mode === "campaign" });
+      }
+    } else if (wave === 0) {
       wave = 1;
       partySize = partyCount();
-      pending = composeWave(seed, wave, partySize);
+      pending = composeWave(seed, wave, partySize, { campaign: mode === "campaign" });
     } else if (pending.length === 0 && enemies.length === 0 && intermission === 0) {
       intermission = INTERMISSION_S;
       for (const id of ids) {
@@ -272,9 +304,18 @@ export function stepShooter(
           // Final stage's last wave cleared — the campaign is won. Survival never hits this.
           phase = "victory";
         } else {
+          const fromStage = stageForWave(wave).stage;
           wave += 1;
-          partySize = partyCount();
-          pending = composeWave(seed, wave, partySize);
+          const crossedStage = mode === "campaign" && stageForWave(wave).stage > fromStage;
+          if (crossedStage) {
+            // Stage cleared → reset the party (fresh level 1 + pistol) and play the synced comic beat.
+            // Spawning is held until `stageIntroRemaining` elapses (the branch above composes the wave).
+            for (const [id, p] of Object.entries(resetPartyForStage(players))) players[id] = p;
+            stageIntroRemaining = COMIC_INTERSTITIAL_S;
+          } else {
+            partySize = partyCount();
+            pending = composeWave(seed, wave, partySize, { campaign: mode === "campaign" });
+          }
         }
       }
     }
@@ -284,7 +325,9 @@ export function stepShooter(
       while (spawned.length < SPAWNS_PER_TICK && queue.length > 0 && enemies.length + spawned.length < MAX_ENEMIES) {
         const kind = queue[0]!;
         queue = queue.slice(1);
-        spawned.push({ id: `e${spawnSeq}`, kind, pos: spawnPos(seed, spawnSeq), health: ENEMIES[kind].health, attackCooldown: 0, stunRemaining: 0 });
+        const base: Enemy = { id: `e${spawnSeq}`, kind, pos: spawnPos(seed, spawnSeq), health: ENEMIES[kind].health, attackCooldown: 0, stunRemaining: 0 };
+        // Tanks carry the Rush state machine (chase for RUSH_COOLDOWN_S, then charge).
+        spawned.push(kind === "tank" ? { ...base, special: "none", specialRemaining: RUSH_COOLDOWN_S, rushTo: null } : base);
         spawnSeq += 1;
       }
       pending = queue;
@@ -296,7 +339,7 @@ export function stepShooter(
   const cappedEvents = events.length > MAX_EVENTS ? events.slice(events.length - MAX_EVENTS) : events;
 
   return {
-    tick, phase, mode, seed, wave, partySize, pending, intermission,
+    tick, phase, mode, seed, wave, partySize, pending, intermission, stageIntroRemaining,
     players, enemies, pickups, events: cappedEvents, score, spawnSeq, pity,
   };
 }

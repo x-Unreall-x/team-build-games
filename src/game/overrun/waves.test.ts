@@ -70,3 +70,16 @@ describe("spawnPos", () => {
     expect(edges.size).toBe(4);
   });
 });
+
+describe("composeWave — campaign stage gating", () => {
+  it("stage 1 waves 1-2 are rushers only; wave 3 admits tanks", () => {
+    expect(composeWave(7, 1, 8, { campaign: true }).every((k) => k === "rusher")).toBe(true);
+    expect(composeWave(7, 2, 8, { campaign: true }).every((k) => k === "rusher")).toBe(true);
+    expect(composeWave(7, 3, 8, { campaign: true })).toContain("tank"); // stage 1 wave 3
+  });
+
+  it("survival is unchanged by the campaign flag (tanks gated by minWave only)", () => {
+    expect(composeWave(7, 1, 8).every((k) => k === "rusher")).toBe(true); // wave 1 < tank.minWave
+    expect(composeWave(7, 2, 8).every((k) => k === "rusher")).toBe(true);
+  });
+});

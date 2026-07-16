@@ -12,6 +12,7 @@ import { Sfx } from "../../../game/audio/sfx";
 import { fetchOverrunAssetManifest, type OverrunAssetManifest } from "../../../game/overrun/assets";
 import type { PlayerId, ShooterWorld } from "../../../game/overrun/types";
 import { accuracy, buildOverrunPrintPayload } from "../../../game/overrun/stats";
+import { TOTAL_STAGES } from "../../../game/overrun/stages";
 import { buildShopUrl, sanitizePayload } from "../../../lib/merch/print";
 import OverrunWarmupRoom from "./OverrunWarmupRoom";
 import { COIN_INSERT_MS } from "../lobby/CoinSlot";
@@ -47,7 +48,7 @@ const FRESH_HUD: OverrunHudState = {
   wave: 0,
   mode: "survival",
   stage: 1,
-  stagesTotal: 3,
+  stagesTotal: TOTAL_STAGES,
   intermission: 0,
   score: 0,
   xp: 0,
@@ -156,7 +157,9 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
       p.reserve !== h.reserve ||
       Math.abs(p.reloadFraction - h.reloadFraction) >= 0.02 ||
       p.wave !== h.wave ||
+      p.stage !== h.stage ||
       Math.ceil(p.intermission) !== Math.ceil(h.intermission) ||
+      Math.ceil(p.stageIntroRemaining ?? 0) !== Math.ceil(h.stageIntroRemaining ?? 0) ||
       p.score !== h.score ||
       p.xp !== h.xp ||
       p.xpNext !== h.xpNext ||
@@ -472,6 +475,15 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
           </div>
 
           {hud.countdown > 0 && <OverrunCountdown n={hud.countdown} />}
+
+          {/* Between-stage comic beat (synced): the party regroups at a fresh stage (level + pistol reset). */}
+          {(hud.stageIntroRemaining ?? 0) > 0 && (
+            <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-black/72 text-center">
+              <p className="font-display text-[9px] tracking-widest text-amber-300">STAGE {hud.stage} / {hud.stagesTotal}</p>
+              <h2 className="neon font-display text-2xl text-emerald-300 sm:text-4xl">STAGE {hud.stage}</h2>
+              <p className="text-sm text-stone-300">Fresh loadout — the horde regroups. Get ready.</p>
+            </div>
+          )}
 
           {/* Final scorecard: per-player stats + merch link. Stays connected. */}
           {(phase === "ended" || phase === "victory") && finalWorld && (

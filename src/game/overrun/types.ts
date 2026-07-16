@@ -64,6 +64,9 @@ export interface ShooterPlayer {
   swapGuard: number;
 }
 
+/** Tank Rush ability state: chase (`none`) → `rushCharge` (telegraph) → `rushRun` (charge) → `rushRecover`. */
+export type EnemySpecial = "none" | "rushCharge" | "rushRun" | "rushRecover";
+
 export interface Enemy {
   /** Deterministic `e${spawnSeq}`. */
   id: string;
@@ -74,6 +77,12 @@ export interface Enemy {
   attackCooldown: number;
   /** Seconds left of a bullet-hit micro-stun (0 = free to move). */
   stunRemaining: number;
+  /** Tank Rush state (absent/`none` = normal chase). Only tanks use it. */
+  special?: EnemySpecial;
+  /** Countdown within the current special state — or, while `none`, time until the next Rush. */
+  specialRemaining?: number;
+  /** Locked ground target for a Rush charge (fixed at telegraph start; null when not rushing). */
+  rushTo?: Vec2 | null;
 }
 
 export interface Pickup {
@@ -142,6 +151,12 @@ export interface ShooterWorld {
   pending: EnemyKind[];
   /** Seconds left of the between-waves breather (0 = wave in progress). */
   intermission: number;
+  /**
+   * Campaign only: seconds left of the synced between-stage comic beat. While > 0 the sim holds
+   * (no spawning) and the client shows the interstitial. Absent/0 = no interstitial. Optional so old
+   * snapshots + non-campaign worlds need not carry it.
+   */
+  stageIntroRemaining?: number;
   players: Record<PlayerId, ShooterPlayer>;
   enemies: Enemy[];
   pickups: Pickup[];

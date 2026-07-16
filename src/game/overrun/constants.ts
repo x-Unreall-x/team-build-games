@@ -32,8 +32,26 @@ export const EVENT_TTL_TICKS = 6;
 // --- waves ---
 export const SPAWNS_PER_TICK = 2;
 export const INTERMISSION_S = 3;
+/** Synced hold between campaign stages — the comic beat plays while spawning is paused. */
+export const COMIC_INTERSTITIAL_S = 2.5;
 /** Wave-1 enemies move at this fraction of their base speed (onboarding-friendly ramp). */
 export const WAVE1_SPEED_MULT = 0.85;
+
+// --- tank Rush ability (deterministic charge) ---
+/** Seconds a tank chases normally between Rushes (counts down; then it telegraphs). */
+export const RUSH_COOLDOWN_S = 3;
+/** Telegraph: tank freezes, fire-charges, and locks the target's ground position. */
+export const RUSH_CHARGE_S = 0.5;
+/** Recovery freeze after the charge lands (or whiffs). */
+export const RUSH_RECOVER_S = 0.5;
+/** Safety cap on the charge run so an unreachable lock can't stall the tank forever. */
+export const RUSH_RUN_MAX_S = 2;
+/** Charge speed — 2× the rusher base speed (4.5 m/s). */
+export const RUSH_SPEED_MS = 9;
+/** Players within this radius of the landing point take the Rush hit. */
+export const RUSH_HIT_RADIUS_M = 1.8;
+/** Rush hit damage as a fraction of the victim's max health. */
+export const RUSH_HIT_FRACTION = 0.5;
 
 // --- bullet-hit feedback ---
 /** Seconds an enemy can't move after taking a hit. */

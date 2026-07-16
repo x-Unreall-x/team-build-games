@@ -3,7 +3,10 @@
  * hit hard. AI is chase-nearest-alive with lowest-id tie-breaks (deterministic).
  */
 
-import { ENEMY_SEPARATION_WEIGHT, OVERRUN_FIELD_M, PLAYER_RADIUS_M } from "./constants";
+import {
+  ENEMY_SEPARATION_WEIGHT, OVERRUN_FIELD_M, PLAYER_RADIUS_M,
+  RUSH_CHARGE_S, RUSH_COOLDOWN_S, RUSH_RECOVER_S, RUSH_RUN_MAX_S, RUSH_SPEED_MS,
+} from "./constants";
 import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
 export interface EnemyDef {
@@ -101,4 +104,65 @@ export function stepEnemy(
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+
+/**
+ * Tank Rush state machine + movement (deterministic; no RNG/clock). A tank chases (`none`) while its
+ * Rush cooldown ticks down; when it elapses it TELEGRAPHS (`rushCharge`, 0.5 s frozen) and locks the
+ * target's current ground position, then CHARGES straight to that fixed point (`rushRun`) at
+ * RUSH_SPEED_MS (2× rusher), and on arrival (or the safety cap) enters `rushRecover` (0.5 s frozen),
+ * returning `landed: true` on that tick so the caller applies the 50%-HP area hit. `aimPos` is the
+ * lead-intercept point used for the normal chase; `lockPos` is the target's REAL position to lock.
+ */
+export function stepTank(
+  e: Enemy,
+  aimPos: Vec2 | null,
+  lockPos: Vec2 | null,
+  dt: number,
+  speedMult: number,
+  separation: Vec2,
+): { enemy: Enemy; landed: boolean } {
+  const def = ENEMIES.tank;
+  const cooled = Math.max(0, e.attackCooldown - dt);
+  const stun = Math.max(0, e.stunRemaining - dt);
+  const special = e.special ?? "none";
+  const remaining = (e.specialRemaining ?? RUSH_COOLDOWN_S) - dt;
+  const bound = (p: Vec2): Vec2 => ({
+    x: clamp(p.x, def.radius, OVERRUN_FIELD_M - def.radius),
+    y: clamp(p.y, def.radius, OVERRUN_FIELD_M - def.radius),
+  });
+
+  // Telegraph + recovery: frozen in place; cooldowns still tick.
+  if (special === "rushCharge") {
+    if (remaining > 0) return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, specialRemaining: remaining }, landed: false };
+    return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, special: "rushRun", specialRemaining: RUSH_RUN_MAX_S }, landed: false };
+  }
+  if (special === "rushRecover") {
+    if (remaining > 0) return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, specialRemaining: remaining }, landed: false };
+    return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, special: "none", specialRemaining: RUSH_COOLDOWN_S, rushTo: null }, landed: false };
+  }
+
+  // Charge: run straight to the locked point at RUSH_SPEED_MS, ignoring steering/separation.
+  if (special === "rushRun") {
+    const to = e.rushTo ?? null;
+    if (!to) return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, special: "rushRecover", specialRemaining: RUSH_RECOVER_S }, landed: true };
+    const dx = to.x - e.pos.x;
+    const dy = to.y - e.pos.y;
+    const dist = Math.hypot(dx, dy);
+    const step = RUSH_SPEED_MS * dt;
+    const arrived = dist <= step || remaining <= 0;
+    const pos = arrived ? bound(to) : bound({ x: e.pos.x + (dx / dist) * step, y: e.pos.y + (dy / dist) * step });
+    if (arrived) return { enemy: { ...e, pos, attackCooldown: cooled, stunRemaining: stun, special: "rushRecover", specialRemaining: RUSH_RECOVER_S }, landed: true };
+    return { enemy: { ...e, pos, attackCooldown: cooled, stunRemaining: stun, specialRemaining: remaining }, landed: false };
+  }
+
+  // "none": trigger a Rush when the cooldown elapses (freeze + lock); otherwise chase normally.
+  if (e.stunRemaining <= 0 && remaining <= 0 && lockPos) {
+    return {
+      enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, special: "rushCharge", specialRemaining: RUSH_CHARGE_S, rushTo: { ...lockPos } },
+      landed: false,
+    };
+  }
+  const stepped = stepEnemy(e, aimPos, dt, speedMult, separation);
+  return { enemy: { ...stepped, special: "none", specialRemaining: Math.max(0, remaining) }, landed: false };
 }

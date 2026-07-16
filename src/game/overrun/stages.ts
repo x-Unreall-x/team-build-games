@@ -1,18 +1,22 @@
 /**
- * Campaign stage structure (pure). The campaign is a finite run of `TOTAL_STAGES`
- * stages; each stage is `wavesForStage(stage)` waves ("+1 wave every 2 stages",
- * baseline 3 → 3, 3, 4). Survival mode ignores all of this and runs endlessly.
+ * Campaign stage structure (pure). The campaign is a finite run of `TOTAL_STAGES` stages; each stage
+ * has a hand-authored wave count (`STAGE_WAVES`). Progression RESETS at each stage boundary (fresh
+ * level 1 + pistol) and stages are separated by a comic beat — so each stage is a self-contained
+ * escalation. Survival mode ignores all of this and runs endlessly.
  *
- * v1 keeps stages as a wave-count structure over the existing enemy roster; dedicated
- * per-stage enemy pools + bosses land in a later increment. `stageForWave` maps the
- * sim's global 1-based `wave` counter onto (stage, waveInStage) for HUD + victory.
+ * This increment ships the structure + the tank's Rush ability over the existing roster; dedicated
+ * per-stage enemy pools, new kinds, and the stage-5 megaboss / boss finales land in a later increment.
+ * `stageForWave` maps the sim's global 1-based `wave` counter onto (stage, waveInStage).
  */
 
-export const TOTAL_STAGES = 3;
+/** Waves per 1-based stage. Hand-authored escalation-and-release shape (stage 5 = short megaboss run). */
+export const STAGE_WAVES = [3, 5, 7, 5, 3, 10] as const;
 
-/** Waves in a given 1-based stage: 3 + floor((stage-1)/2) → 3, 3, 4, 4, 5… */
+export const TOTAL_STAGES = STAGE_WAVES.length;
+
+/** Waves in a given 1-based stage (clamped to the table). */
 export function wavesForStage(stage: number): number {
-  return 3 + Math.floor((Math.max(1, stage) - 1) / 2);
+  return STAGE_WAVES[Math.max(1, Math.min(TOTAL_STAGES, stage)) - 1]!;
 }
 
 /** Total waves to clear the whole campaign (sum over all stages). */
