@@ -10,7 +10,8 @@ export interface OverrunVisualAssets {
     downed: string;
   };
   weapons: Record<GunId, string>;
-  enemies: Record<EnemyKind, { alive: ThreeUrls; dead: ThreeUrls }>;
+  /** Per-kind sprite sets. Partial: kinds without packed art fall back to procedural rendering. */
+  enemies: Partial<Record<EnemyKind, { alive: ThreeUrls; dead: ThreeUrls }>>;
 }
 
 export interface OverrunAssetManifest {

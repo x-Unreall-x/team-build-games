@@ -10,9 +10,11 @@ export interface Vec2 { x: number; y: number; }
 export interface InputState { up: boolean; down: boolean; left: boolean; right: boolean; }
 export type PlayerId = string;
 
-export type GunId = "pistol" | "shotgun" | "rifle";
-export type EnemyKind = "rusher" | "tank";
-export type PickupKind = "shotgun" | "rifle" | "medkit";
+export type GunId = "pistol" | "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower";
+export type EnemyKind = "rusher" | "tank" | "swarmling";
+export type PickupKind = "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "medkit";
+/** Pickup kinds that are weapons (everything a kill can drop except the medkit). */
+export type DroppableGun = Exclude<PickupKind, "medkit">;
 export type ShooterStatus = "alive" | "downed" | "dead";
 export type ShooterPhase = "playing" | "ended" | "victory";
 /** Campaign = finite staged run (win via `victory`); Survival = endless (ends only on wipe). */
@@ -83,6 +85,8 @@ export interface Enemy {
   specialRemaining?: number;
   /** Locked ground target for a Rush charge (fixed at telegraph start; null when not rushing). */
   rushTo?: Vec2 | null;
+  /** Seconds of remaining flamethrower burn (damage-over-time). Absent/0 = not on fire. */
+  burning?: number;
 }
 
 export interface Pickup {

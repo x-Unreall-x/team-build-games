@@ -35,10 +35,12 @@ export interface EnemyDef {
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   rusher: { kind: "rusher", radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1, stagger: true },
   tank: { kind: "tank", radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3, stagger: false },
+  // Tiny, fastest, one-shot HP → cheap hordes (fractional cost; the compose loop spends on `points > 0`).
+  swarmling: { kind: "swarmling", radius: 0.28, hitRadius: 6 / 7, speed: 6, health: 6, damage: 3, attackInterval: 0.4, xp: 1, cost: 0.5, scoreValue: 5, minWave: 1, stagger: true },
 };
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */
-export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank"];
+export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling"];
 
 /** Closest living player (input must be sorted by id; ties keep the first = lowest id). */
 export function nearestAlive(pos: Vec2, players: ShooterPlayer[]): ShooterPlayer | null {

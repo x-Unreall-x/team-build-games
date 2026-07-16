@@ -71,15 +71,23 @@ describe("spawnPos", () => {
   });
 });
 
-describe("composeWave — campaign stage gating", () => {
+describe("composeWave — campaign stage pools", () => {
   it("stage 1 waves 1-2 are rushers only; wave 3 admits tanks", () => {
     expect(composeWave(7, 1, 8, { campaign: true }).every((k) => k === "rusher")).toBe(true);
     expect(composeWave(7, 2, 8, { campaign: true }).every((k) => k === "rusher")).toBe(true);
     expect(composeWave(7, 3, 8, { campaign: true })).toContain("tank"); // stage 1 wave 3
   });
 
-  it("survival is unchanged by the campaign flag (tanks gated by minWave only)", () => {
+  it("swarmlings join from stage 3, and never appear in stages 1-2", () => {
+    // stage 3 wave 1 = global wave 9 (stages 3+5 = 8 waves before it).
+    expect(composeWave(7, 9, 8, { campaign: true })).toContain("swarmling");
+    for (let w = 1; w <= 8; w++) {
+      expect(composeWave(7, w, 8, { campaign: true })).not.toContain("swarmling");
+    }
+  });
+
+  it("survival is unchanged by the campaign flag (tanks gated by minWave, no swarmlings)", () => {
     expect(composeWave(7, 1, 8).every((k) => k === "rusher")).toBe(true); // wave 1 < tank.minWave
-    expect(composeWave(7, 2, 8).every((k) => k === "rusher")).toBe(true);
+    expect(composeWave(7, 5, 8).every((k) => k === "rusher" || k === "tank")).toBe(true);
   });
 });

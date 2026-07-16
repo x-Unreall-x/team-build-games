@@ -35,7 +35,7 @@ describe("parseOverrunAssetManifest", () => {
 
     expect(manifest.visuals.terrain).toHaveLength(5);
     expect(manifest.sfx.shots.shotgun).toHaveLength(3);
-    expect(manifest.visuals.enemies.tank.dead).toHaveLength(3);
+    expect(manifest.visuals.enemies.tank!.dead).toHaveLength(3);
   });
 
   it("rejects an incomplete variant bank", () => {
