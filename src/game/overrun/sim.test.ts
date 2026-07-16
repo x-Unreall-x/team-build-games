@@ -5,6 +5,7 @@ import { createShooterWorld } from "./match";
 import { ENEMIES } from "./enemies";
 import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT, WAVE1_SPEED_MULT } from "./constants";
 import { waveBudget } from "./waves";
+import { CAMPAIGN_WAVES } from "./stages";
 import { xpToNext } from "./perks";
 import type { Enemy, ShooterIntent, ShooterWorld } from "./types";
 
@@ -28,6 +29,47 @@ describe("determinism", () => {
     }
     expect(w2).toEqual(w1);
     expect(w1.wave).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("enemy attack freeze", () => {
+  it("an enemy that lands an attack holds still briefly (escape window)", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, players: { a: { ...w.players.a!, pos: { x: 15, y: 15 } } }, enemies: [enemyAt("e", 15.5, 15)] };
+    const after = step(w);
+    expect(after.players.a!.health).toBeLessThan(100); // the attack landed
+    const e = after.enemies.find((x) => x.id === "e")!;
+    expect(e.stunRemaining).toBeGreaterThan(0); // frozen right after attacking
+    // and it does not advance while frozen
+    const next = step(after);
+    const e2 = next.enemies.find((x) => x.id === "e")!;
+    expect(e2.pos).toEqual(e.pos);
+  });
+});
+
+describe("campaign vs survival", () => {
+  // Set up "final wave cleared, breather about to elapse" and let one step resolve it.
+  const atFinalBreather = (mode: "campaign" | "survival"): ShooterWorld => ({
+    ...createShooterWorld(["a"], 1, mode),
+    wave: CAMPAIGN_WAVES,
+    intermission: SHOOTER_DT / 2,
+    pending: [],
+    enemies: [],
+  });
+
+  it("campaign ends in victory after clearing the final wave", () => {
+    expect(step(atFinalBreather("campaign")).phase).toBe("victory");
+  });
+
+  it("survival never wins — clearing that wave just advances to the next", () => {
+    const w1 = step(atFinalBreather("survival"));
+    expect(w1.phase).toBe("playing");
+    expect(w1.wave).toBe(CAMPAIGN_WAVES + 1);
+  });
+
+  it("a victory world is frozen (further steps are no-ops)", () => {
+    const won = step(atFinalBreather("campaign"));
+    expect(step(won)).toBe(won);
   });
 });
 

@@ -2,11 +2,11 @@
 
 import { OVERRUN_FIELD_M, PLAYER_HEALTH } from "./constants";
 import { DEFAULT_GUN, freshAmmo } from "./weapons";
-import type { PlayerId, ShooterPlayer, ShooterWorld } from "./types";
+import type { OverrunMode, PlayerId, ShooterPlayer, ShooterWorld } from "./types";
 
 const SPAWN_RING_M = 3;
 
-export function createShooterWorld(ids: PlayerId[], seed: number): ShooterWorld {
+export function createShooterWorld(ids: PlayerId[], seed: number, mode: OverrunMode = "survival"): ShooterWorld {
   const sorted = [...ids].sort();
   const c = OVERRUN_FIELD_M / 2;
   const players: Record<PlayerId, ShooterPlayer> = {};
@@ -30,7 +30,7 @@ export function createShooterWorld(ids: PlayerId[], seed: number): ShooterWorld 
     };
   });
   return {
-    tick: 0, phase: "playing", seed, wave: 0, partySize: sorted.length,
+    tick: 0, phase: "playing", mode, seed, wave: 0, partySize: sorted.length,
     pending: [], intermission: 0, players, enemies: [], pickups: [], events: [],
     score: 0, spawnSeq: 0, pity: 0,
   };

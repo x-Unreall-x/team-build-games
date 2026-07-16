@@ -1,6 +1,6 @@
 /** Contract between the Overrun Phaser scene and whatever drives the match. */
 
-import type { GunId, PerkOffer, PlayerId, RawShooterInput, ShooterStatus, ShooterWorld } from "../types";
+import type { GunId, OverrunMode, PerkOffer, PlayerId, RawShooterInput, ShooterStatus, ShooterWorld } from "../types";
 import type { PickupKind } from "../types";
 import type { OverrunVisualAssets } from "../assets";
 
@@ -35,6 +35,12 @@ export interface OverrunHudState {
   /** 0..1 of an active reload (0 = idle). */
   reloadFraction: number;
   wave: number;
+  /** Match mode — drives whether the HUD shows a stage readout. */
+  mode: OverrunMode;
+  /** Current campaign stage (1-based); meaningless in survival. */
+  stage: number;
+  /** Total campaign stages, for the "STAGE n/N" readout. */
+  stagesTotal: number;
   intermission: number;
   score: number;
   xp: number;

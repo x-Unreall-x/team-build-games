@@ -9,7 +9,9 @@ describe("enemy defs", () => {
   it("defines rusher (fast/fragile) and tank (slow/beefy) with wave gating", () => {
     expect(ENEMY_KINDS).toEqual(["rusher", "tank"]);
     expect(ENEMIES.rusher).toMatchObject({ radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 });
-    expect(ENEMIES.tank).toMatchObject({ radius: 0.9, hitRadius: 13 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
+    expect(ENEMIES.tank).toMatchObject({ radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
+    expect(ENEMIES.rusher.stagger).toBe(true);
+    expect(ENEMIES.tank.stagger).toBe(false);
   });
 });
 
@@ -55,6 +57,13 @@ describe("stepEnemy", () => {
     expect(e.pos).toEqual({ x: 5, y: 5 }); // no movement while stunned
     expect(e.stunRemaining).toBeCloseTo(0.2, 5);
     expect(e.attackCooldown).toBeCloseTo(0.4, 5); // cooldown still ticks while stunned
+  });
+
+  it("applies a separation nudge on top of the chase (declusters the horde)", () => {
+    const chased = stepEnemy(enemy(), { x: 15, y: 5 }, 0.1); // no separation
+    const pushed = stepEnemy(enemy(), { x: 15, y: 5 }, 0.1, 1, { x: 0, y: 1 });
+    expect(pushed.pos.x).toBeCloseTo(chased.pos.x, 5); // same chase toward +x
+    expect(pushed.pos.y).toBeGreaterThan(chased.pos.y); // but shoved along the separation vector
   });
 
   it("stunRemaining floors at 0 and never goes negative", () => {

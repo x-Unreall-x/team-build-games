@@ -10,7 +10,7 @@ describe("gun table", () => {
   it("matches the roadmap START numbers", () => {
     expect(GUNS.pistol).toMatchObject({ damage: 12, rpm: 300, magSize: 12, reserveMax: null, reloadS: 1.2, spreadDeg: 2, pellets: 1, range: 20, pierce: 0 });
     expect(GUNS.shotgun).toMatchObject({ damage: 8, rpm: 70, magSize: 6, reserveMax: 36, reloadS: 1.0, spreadDeg: 9, pellets: 8, range: 12, pierce: 0 });
-    expect(GUNS.rifle).toMatchObject({ damage: 34, rpm: 220, magSize: 10, reserveMax: 60, reloadS: 1.6, spreadDeg: 1, pellets: 1, range: 40, pierce: 1 });
+    expect(GUNS.rifle).toMatchObject({ damage: 34, rpm: 220, magSize: 10, reserveMax: 60, reloadS: 1.6, spreadDeg: 1, pellets: 1, range: 40, pierce: 0 });
   });
 
   it("freshAmmo fills the mag and reserve (0 for the infinite pistol)", () => {

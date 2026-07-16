@@ -50,10 +50,14 @@ type QPickup = [string, number, number, number, number]; // id, kind, xcm, ycm, 
 type QEvent = (number | string)[]; // [tick, kindIdx, ...payload]
 
 export interface QWorld {
-  t: number; ph: number; sd: number; wv: number; ps: number; pd: string; im: number;
+  t: number; ph: number; md: number; sd: number; wv: number; ps: number; pd: string; im: number;
   pl: QPlayer[]; en: QEnemy[]; pk: QPickup[]; ev: QEvent[];
   sc: number; sq: number; py: number;
 }
+
+// phase ↔ int: 0 playing, 1 ended, 2 victory
+const phaseToInt = (p: ShooterPhase): number => (p === "ended" ? 1 : p === "victory" ? 2 : 0);
+const intToPhase = (n: number): ShooterPhase => (n === 1 ? "ended" : n === 2 ? "victory" : "playing");
 
 export interface ODelta {
   /** Base tick this delta applies to (client must hold exactly this world). */
@@ -127,7 +131,7 @@ const unqPending = (str: string): EnemyKind[] => [...str].map((c) => ENEMY_KINDS
 
 export function qWorld(w: ShooterWorld): QWorld {
   return {
-    t: w.tick, ph: w.phase === "ended" ? 1 : 0, sd: w.seed, wv: w.wave, ps: w.partySize,
+    t: w.tick, ph: phaseToInt(w.phase), md: w.mode === "campaign" ? 1 : 0, sd: w.seed, wv: w.wave, ps: w.partySize,
     pd: qPending(w.pending), im: cs(w.intermission),
     pl: Object.keys(w.players).sort().map((id) => qPlayer(w.players[id]!)),
     en: w.enemies.map(qEnemy), pk: w.pickups.map(qPickup), ev: w.events.map(qEvent),
@@ -139,7 +143,7 @@ export function unqWorld(q: QWorld): ShooterWorld {
   const players: Record<PlayerId, ShooterPlayer> = {};
   for (const p of q.pl) players[p.i] = unqPlayer(p);
   return {
-    tick: q.t, phase: (q.ph === 1 ? "ended" : "playing") as ShooterPhase, seed: q.sd,
+    tick: q.t, phase: intToPhase(q.ph), mode: q.md === 1 ? "campaign" : "survival", seed: q.sd,
     wave: q.wv, partySize: q.ps, pending: unqPending(q.pd), intermission: s(q.im),
     players, enemies: q.en.map(unqEnemy), pickups: q.pk.map(unqPickup), events: q.ev.map(unqEvent),
     score: q.sc, spawnSeq: q.sq, pity: q.py,
@@ -202,7 +206,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
   const capped = events.length > MAX_EVENTS ? events.slice(events.length - MAX_EVENTS) : events;
 
   return {
-    tick: d.t, phase: d.ph === 1 ? "ended" : "playing", seed: prev.seed,
+    tick: d.t, phase: intToPhase(d.ph), mode: prev.mode, seed: prev.seed,
     wave: d.s[0], partySize: d.s[1], intermission: s(d.s[2]),
     pending:
       d.pdo !== undefined ? prev.pending.slice(d.pdo) : d.pd !== undefined ? unqPending(d.pd) : prev.pending,

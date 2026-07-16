@@ -45,6 +45,9 @@ const FRESH_HUD: OverrunHudState = {
   reserve: null,
   reloadFraction: 0,
   wave: 0,
+  mode: "survival",
+  stage: 1,
+  stagesTotal: 3,
   intermission: 0,
   score: 0,
   xp: 0,
@@ -330,10 +333,11 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
   // Host advances to the real match once the intro comic finishes (or is skipped).
   const onIntroDone = () => {
     const session = sessionRef.current;
-    if (session?.getState().isHost) session.start();
+    if (session?.getState().isHost) session.start("campaign");
   };
   const playAgain = () => {
-    if (sessionState?.isHost) sessionRef.current?.start();
+    // Rematch keeps the mode of the run that just ended (finalWorld carries it).
+    if (sessionState?.isHost) sessionRef.current?.start(finalWorld?.mode ?? "survival");
   };
   const backToLobby = () => {
     sessionRef.current?.toLobby();
@@ -421,8 +425,13 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
               <TeamStrip teammates={hud.teammates} />
             </div>
 
-            {/* top-right: wave + score */}
+            {/* top-right: stage (campaign) + wave + score */}
             <div style={{ position: "absolute", right: 12, top: 12, textAlign: "right" }}>
+              {hud.mode === "campaign" && (
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#f87171", fontFamily: "monospace", letterSpacing: 1 }}>
+                  STAGE {hud.stage}/{hud.stagesTotal}
+                </div>
+              )}
               <div style={{ fontSize: 13, fontWeight: 800, color: "#f8fafc", fontFamily: "monospace" }}>
                 {hud.intermission > 0 ? `NEXT WAVE IN ${Math.ceil(hud.intermission)}` : `WAVE ${hud.wave}`}
               </div>
@@ -465,10 +474,19 @@ export default function Overrun({ assetManifestUrl = "" }: OverrunProps = {}) {
           {hud.countdown > 0 && <OverrunCountdown n={hud.countdown} />}
 
           {/* Final scorecard: per-player stats + merch link. Stays connected. */}
-          {phase === "ended" && finalWorld && (
+          {(phase === "ended" || phase === "victory") && finalWorld && (
             <Overlay>
-              <h2 className="text-3xl font-bold">WAVE {finalWorld.wave}</h2>
-              <p className="text-lg">Party score: {finalWorld.score}</p>
+              {phase === "victory" ? (
+                <>
+                  <h2 className="neon text-3xl font-bold text-emerald-400">★ CAMPAIGN CLEARED ★</h2>
+                  <p className="text-lg">Party score: {finalWorld.score}</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-3xl font-bold">WAVE {finalWorld.wave}</h2>
+                  <p className="text-lg">Party score: {finalWorld.score}</p>
+                </>
+              )}
               <table className="mt-1 border-separate border-spacing-x-4 text-sm text-neutral-200">
                 <thead className="text-xs uppercase tracking-wide text-neutral-400">
                   <tr>

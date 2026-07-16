@@ -13,12 +13,15 @@ import {
   EVENT_TTL_TICKS, INTERMISSION_S, MAX_ENEMIES, MAX_EVENTS, OVERRUN_FIELD_M,
   PLAYER_RADIUS_M, PLAYER_SPEED_MS, REVIVE_HEALTH, REVIVE_RANGE_M, REVIVE_S,
   MEDKIT_HEAL, SPAWNS_PER_TICK, SWAP_GUARD_S, WAVE1_SPEED_MULT,
+  ENEMY_SEPARATION_M, ENEMY_LEAD_TICKS, ENEMY_LEAD_MAX_M, ENEMY_ATTACK_FREEZE_S,
+  ENEMY_CONTACT_SLACK_M,
 } from "./constants";
 import { ENEMIES, nearestAlive, stepEnemy } from "./enemies";
 import { fireTick, tickAmmo, tryStartReload } from "./firing";
 import { effectiveStats, rollOffer, xpToNext } from "./perks";
 import { rollDrop } from "./drops";
 import { composeWave, spawnPos } from "./waves";
+import { CAMPAIGN_WAVES } from "./stages";
 import { freshAmmo, GUNS } from "./weapons";
 import type { Enemy, Pickup, PlayerId, ShooterEvent, ShooterIntent, ShooterPhase, ShooterPlayer, ShooterWorld } from "./types";
 
@@ -29,10 +32,11 @@ export function stepShooter(
   intents: Record<PlayerId, ShooterIntent>,
   dt: number,
 ): ShooterWorld {
-  if (world.phase === "ended") return world; // 1. frozen for the scoreboard
+  if (world.phase === "ended" || world.phase === "victory") return world; // 1. frozen for the scoreboard
 
   const tick = world.tick + 1;
   const seed = world.seed;
+  const mode = world.mode;
   const ids = Object.keys(world.players).sort();
   const events: ShooterEvent[] = world.events.filter((e) => e.tick > tick - EVENT_TTL_TICKS); // 2.
   const players: Record<PlayerId, ShooterPlayer> = { ...world.players };
@@ -114,20 +118,61 @@ export function stepShooter(
     players[id] = p;
   }
 
-  // 6. enemies: chase + contact damage
+  // 6. enemies: chase (with separation + intercept lead) + contact damage
   const aliveSorted = () => ids.map((i) => players[i]!).filter((p) => p.status === "alive");
   // Snapshot who's alive BEFORE contact resolves: a teammate downed by an enemy
   // this same tick still counts as having helped revive (actions within a tick
   // are conceptually simultaneous — see the "revive-before-wipe, same tick" case).
   const preCombatAliveIds = new Set(aliveSorted().map((p) => p.id));
   const speedMult = wave === 1 ? WAVE1_SPEED_MULT : 1;
+  // Per-player velocity this tick (players already moved in step 5) — enemies lead it to intercept.
+  const playerVel: Record<PlayerId, { x: number; y: number }> = {};
+  for (const id of ids) {
+    playerVel[id] = { x: players[id]!.pos.x - world.players[id]!.pos.x, y: players[id]!.pos.y - world.players[id]!.pos.y };
+  }
+  // Separation reads every enemy's position from THIS frame's input (crowd), so the push is
+  // order-independent and deterministic regardless of map iteration order.
+  const crowd = enemies;
   enemies = enemies.map((e) => {
     const target = nearestAlive(e.pos, aliveSorted());
-    let stepped = stepEnemy(e, target ? target.pos : null, dt, speedMult);
+
+    // Intercept: aim where the target is heading, not where it is (capped so strafing can't fling it).
+    let aimPos: { x: number; y: number } | null = null;
+    if (target) {
+      const v = playerVel[target.id] ?? { x: 0, y: 0 };
+      let leadX = v.x * ENEMY_LEAD_TICKS;
+      let leadY = v.y * ENEMY_LEAD_TICKS;
+      const leadLen = Math.hypot(leadX, leadY);
+      if (leadLen > ENEMY_LEAD_MAX_M) {
+        leadX = (leadX / leadLen) * ENEMY_LEAD_MAX_M;
+        leadY = (leadY / leadLen) * ENEMY_LEAD_MAX_M;
+      }
+      aimPos = { x: target.pos.x + leadX, y: target.pos.y + leadY };
+    }
+
+    // Separation: sum of inverse-distance pushes away from nearby enemies, capped to a unit vector.
+    let sepX = 0;
+    let sepY = 0;
+    for (const o of crowd) {
+      if (o.id === e.id) continue;
+      const ox = e.pos.x - o.pos.x;
+      const oy = e.pos.y - o.pos.y;
+      const d = Math.hypot(ox, oy);
+      if (d > 1e-6 && d < ENEMY_SEPARATION_M) {
+        const push = (1 - d / ENEMY_SEPARATION_M) / d;
+        sepX += ox * push;
+        sepY += oy * push;
+      }
+    }
+    const sepLen = Math.hypot(sepX, sepY);
+    const separation = sepLen > 1 ? { x: sepX / sepLen, y: sepY / sepLen } : { x: sepX, y: sepY };
+
+    let stepped = stepEnemy(e, aimPos, dt, speedMult, separation);
     if (target) {
       const def = ENEMIES[e.kind];
+      // Contact damage keys off the REAL target position (the lead point is only for movement).
       const d = Math.hypot(target.pos.x - stepped.pos.x, target.pos.y - stepped.pos.y);
-      if (d <= def.radius + PLAYER_RADIUS_M + 1e-6 && stepped.attackCooldown === 0 && stepped.stunRemaining <= 0) {
+      if (d <= def.radius + PLAYER_RADIUS_M + ENEMY_CONTACT_SLACK_M && stepped.attackCooldown === 0 && stepped.stunRemaining <= 0) {
         const t = players[target.id]!;
         const health = Math.max(0, t.health - def.damage);
         players[target.id] =
@@ -136,7 +181,8 @@ export function stepShooter(
             : { ...t, health };
         if (health === 0) events.push({ tick, kind: "downed", playerId: t.id });
         else events.push({ tick, kind: "playerHit", playerId: t.id });
-        stepped = { ...stepped, attackCooldown: def.attackInterval };
+        // Freeze briefly after attacking so the player gets a beat to peel away.
+        stepped = { ...stepped, attackCooldown: def.attackInterval, stunRemaining: Math.max(stepped.stunRemaining, ENEMY_ATTACK_FREEZE_S) };
       }
     }
     return stepped;
@@ -222,9 +268,14 @@ export function stepShooter(
     } else if (intermission > 0) {
       intermission = Math.max(0, intermission - dt);
       if (intermission === 0) {
-        wave += 1;
-        partySize = partyCount();
-        pending = composeWave(seed, wave, partySize);
+        if (mode === "campaign" && wave >= CAMPAIGN_WAVES) {
+          // Final stage's last wave cleared — the campaign is won. Survival never hits this.
+          phase = "victory";
+        } else {
+          wave += 1;
+          partySize = partyCount();
+          pending = composeWave(seed, wave, partySize);
+        }
       }
     }
     if (pending.length > 0) {
@@ -245,7 +296,7 @@ export function stepShooter(
   const cappedEvents = events.length > MAX_EVENTS ? events.slice(events.length - MAX_EVENTS) : events;
 
   return {
-    tick, phase, seed, wave, partySize, pending, intermission,
+    tick, phase, mode, seed, wave, partySize, pending, intermission,
     players, enemies, pickups, events: cappedEvents, score, spawnSeq, pity,
   };
 }

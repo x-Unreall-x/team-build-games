@@ -88,14 +88,17 @@ export function fireTick(
       const hitEnemy = out[h.idx]!;
       hitEnemy.health -= def.damage * eff.damageMult;
       landed = true;
-      hitEnemy.stunRemaining = ENEMY_HIT_STUN_S;
+      const kindDef = ENEMIES[hitEnemy.kind];
+      // Heavy units (tank) shrug off bullets: no stun, no knockback — they keep advancing.
+      if (kindDef.stagger) hitEnemy.stunRemaining = ENEMY_HIT_STUN_S;
       if (!knockedBack.has(hitEnemy.id)) {
         knockedBack.add(hitEnemy.id);
-        const kindDef = ENEMIES[hitEnemy.kind];
-        hitEnemy.pos = {
-          x: clamp(hitEnemy.pos.x + dir.x * ENEMY_HIT_KNOCKBACK_M, kindDef.radius, OVERRUN_FIELD_M - kindDef.radius),
-          y: clamp(hitEnemy.pos.y + dir.y * ENEMY_HIT_KNOCKBACK_M, kindDef.radius, OVERRUN_FIELD_M - kindDef.radius),
-        };
+        if (kindDef.stagger) {
+          hitEnemy.pos = {
+            x: clamp(hitEnemy.pos.x + dir.x * ENEMY_HIT_KNOCKBACK_M, kindDef.radius, OVERRUN_FIELD_M - kindDef.radius),
+            y: clamp(hitEnemy.pos.y + dir.y * ENEMY_HIT_KNOCKBACK_M, kindDef.radius, OVERRUN_FIELD_M - kindDef.radius),
+          };
+        }
         events.push({ tick, kind: "hit", pos: { x: hitEnemy.pos.x, y: hitEnemy.pos.y } });
       }
     }

@@ -3,7 +3,7 @@
  * hit hard. AI is chase-nearest-alive with lowest-id tie-breaks (deterministic).
  */
 
-import { OVERRUN_FIELD_M, PLAYER_RADIUS_M } from "./constants";
+import { ENEMY_SEPARATION_WEIGHT, OVERRUN_FIELD_M, PLAYER_RADIUS_M } from "./constants";
 import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
 export interface EnemyDef {
@@ -25,11 +25,13 @@ export interface EnemyDef {
   scoreValue: number;
   /** First wave this kind may appear on. */
   minWave: number;
+  /** Bullet hits stun + knock this kind back. Heavy units (tank) shrug it off — no stagger. */
+  stagger: boolean;
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  rusher: { kind: "rusher", radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 },
-  tank: { kind: "tank", radius: 0.9, hitRadius: 13 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 },
+  rusher: { kind: "rusher", radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1, stagger: true },
+  tank: { kind: "tank", radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3, stagger: false },
 };
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */
@@ -55,30 +57,44 @@ export function nearestAlive(pos: Vec2, players: ShooterPlayer[]): ShooterPlayer
  * stunned (stunRemaining > 0 at the START of this tick) the enemy does not move at all — but
  * cooldowns still tick, so a stun-locked enemy isn't also attack-locked past its own timer.
  */
-export function stepEnemy(e: Enemy, target: Vec2 | null, dt: number, speedMult = 1): Enemy {
+export function stepEnemy(
+  e: Enemy,
+  target: Vec2 | null,
+  dt: number,
+  speedMult = 1,
+  separation: Vec2 = { x: 0, y: 0 },
+): Enemy {
   const def = ENEMIES[e.kind];
   const cooled = Math.max(0, e.attackCooldown - dt);
   const stunRemaining = Math.max(0, e.stunRemaining - dt);
+  // stunRemaining also carries the post-attack freeze — a frozen enemy holds position.
   if (e.stunRemaining > 0) return { ...e, attackCooldown: cooled, stunRemaining };
-  if (!target) return { ...e, attackCooldown: cooled, stunRemaining };
-  const dx = target.x - e.pos.x;
-  const dy = target.y - e.pos.y;
-  const dist = Math.hypot(dx, dy);
-  const contact = def.radius + PLAYER_RADIUS_M;
 
-  if (dist < 1e-9) return { ...e, attackCooldown: cooled, stunRemaining };
-
-  // Adjust distance to reach contact range (positive = too close, negative = too far)
-  const desiredMove = contact - dist;
   const maxMove = def.speed * speedMult * dt;
-  const clampedMove = Math.max(-maxMove, Math.min(maxMove, desiredMove));
+  let moveX = 0;
+  let moveY = 0;
 
-  const dirX = dx / dist;
-  const dirY = dy / dist;
+  // Chase: ease to contact range with the target (positive desiredMove = too close → back off).
+  if (target) {
+    const dx = target.x - e.pos.x;
+    const dy = target.y - e.pos.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist >= 1e-9) {
+      const contact = def.radius + PLAYER_RADIUS_M;
+      const desiredMove = contact - dist;
+      const clampedMove = Math.max(-maxMove, Math.min(maxMove, desiredMove));
+      moveX = -(dx / dist) * clampedMove;
+      moveY = -(dy / dist) * clampedMove;
+    }
+  }
+
+  // Separation: push out of the crowd so the horde spreads around the player instead of stacking.
+  moveX += separation.x * maxMove * ENEMY_SEPARATION_WEIGHT;
+  moveY += separation.y * maxMove * ENEMY_SEPARATION_WEIGHT;
 
   const pos = {
-    x: clamp(e.pos.x - dirX * clampedMove, def.radius, OVERRUN_FIELD_M - def.radius),
-    y: clamp(e.pos.y - dirY * clampedMove, def.radius, OVERRUN_FIELD_M - def.radius),
+    x: clamp(e.pos.x + moveX, def.radius, OVERRUN_FIELD_M - def.radius),
+    y: clamp(e.pos.y + moveY, def.radius, OVERRUN_FIELD_M - def.radius),
   };
   return { ...e, pos, attackCooldown: cooled, stunRemaining };
 }

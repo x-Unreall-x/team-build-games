@@ -28,9 +28,9 @@ import { initialShooterMemory, inputToShooterIntent } from "../intent";
 import { createShooterWorld } from "../match";
 import { overrunSyncAdapter } from "./adapter";
 import { lerpWorlds } from "./interp";
-import type { RawShooterInput, ShooterIntent, ShooterWorld } from "../types";
+import type { OverrunMode, RawShooterInput, ShooterIntent, ShooterWorld } from "../types";
 
-export type OverrunPhase = "lobby" | "countdown" | "playing" | "ended";
+export type OverrunPhase = "lobby" | "countdown" | "playing" | "ended" | "victory";
 
 export interface OverrunSessionOptions {
   transport: Transport;
@@ -144,15 +144,15 @@ export class OverrunSession {
   }
 
   /** Host-only: start the run for the current roster with a freshly minted seed. */
-  start(): void {
+  start(mode: OverrunMode = "survival"): void {
     if (this.hostId() !== this.localId) return;
     const players = rosterList(this.roster).map((p) => ({ id: p.id, name: p.name }));
     if (players.length < 1) return;
     if (players.length > MAX_OVERRUN_PLAYERS) return;
     const seed = Math.floor(Math.random() * 0x7fffffff);
     const countdownMs = OVERRUN_COUNTDOWN_S * 1000;
-    this.t.send(encode({ t: "oStart", countdownMs, seed, players }));
-    this.beginMatch(players, seed, countdownMs);
+    this.t.send(encode({ t: "oStart", countdownMs, seed, mode, players }));
+    this.beginMatch(players, seed, countdownMs, mode);
   }
 
   /** HUD click path for a perk choice (keyboard 1/2/3 flows through RawShooterInput). */
@@ -210,7 +210,7 @@ export class OverrunSession {
       return { world: this.initialWorld ?? createShooterWorld([this.localId], 0), countdown: Math.ceil(this.countdownLeft) };
     }
 
-    if ((this.phase === "playing" || this.phase === "ended") && this.engine) {
+    if ((this.phase === "playing" || this.phase === "ended" || this.phase === "victory") && this.engine) {
       this.acc = Math.min(this.acc + dt, MAX_CATCHUP_TICKS * SHOOTER_DT);
       while (this.acc >= SHOOTER_DT) {
         this.engine.tick(SHOOTER_DT);
@@ -225,8 +225,8 @@ export class OverrunSession {
       } else {
         this.sinceLatest += dt;
       }
-      if (w.phase === "ended" && this.phase === "playing") {
-        this.phase = "ended";
+      if ((w.phase === "ended" || w.phase === "victory") && this.phase === "playing") {
+        this.phase = w.phase;
         this.opts.onChange();
       }
       const render = this.engine.isHost
@@ -293,7 +293,7 @@ export class OverrunSession {
           this.opts.onChange();
           break;
         case "oStart":
-          this.beginMatch(om.players, om.seed, om.countdownMs);
+          this.beginMatch(om.players, om.seed, om.countdownMs, om.mode ?? "survival");
           break;
         default:
           break; // oInput/oSnap/oDelta are consumed by the SyncEngine's own handler
@@ -323,13 +323,13 @@ export class OverrunSession {
     }
   }
 
-  private beginMatch(players: { id: PlayerId; name: string }[], seed: number, countdownMs: number): void {
+  private beginMatch(players: { id: PlayerId; name: string }[], seed: number, countdownMs: number, mode: OverrunMode = "survival"): void {
     this.starting = false; // the coin-insert animation ends as the match world builds
     this.introPlaying = false; // and so does the campaign intro comic
     // colorIndex is DERIVED, never carried on the wire: it's each player's position
     // in this host-ordered array (host built it via rosterList — sorted by id).
     this.meta = Object.fromEntries(players.map((p, i) => [p.id, { name: p.name, colorIndex: i }]));
-    this.initialWorld = createShooterWorld(players.map((p) => p.id), seed);
+    this.initialWorld = createShooterWorld(players.map((p) => p.id), seed, mode);
     this.mem = initialShooterMemory();
     this.acc = 0;
     this.prevSnap = null;

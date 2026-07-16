@@ -27,7 +27,7 @@ export interface GunDef {
 export const GUNS: Record<GunId, GunDef> = {
   pistol: { id: "pistol", name: "Pistol", damage: 12, rpm: 300, magSize: 12, reserveMax: null, reloadS: 1.2, spreadDeg: 2, pellets: 1, range: 20, pierce: 0 },
   shotgun: { id: "shotgun", name: "Shotgun", damage: 8, rpm: 70, magSize: 6, reserveMax: 36, reloadS: 1.0, spreadDeg: 9, pellets: 8, range: 12, pierce: 0 },
-  rifle: { id: "rifle", name: "Rifle", damage: 34, rpm: 220, magSize: 10, reserveMax: 60, reloadS: 1.6, spreadDeg: 1, pellets: 1, range: 40, pierce: 1 },
+  rifle: { id: "rifle", name: "Rifle", damage: 34, rpm: 220, magSize: 10, reserveMax: 60, reloadS: 1.6, spreadDeg: 1, pellets: 1, range: 40, pierce: 0 },
 };
 
 export const GUN_IDS: GunId[] = ["pistol", "shotgun", "rifle"];

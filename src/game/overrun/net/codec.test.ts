@@ -19,6 +19,21 @@ describe("digit-string wire encoding guard", () => {
 const IDLE: ShooterIntent = { move: { up: false, down: false, left: false, right: false }, fire: false, reload: false, perkPick: null };
 const idle = (w: ShooterWorld) => Object.fromEntries(Object.keys(w.players).map((id) => [id, IDLE]));
 
+describe("campaign mode + victory phase round-trip", () => {
+  it("preserves mode and the victory phase through the quantized codec", () => {
+    const w: ShooterWorld = { ...createShooterWorld(["a", "b"], 7, "campaign"), phase: "victory" };
+    const r = unqWorld(qWorld(w));
+    expect(r.mode).toBe("campaign");
+    expect(r.phase).toBe("victory");
+  });
+
+  it("survival + playing is the default round-trip", () => {
+    const r = unqWorld(qWorld(createShooterWorld(["a"], 1)));
+    expect(r.mode).toBe("survival");
+    expect(r.phase).toBe("playing");
+  });
+});
+
 /** A worst-case world: 8 players, full enemy/pickup/event load. */
 function fatWorld(): ShooterWorld {
   let w = createShooterWorld(["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"], 777);

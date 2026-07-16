@@ -10,6 +10,7 @@ import { OVERRUN_FIELD_M, PLAYER_RADIUS_M, REVIVE_S } from "../constants";
 import { ENEMIES } from "../enemies";
 import { GUNS } from "../weapons";
 import { effectiveStats, xpToNext } from "../perks";
+import { TOTAL_STAGES, stageForWave } from "../stages";
 import type {
   EnemyKind, GunId, PickupKind, PlayerId, RawShooterInput, ShooterEvent, ShooterWorld, Vec2,
 } from "../types";
@@ -64,7 +65,16 @@ interface PlayerView {
   gun: Phaser.GameObjects.Image;
   /** White revive-progress ring shown while downed. */
   arc: Phaser.GameObjects.Graphics;
+  /** Screen-space barrel tip, refreshed each frame — where tracers/flash emanate from. */
+  muzzle: { x: number; y: number };
 }
+
+// Held-gun placement (screen px). The grip sits at hand height and leads slightly in the
+// aim direction; the barrel length carries the muzzle out in front so shots leave the gun.
+const HANDS_Y = -15;
+const GUN_LEAD = 3;
+/** Ticks per run-cycle half-step — higher = slower legs (30Hz sim). */
+const RUN_FRAME_TICKS = 9;
 
 interface EnemyView {
   image: Phaser.GameObjects.Image;
@@ -141,9 +151,9 @@ export class OverrunScene extends Phaser.Scene {
     this.renderPickups(world);
     this.emitHud(world, countdown);
 
-    if (world.phase === "ended" && !this.ended) {
+    if ((world.phase === "ended" || world.phase === "victory") && !this.ended) {
       this.ended = true;
-      this.cfg.onEvent({ type: "gameover" });
+      this.cfg.onEvent({ type: world.phase === "victory" ? "go" : "gameover" });
       this.cfg.onEnd(world);
     }
     this.prev = world;
@@ -153,7 +163,8 @@ export class OverrunScene extends Phaser.Scene {
 
   private buildInput(): RawShooterInput {
     const p = this.input.activePointer;
-    const raw: RawShooterInput = { ...this.keyboard.read(), fire: p.isDown };
+    const kbd = this.keyboard.read();
+    const raw: RawShooterInput = { ...kbd, fire: p.isDown || kbd.fire };
     // Mouse aim: angle from the local player to the pointer (un-projecting the 2.5D y-squash).
     const me = this.prev?.players[this.cfg.driver.localId];
     if (me && me.status === "alive") {
@@ -225,11 +236,17 @@ export class OverrunScene extends Phaser.Scene {
   private handleEvent(ev: ShooterEvent, world: ShooterWorld): void {
     const localId = this.cfg.driver.localId;
     switch (ev.kind) {
-      case "shot":
-        this.drawTracer(ev.from, ev.to, ev.gun);
+      case "shot": {
+        // Start the tracer at the firing player's on-screen barrel tip (2.5D: the world
+        // `from` is a ground point, so it can't sit at the chest-height gun).
+        const shooterId = this.nearestPlayerId(ev.from, world);
+        const shooterView = shooterId ? this.views[shooterId] : undefined;
+        const start = shooterView?.muzzle ?? { x: sx(ev.from.x), y: sy(ev.from.y) };
+        this.drawTracer(start, ev.to, ev.gun);
         // SFX only for the local player's own shots (volume sanity in a full squad).
-        if (this.isLocalShot(ev.from, world)) this.cfg.onEvent({ type: "shot", gun: ev.gun });
+        if (shooterId === localId) this.cfg.onEvent({ type: "shot", gun: ev.gun });
         break;
+      }
       case "kill":
         this.cfg.onEvent({ type: "kill" });
         break;
@@ -270,8 +287,8 @@ export class OverrunScene extends Phaser.Scene {
     if (local && prevR === 0 && curR > 0) this.cfg.onEvent({ type: "reload", gun: local.gun });
   }
 
-  /** Shot events carry no playerId — attribute by whichever player is nearest the muzzle. */
-  private isLocalShot(from: Vec2, world: ShooterWorld): boolean {
+  /** Shot events carry no playerId — attribute by whichever player is nearest the world origin. */
+  private nearestPlayerId(from: Vec2, world: ShooterWorld): PlayerId | null {
     let bestId: PlayerId | null = null;
     let bestD = Infinity;
     for (const p of Object.values(world.players)) {
@@ -281,20 +298,20 @@ export class OverrunScene extends Phaser.Scene {
         bestId = p.id;
       }
     }
-    return bestId === this.cfg.driver.localId;
+    return bestId;
   }
 
-  /** One-frame tracer: a fading line from muzzle to impact + a small muzzle flash dot. */
-  private drawTracer(from: Vec2, to: Vec2, gun: GunId): void {
-    const g = this.add.graphics().setDepth(from.y + 0.01);
+  /** One-frame tracer: a fading line from the (screen-space) muzzle to the world impact + a flash dot. */
+  private drawTracer(fromScreen: { x: number; y: number }, to: Vec2, gun: GunId): void {
+    const g = this.add.graphics().setDepth(to.y + 0.01);
     g.setAlpha(0.7);
     g.lineStyle(gun === "rifle" ? 2 : 1.5, TRACER_COLOR[gun], 1);
     g.beginPath();
-    g.moveTo(sx(from.x), sy(from.y));
+    g.moveTo(fromScreen.x, fromScreen.y);
     g.lineTo(sx(to.x), sy(to.y));
     g.strokePath();
     g.fillStyle(0xfff7ed, 1);
-    g.fillCircle(sx(from.x), sy(from.y), 3);
+    g.fillCircle(fromScreen.x, fromScreen.y, 3);
     this.tweens.add({ targets: g, alpha: 0, duration: 80, onComplete: () => g.destroy() });
   }
 
@@ -322,7 +339,7 @@ export class OverrunScene extends Phaser.Scene {
       v.container.setDepth(p.pos.y);
       const previous = this.prev?.players[p.id];
       const moving = !!previous && Math.hypot(previous.pos.x - p.pos.x, previous.pos.y - p.pos.y) > 0.003;
-      const runFrame = (Math.floor(world.tick / 5) + this.cfg.driver.getMeta(p.id).colorIndex) % 2;
+      const runFrame = (Math.floor(world.tick / RUN_FRAME_TICKS) + this.cfg.driver.getMeta(p.id).colorIndex) % 2;
       v.body.setTexture(
         p.status === "downed"
           ? playerTexture("downed")
@@ -330,10 +347,17 @@ export class OverrunScene extends Phaser.Scene {
             ? playerTexture(runFrame === 0 ? "run-a" : "run-b")
             : playerTexture("idle"),
       );
-      v.gun.setRotation(screenAngle(p.aim));
-      v.gun.setTexture(gunTexture(p.gun));
+      // Held gun: pivot at the hands, lead into the aim, flip upright when aiming left,
+      // and stash the barrel tip so tracers start at the muzzle (not the torso).
       const gunView = GUN_VIEW[p.gun];
+      const sa = screenAngle(p.aim);
+      const reach = GUN_LEAD + gunView.width * (1 - gunView.originX);
+      v.gun.setPosition(Math.cos(sa) * GUN_LEAD, HANDS_Y + Math.sin(sa) * GUN_LEAD);
+      v.gun.setRotation(sa);
+      v.gun.setFlipY(Math.cos(p.aim) < 0);
+      v.gun.setTexture(gunTexture(p.gun));
       v.gun.setDisplaySize(gunView.width, gunView.height).setOrigin(gunView.originX, 0.5);
+      v.muzzle = { x: sx(p.pos.x) + Math.cos(sa) * reach, y: sy(p.pos.y) + HANDS_Y + Math.sin(sa) * reach };
 
       if (p.status === "downed") {
         v.body.setDisplaySize(58, 58).setPosition(0, 7);
@@ -426,6 +450,9 @@ export class OverrunScene extends Phaser.Scene {
       reserve: gunDef.reserveMax === null ? null : local.ammo.reserve,
       reloadFraction: Math.max(0, Math.min(1, local.ammo.reloadRemaining / gunDef.reloadS)),
       wave: world.wave,
+      mode: world.mode,
+      stage: stageForWave(world.wave).stage,
+      stagesTotal: TOTAL_STAGES,
       intermission: world.intermission,
       score: world.score,
       xp: local.xp,
@@ -468,7 +495,7 @@ export class OverrunScene extends Phaser.Scene {
       children.push(name);
     }
     const container = this.add.container(0, 0, children);
-    return { container, ring, body, gun, arc };
+    return { container, ring, body, gun, arc, muzzle: { x: 0, y: 0 } };
   }
 
   private makePickupView(id: string, kind: PickupKind): PickupView {

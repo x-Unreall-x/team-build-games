@@ -41,6 +41,22 @@ export const ENEMY_HIT_STUN_S = 0.3;
 /** Meters an enemy is shoved along the pellet's ray on its first damaging pellet per fireTick. */
 export const ENEMY_HIT_KNOCKBACK_M = 0.5;
 
+// --- enemy AI ---
+/** Enemies closer than this push apart — kept near body-overlap distance so the horde declusters
+ *  WITHOUT being held off the player (a wide radius would ring-repel them out of attack range). */
+export const ENEMY_SEPARATION_M = 0.85;
+/** How hard the separation nudge pushes, relative to one tick of movement (gentle: overlap relief). */
+export const ENEMY_SEPARATION_WEIGHT = 0.5;
+/** Enemies aim this many ticks ahead of the target's current velocity, to cut off the player's path. */
+export const ENEMY_LEAD_TICKS = 9;
+/** Cap on how far ahead the intercept lead can reach (m), so fast strafing doesn't fling the aim point. */
+export const ENEMY_LEAD_MAX_M = 4;
+/** Seconds an enemy holds still right after landing an attack, giving the player a beat to escape. */
+export const ENEMY_ATTACK_FREEZE_S = 0.1;
+/** Extra reach on the contact-damage check so the separation jitter can't nudge an enemy just
+ *  out of "touching" range and silently cancel its attack. */
+export const ENEMY_CONTACT_SLACK_M = 0.3;
+
 // --- downed / revive ---
 export const REVIVE_RANGE_M = 2;
 export const REVIVE_S = 3;

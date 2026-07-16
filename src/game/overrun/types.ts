@@ -14,7 +14,9 @@ export type GunId = "pistol" | "shotgun" | "rifle";
 export type EnemyKind = "rusher" | "tank";
 export type PickupKind = "shotgun" | "rifle" | "medkit";
 export type ShooterStatus = "alive" | "downed" | "dead";
-export type ShooterPhase = "playing" | "ended";
+export type ShooterPhase = "playing" | "ended" | "victory";
+/** Campaign = finite staged run (win via `victory`); Survival = endless (ends only on wipe). */
+export type OverrunMode = "campaign" | "survival";
 export type PerkId = "trigger" | "sprint" | "power" | "vitality" | "hands" | "magnet";
 
 export interface AmmoState {
@@ -128,6 +130,8 @@ export interface ShooterInputMemory {
 export interface ShooterWorld {
   tick: number;
   phase: ShooterPhase;
+  /** Campaign (finite, staged) vs survival (endless). Set at match start; constant thereafter. */
+  mode: OverrunMode;
   /** Match seed — rides every keyframe so any peer reproduces all draws. */
   seed: number;
   /** Current wave number (1-based; 0 = not started). */

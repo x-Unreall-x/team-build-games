@@ -42,12 +42,12 @@ describe("fireTick", () => {
     expect(shot.kind === "shot" && shot.to.x).toBeCloseTo(8, 0); // tracer ends at the hit
   });
 
-  it("rifle pierces exactly one extra enemy", () => {
+  it("rifle does not pierce — only the first enemy on the ray is hit", () => {
     const p = player({ gun: "rifle", ammo: freshAmmo("rifle") });
     const r = fireTick(p, [enemy("e1", 8), enemy("e2", 12), enemy("e3", 16)], true, 1, 0, EFF);
-    expect(r.enemies.find((e) => e.id === "e1")!.health).toBe(20 - 34);
-    expect(r.enemies.find((e) => e.id === "e2")!.health).toBe(20 - 34);
-    expect(r.enemies.find((e) => e.id === "e3")!.health).toBe(20); // pierce 1 exhausted
+    expect(r.enemies.find((e) => e.id === "e1")!.health).toBe(20 - 34); // only the nearest
+    expect(r.enemies.find((e) => e.id === "e2")!.health).toBe(20); // pierce 0 — blocked
+    expect(r.enemies.find((e) => e.id === "e3")!.health).toBe(20);
   });
 
   it("shotgun fires 8 pellets with deterministic spread; counts ONE shot", () => {
