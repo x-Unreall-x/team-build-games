@@ -7,6 +7,7 @@ import {
   ENEMY_SEPARATION_WEIGHT, OVERRUN_FIELD_M, PLAYER_RADIUS_M,
   RUSH_CHARGE_S, RUSH_COOLDOWN_S, RUSH_RECOVER_S, RUSH_RUN_MAX_S, RUSH_SPEED_MS,
   SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_KITE_BAND_M, SPITTER_RANGE_M,
+  HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S,
 } from "./constants";
 import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
@@ -41,10 +42,16 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   // Ranged kiter: holds its distance and lobs acid pools (see stepSpitter). Weak contact damage — its
   // threat is the hazard, not the touch. Medium HP so it survives long enough to be a positioning problem.
   spitter: { kind: "spitter", radius: 0.5, hitRadius: 8 / 7, speed: 3, health: 45, damage: 6, attackInterval: 1, xp: 5, cost: 2.5, scoreValue: 25, minWave: 1, stagger: true },
+  // Slow, chases like a rusher but detonates a blast on death (see sim death-blast wiring) — punishes
+  // point-blank kills / clustering. Its damage IS the death AoE, not the touch (small contact chip).
+  exploder: { kind: "exploder", radius: 0.55, hitRadius: 8 / 7, speed: 2.5, health: 60, damage: 8, attackInterval: 0.8, xp: 6, cost: 3, scoreValue: 30, minWave: 1, stagger: true },
+  // Beefy, near-stationary spawner: periodically births swarmling broods (see stepHive). Priority-kill
+  // target — no stagger so it can't be perma-locked, and its threat is the endless brood, not contact.
+  hive: { kind: "hive", radius: 0.8, hitRadius: 10 / 7, speed: 1, health: 160, damage: 5, attackInterval: 1, xp: 12, cost: 5, scoreValue: 60, minWave: 1, stagger: false },
 };
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */
-export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling", "spitter"];
+export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling", "spitter", "exploder", "hive"];
 
 /** Closest living player (input must be sorted by id; ties keep the first = lowest id). */
 export function nearestAlive(pos: Vec2, players: ShooterPlayer[]): ShooterPlayer | null {
@@ -238,4 +245,25 @@ export function stepSpitter(
     y: clamp(e.pos.y + moveY, def.radius, OVERRUN_FIELD_M - def.radius),
   };
   return { enemy: { ...e, pos, attackCooldown: cooled, stunRemaining: stun, special: "none", specialRemaining: Math.max(0, remaining) }, spit: null };
+}
+
+/**
+ * Hive movement + brood timer (deterministic). The hive crawls toward its target via the normal chase
+ * (it's just very slow), while `specialRemaining` counts down its brood interval. When the interval
+ * elapses (and it isn't stunned) it returns `spawn: HIVE_BROOD_SIZE` for the sim to birth a swarmling
+ * brood, and resets the timer. The timer keeps ticking under stun but a stunned hive holds its brood.
+ */
+export function stepHive(
+  e: Enemy,
+  target: Vec2 | null,
+  dt: number,
+  speedMult: number,
+  separation: Vec2,
+): { enemy: Enemy; spawn: number } {
+  const moved = stepEnemy(e, target, dt, speedMult, separation);
+  const remaining = (e.specialRemaining ?? HIVE_SPAWN_INTERVAL_S) - dt;
+  if (e.stunRemaining <= 0 && remaining <= 0) {
+    return { enemy: { ...moved, special: "none", specialRemaining: HIVE_SPAWN_INTERVAL_S }, spawn: HIVE_BROOD_SIZE };
+  }
+  return { enemy: { ...moved, special: "none", specialRemaining: Math.max(0, remaining) }, spawn: 0 };
 }

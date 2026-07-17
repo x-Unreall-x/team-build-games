@@ -11,7 +11,7 @@ export interface InputState { up: boolean; down: boolean; left: boolean; right: 
 export type PlayerId = string;
 
 export type GunId = "pistol" | "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower";
-export type EnemyKind = "rusher" | "tank" | "swarmling" | "spitter";
+export type EnemyKind = "rusher" | "tank" | "swarmling" | "spitter" | "exploder" | "hive";
 export type PickupKind = "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "medkit";
 /** Pickup kinds that are weapons (everything a kill can drop except the medkit). */
 export type DroppableGun = Exclude<PickupKind, "medkit">;
@@ -73,26 +73,35 @@ export interface ShooterPlayer {
  */
 export type EnemySpecial = "none" | "rushCharge" | "rushRun" | "rushRecover" | "spitCharge";
 
-/** A "kind" of ground hazard (append-only — wire index). Spit = spitter's lingering acid pool. */
-export type HazardKind = "spit";
+/**
+ * A "kind" of ground hazard (append-only — wire index). `spit` = spitter's lingering acid pool
+ * (continuous dps); `blast` = exploder's death detonation (one-shot burst on the fuse elapsing).
+ */
+export type HazardKind = "spit" | "blast";
 
 /**
- * A ground-area threat that lives in the world independent of any enemy: it warns (`telegraph`),
- * then deals `dps` to players within `radius` for `duration` seconds, then despawns. The spitter's
- * acid pool is the first user; the stage-5 boss reuses the same lifecycle for its tentacle strikes.
+ * A ground-area threat that lives in the world independent of any enemy. It warns for `telegraph`
+ * seconds, then does damage two ways depending on the kind:
+ *  - POOL (dps > 0): drains `dps`/sec from players inside `radius` for `duration` seconds, then despawns.
+ *  - BURST (burst > 0): on the tick its telegraph elapses, deals `burst` once to players inside `radius`,
+ *    then is spent (it never enters an active-duration phase).
+ * The spitter's acid pool is the first pool; the exploder's death blast is the first burst; the stage-5
+ * boss reuses both shapes for its tentacle strikes.
  */
 export interface Hazard {
-  /** Deterministic `hz:${enemyId}:${tick}` of the spit that created it. */
+  /** Deterministic `hz:${enemyId}:${tick}` of the spit/blast that created it. */
   id: string;
   kind: HazardKind;
   pos: Vec2;
   radius: number;
-  /** Seconds of warning before it deals damage (counts down first; 0 = active). */
+  /** Seconds of warning before it deals damage (counts down first; 0 = active/detonating). */
   telegraph: number;
-  /** Seconds of active damage remaining once the telegraph elapses; despawns at 0. */
+  /** Pool only: seconds of active damage remaining once the telegraph elapses; despawns at 0. */
   duration: number;
-  /** Damage per second dealt to players within `radius` while active. */
+  /** Pool damage per second dealt to players within `radius` while active (0 for bursts). */
   dps: number;
+  /** Burst one-shot damage dealt to players within `radius` when the telegraph elapses (absent for pools). */
+  burst?: number;
 }
 
 export interface Enemy {

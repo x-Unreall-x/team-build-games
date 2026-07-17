@@ -12,14 +12,19 @@ export function hazardActive(h: Hazard): boolean {
 }
 
 /**
- * Advance one hazard by dt. The telegraph burns down FIRST (and any dt overshoot past 0 is dropped, not
- * charged to the active window — so the full damage duration is always honoured); only once active does
- * `duration` burn. Returns null when the active window is spent (caller drops it).
+ * Advance one hazard by dt. The telegraph burns down FIRST (any dt overshoot past 0 is dropped, not
+ * charged to the active window — the full damage window is always honoured). Then it diverges by shape:
+ *  - BURST (burst set): the tick its telegraph reaches 0 it DETONATES (`detonated: true`) and is spent
+ *    (`hazard: null`) — it never enters an active-duration phase; the caller applies `burst` on that tick.
+ *  - POOL (dps): once active, `duration` burns down; returns null when the window is spent.
+ * Returns { hazard: null } when the hazard is gone (spent burst, or drained pool).
  */
-export function stepHazard(h: Hazard, dt: number): Hazard | null {
+export function stepHazard(h: Hazard, dt: number): { hazard: Hazard | null; detonated: boolean } {
   if (h.telegraph > 0) {
-    return { ...h, telegraph: Math.max(0, h.telegraph - dt) };
+    const telegraph = Math.max(0, h.telegraph - dt);
+    if (telegraph <= 0 && h.burst) return { hazard: null, detonated: true };
+    return { hazard: { ...h, telegraph }, detonated: false };
   }
   const duration = h.duration - dt;
-  return duration > 0 ? { ...h, duration } : null;
+  return { hazard: duration > 0 ? { ...h, duration } : null, detonated: false };
 }

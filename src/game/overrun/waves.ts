@@ -46,10 +46,11 @@ function stagePool(stage: number, waveInStage: number): Pool {
   }
   if (stage === 2) return { kinds: ["rusher", "tank"], weights: [3, 1] };
   if (stage === 3) return { kinds: ["rusher", "swarmling", "tank"], weights: [3, 3, 1] };
-  // Stage 4+: the spitter joins the mix (ranged pressure); tanks + spitters weigh heavier as stages climb.
+  // Stage 4+: ranged/AoE pressure ramps in. S4 adds the spitter; S5 the exploder (death AoE); S6 the
+  // hive (spawner) on top — the 10-wave finale fields the whole roster.
   if (stage === 4) return { kinds: ["rusher", "swarmling", "tank", "spitter"], weights: [3, 3, 1, 1] };
-  if (stage === 5) return { kinds: ["rusher", "swarmling", "tank", "spitter"], weights: [3, 3, 2, 1] };
-  return { kinds: ["rusher", "swarmling", "tank", "spitter"], weights: [2, 3, 2, 2] }; // stage 6
+  if (stage === 5) return { kinds: ["rusher", "swarmling", "tank", "spitter", "exploder"], weights: [3, 3, 2, 1, 1] };
+  return { kinds: ["rusher", "swarmling", "tank", "spitter", "exploder", "hive"], weights: [2, 3, 2, 2, 1, 1] }; // stage 6
 }
 
 /** Weighted pick among the pool's AFFORDABLE kinds (cost ≤ points); null when nothing fits. */

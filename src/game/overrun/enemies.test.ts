@@ -1,20 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { ENEMIES, ENEMY_KINDS, nearestAlive, stepEnemy, stepSpitter } from "./enemies";
+import { ENEMIES, ENEMY_KINDS, nearestAlive, stepEnemy, stepHive, stepSpitter } from "./enemies";
 import { createShooterWorld, alivePlayers } from "./match";
-import { SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_RANGE_M } from "./constants";
+import { HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S, SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_RANGE_M } from "./constants";
 import type { Enemy } from "./types";
 
 const enemy = (over: Partial<Enemy> = {}): Enemy => ({ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 20, attackCooldown: 0, stunRemaining: 0, ...over });
 
 describe("enemy defs", () => {
   it("defines rusher (fast/fragile) and tank (slow/beefy) with wave gating", () => {
-    expect(ENEMY_KINDS).toEqual(["rusher", "tank", "swarmling", "spitter"]); // append-only (wire index)
+    expect(ENEMY_KINDS).toEqual(["rusher", "tank", "swarmling", "spitter", "exploder", "hive"]); // append-only (wire index)
     expect(ENEMIES.rusher).toMatchObject({ radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 });
     expect(ENEMIES.tank).toMatchObject({ radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
     expect(ENEMIES.swarmling).toMatchObject({ speed: 6, health: 6, cost: 0.5, minWave: 1 });
     expect(ENEMIES.spitter).toMatchObject({ radius: 0.5, speed: 3, health: 45, cost: 2.5, scoreValue: 25 });
+    expect(ENEMIES.exploder).toMatchObject({ radius: 0.55, speed: 2.5, health: 60, cost: 3, scoreValue: 30 });
+    expect(ENEMIES.hive).toMatchObject({ radius: 0.8, speed: 1, health: 160, cost: 5, scoreValue: 60 });
     expect(ENEMIES.rusher.stagger).toBe(true);
     expect(ENEMIES.tank.stagger).toBe(false);
+    expect(ENEMIES.hive.stagger).toBe(false); // beefy priority target — shrugs off bullet stagger
+  });
+});
+
+describe("stepHive (spawner)", () => {
+  const hive = (over: Partial<Enemy> = {}): Enemy => ({ id: "h0", kind: "hive", pos: { x: 5, y: 5 }, health: 160, attackCooldown: 0, stunRemaining: 0, special: "none", specialRemaining: HIVE_SPAWN_INTERVAL_S, ...over });
+
+  it("crawls toward the target while its brood timer is still counting down", () => {
+    const { enemy, spawn } = stepHive(hive(), { x: 25, y: 5 }, 0.1, 1, { x: 0, y: 0 });
+    expect(enemy.pos.x).toBeGreaterThan(5); // slow chase toward +x
+    expect(spawn).toBe(0);
+    expect(enemy.specialRemaining).toBeCloseTo(HIVE_SPAWN_INTERVAL_S - 0.1, 5);
+  });
+
+  it("births a brood and resets its timer when the interval elapses", () => {
+    const { spawn, enemy } = stepHive(hive({ specialRemaining: 0 }), { x: 25, y: 5 }, 0.1, 1, { x: 0, y: 0 });
+    expect(spawn).toBe(HIVE_BROOD_SIZE);
+    expect(enemy.specialRemaining).toBeCloseTo(HIVE_SPAWN_INTERVAL_S, 5);
+  });
+
+  it("holds its brood while stunned (no spawn under bullet-stun)", () => {
+    const { spawn } = stepHive(hive({ specialRemaining: 0, stunRemaining: 0.2 }), { x: 25, y: 5 }, 0.1, 1, { x: 0, y: 0 });
+    expect(spawn).toBe(0);
   });
 });
 

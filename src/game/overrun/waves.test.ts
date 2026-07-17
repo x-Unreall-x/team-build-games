@@ -95,6 +95,16 @@ describe("composeWave — campaign stage pools", () => {
     }
   });
 
+  it("exploders join from stage 5 and hive from stage 6; neither appears earlier", () => {
+    // Stage 5 wave 1 = global wave 21 (stages 1-4 = 3+5+7+5 = 20 before it); stage 6 wave 1 = global 24.
+    const s5 = new Set([1, 2, 3, 4, 5].flatMap((seed) => composeWave(seed, 21, 8, { campaign: true })));
+    expect(s5.has("exploder")).toBe(true);
+    const s6 = new Set([1, 2, 3, 4, 5].flatMap((seed) => composeWave(seed, 24, 8, { campaign: true })));
+    expect(s6.has("hive")).toBe(true);
+    for (let w = 1; w <= 20; w++) expect(composeWave(7, w, 8, { campaign: true })).not.toContain("exploder");
+    for (let w = 1; w <= 23; w++) expect(composeWave(7, w, 8, { campaign: true })).not.toContain("hive");
+  });
+
   it("survival is unchanged by the campaign flag (tanks gated by minWave, no swarmlings)", () => {
     expect(composeWave(7, 1, 8).every((k) => k === "rusher")).toBe(true); // wave 1 < tank.minWave
     expect(composeWave(7, 5, 8).every((k) => k === "rusher" || k === "tank")).toBe(true);
