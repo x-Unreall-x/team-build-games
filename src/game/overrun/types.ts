@@ -122,6 +122,12 @@ export interface Enemy {
   rushTo?: Vec2 | null;
   /** Seconds of remaining flamethrower burn (damage-over-time). Absent/0 = not on fire. */
   burning?: number;
+  /**
+   * Campaign elite (frenzied rusher / armored tank): decided by a deterministic hash at spawn. Buffs
+   * this enemy's HP/speed/damage per `eliteMods(kind)`. Absent = a normal spawn. Optional so old
+   * snapshots and non-elite enemies need not carry it.
+   */
+  elite?: boolean;
 }
 
 export interface Pickup {

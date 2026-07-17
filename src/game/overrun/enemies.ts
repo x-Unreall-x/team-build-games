@@ -7,7 +7,7 @@ import {
   ENEMY_SEPARATION_WEIGHT, OVERRUN_FIELD_M, PLAYER_RADIUS_M,
   RUSH_CHARGE_S, RUSH_COOLDOWN_S, RUSH_RECOVER_S, RUSH_RUN_MAX_S, RUSH_SPEED_MS,
   SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_KITE_BAND_M, SPITTER_RANGE_M,
-  HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S,
+  HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S, STAGE_HEALTH_SCALAR,
 } from "./constants";
 import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
@@ -52,6 +52,23 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */
 export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling", "spitter", "exploder", "hive"];
+
+/** Per-enemy stat multipliers when a spawn rolls elite (campaign only). */
+export interface EliteMods { healthMult: number; speedMult: number; damageMult: number; }
+
+/**
+ * Elite buff by kind. The tank goes ARMORED (a wall of HP + a harder hit, same lumber speed); everything
+ * else (the rusher in practice — elites are gated to rusher/tank at spawn) goes FRENZIED (fast + tougher).
+ */
+export function eliteMods(kind: EnemyKind): EliteMods {
+  if (kind === "tank") return { healthMult: 2, speedMult: 1, damageMult: 1.4 };
+  return { healthMult: 1.3, speedMult: 1.6, damageMult: 1.25 };
+}
+
+/** Campaign per-stage max-HP multiplier — stage 1 is the baseline (1×), climbing STAGE_HEALTH_SCALAR/stage. */
+export function stageHealthMult(stage: number): number {
+  return 1 + (Math.max(1, stage) - 1) * STAGE_HEALTH_SCALAR;
+}
 
 /** Closest living player (input must be sorted by id; ties keep the first = lowest id). */
 export function nearestAlive(pos: Vec2, players: ShooterPlayer[]): ShooterPlayer | null {

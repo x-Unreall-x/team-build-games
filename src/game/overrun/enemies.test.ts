@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENEMIES, ENEMY_KINDS, nearestAlive, stepEnemy, stepHive, stepSpitter } from "./enemies";
+import { ENEMIES, ENEMY_KINDS, eliteMods, nearestAlive, stageHealthMult, stepEnemy, stepHive, stepSpitter } from "./enemies";
 import { createShooterWorld, alivePlayers } from "./match";
 import { HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S, SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_RANGE_M } from "./constants";
 import type { Enemy } from "./types";
@@ -18,6 +18,21 @@ describe("enemy defs", () => {
     expect(ENEMIES.rusher.stagger).toBe(true);
     expect(ENEMIES.tank.stagger).toBe(false);
     expect(ENEMIES.hive.stagger).toBe(false); // beefy priority target — shrugs off bullet stagger
+  });
+});
+
+describe("elite mods + per-stage scaling", () => {
+  it("makes rushers FRENZIED (faster) and tanks ARMORED (much beefier)", () => {
+    expect(eliteMods("rusher").speedMult).toBeGreaterThan(1); // frenzied = fast
+    expect(eliteMods("rusher").healthMult).toBeGreaterThan(1);
+    expect(eliteMods("tank").healthMult).toBeGreaterThanOrEqual(2); // armored = wall of HP
+    expect(eliteMods("tank").damageMult).toBeGreaterThan(1);
+  });
+
+  it("scales enemy HP up per campaign stage (stage 1 = baseline)", () => {
+    expect(stageHealthMult(1)).toBe(1);
+    expect(stageHealthMult(6)).toBeGreaterThan(stageHealthMult(3));
+    expect(stageHealthMult(3)).toBeGreaterThan(1);
   });
 });
 
