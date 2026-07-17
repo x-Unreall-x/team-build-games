@@ -45,7 +45,11 @@ function stagePool(stage: number, waveInStage: number): Pool {
     return waveInStage < 3 ? { kinds: ["rusher"], weights: [1] } : { kinds: ["rusher", "tank"], weights: [3, 1] };
   }
   if (stage === 2) return { kinds: ["rusher", "tank"], weights: [3, 1] };
-  return { kinds: ["rusher", "swarmling", "tank"], weights: [3, 3, 1] };
+  if (stage === 3) return { kinds: ["rusher", "swarmling", "tank"], weights: [3, 3, 1] };
+  // Stage 4+: the spitter joins the mix (ranged pressure); tanks + spitters weigh heavier as stages climb.
+  if (stage === 4) return { kinds: ["rusher", "swarmling", "tank", "spitter"], weights: [3, 3, 1, 1] };
+  if (stage === 5) return { kinds: ["rusher", "swarmling", "tank", "spitter"], weights: [3, 3, 2, 1] };
+  return { kinds: ["rusher", "swarmling", "tank", "spitter"], weights: [2, 3, 2, 2] }; // stage 6
 }
 
 /** Weighted pick among the pool's AFFORDABLE kinds (cost ≤ points); null when nothing fits. */

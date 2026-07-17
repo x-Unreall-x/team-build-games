@@ -6,6 +6,7 @@
 import {
   ENEMY_SEPARATION_WEIGHT, OVERRUN_FIELD_M, PLAYER_RADIUS_M,
   RUSH_CHARGE_S, RUSH_COOLDOWN_S, RUSH_RECOVER_S, RUSH_RUN_MAX_S, RUSH_SPEED_MS,
+  SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_KITE_BAND_M, SPITTER_RANGE_M,
 } from "./constants";
 import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
 
@@ -37,10 +38,13 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   tank: { kind: "tank", radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3, stagger: false },
   // Tiny, fastest, one-shot HP → cheap hordes (fractional cost; the compose loop spends on `points > 0`).
   swarmling: { kind: "swarmling", radius: 0.28, hitRadius: 6 / 7, speed: 6, health: 6, damage: 3, attackInterval: 0.4, xp: 1, cost: 0.5, scoreValue: 5, minWave: 1, stagger: true },
+  // Ranged kiter: holds its distance and lobs acid pools (see stepSpitter). Weak contact damage — its
+  // threat is the hazard, not the touch. Medium HP so it survives long enough to be a positioning problem.
+  spitter: { kind: "spitter", radius: 0.5, hitRadius: 8 / 7, speed: 3, health: 45, damage: 6, attackInterval: 1, xp: 5, cost: 2.5, scoreValue: 25, minWave: 1, stagger: true },
 };
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */
-export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling"];
+export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling", "spitter"];
 
 /** Closest living player (input must be sorted by id; ties keep the first = lowest id). */
 export function nearestAlive(pos: Vec2, players: ShooterPlayer[]): ShooterPlayer | null {
@@ -167,4 +171,71 @@ export function stepTank(
   }
   const stepped = stepEnemy(e, aimPos, dt, speedMult, separation);
   return { enemy: { ...stepped, special: "none", specialRemaining: Math.max(0, remaining) }, landed: false };
+}
+
+/**
+ * Spitter state machine + movement (deterministic; no RNG/clock). While `none` the spitter KITES —
+ * easing toward SPITTER_RANGE_M from its target (backs off if too close, closes if too far, holds inside
+ * the hysteresis band) — as its spit cooldown ticks. When the cooldown elapses (and it has a target) it
+ * TELEGRAPHS (`spitCharge`, SPIT_CHARGE_S frozen) and locks the target's current ground position; when
+ * the telegraph ends it EMITS the spit at that fixed point (returned as `spit`) and resets to `none` with
+ * a fresh cooldown. A stun freezes movement but its timers still tick (mirrors the tank).
+ */
+export function stepSpitter(
+  e: Enemy,
+  target: Vec2 | null,
+  dt: number,
+  speedMult: number,
+  separation: Vec2,
+): { enemy: Enemy; spit: Vec2 | null } {
+  const def = ENEMIES.spitter;
+  const cooled = Math.max(0, e.attackCooldown - dt);
+  const stun = Math.max(0, e.stunRemaining - dt);
+  const special = e.special ?? "none";
+  const remaining = (e.specialRemaining ?? SPIT_COOLDOWN_S) - dt;
+
+  // Telegraph: frozen while locking; on completion emit the spit at the locked point and reset.
+  if (special === "spitCharge") {
+    if (remaining > 0) return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, specialRemaining: remaining }, spit: null };
+    const spit = e.rushTo ?? null;
+    return {
+      enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, special: "none", specialRemaining: SPIT_COOLDOWN_S, rushTo: null },
+      spit,
+    };
+  }
+
+  // "none": start a spit when the cooldown elapses (freeze + lock); otherwise kite.
+  if (e.stunRemaining <= 0 && remaining <= 0 && target) {
+    return {
+      enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, special: "spitCharge", specialRemaining: SPIT_CHARGE_S, rushTo: { ...target } },
+      spit: null,
+    };
+  }
+  if (e.stunRemaining > 0) return { enemy: { ...e, attackCooldown: cooled, stunRemaining: stun, specialRemaining: Math.max(0, remaining) }, spit: null };
+
+  // Kite: signed step toward holding SPITTER_RANGE_M — retreat inside the band's near edge, advance past
+  // the far edge, hold within. Separation still applies so spitters don't stack.
+  const maxMove = def.speed * speedMult * dt;
+  let moveX = 0;
+  let moveY = 0;
+  if (target) {
+    const dx = target.x - e.pos.x;
+    const dy = target.y - e.pos.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist >= 1e-9) {
+      const half = SPITTER_KITE_BAND_M / 2;
+      let desired = 0; // + = advance toward target, - = retreat
+      if (dist > SPITTER_RANGE_M + half) desired = Math.min(maxMove, dist - (SPITTER_RANGE_M + half));
+      else if (dist < SPITTER_RANGE_M - half) desired = -Math.min(maxMove, (SPITTER_RANGE_M - half) - dist);
+      moveX = (dx / dist) * desired;
+      moveY = (dy / dist) * desired;
+    }
+  }
+  moveX += separation.x * maxMove * ENEMY_SEPARATION_WEIGHT;
+  moveY += separation.y * maxMove * ENEMY_SEPARATION_WEIGHT;
+  const pos = {
+    x: clamp(e.pos.x + moveX, def.radius, OVERRUN_FIELD_M - def.radius),
+    y: clamp(e.pos.y + moveY, def.radius, OVERRUN_FIELD_M - def.radius),
+  };
+  return { enemy: { ...e, pos, attackCooldown: cooled, stunRemaining: stun, special: "none", specialRemaining: Math.max(0, remaining) }, spit: null };
 }

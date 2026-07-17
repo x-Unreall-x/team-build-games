@@ -1,18 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { ENEMIES, ENEMY_KINDS, nearestAlive, stepEnemy } from "./enemies";
+import { ENEMIES, ENEMY_KINDS, nearestAlive, stepEnemy, stepSpitter } from "./enemies";
 import { createShooterWorld, alivePlayers } from "./match";
+import { SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_RANGE_M } from "./constants";
 import type { Enemy } from "./types";
 
 const enemy = (over: Partial<Enemy> = {}): Enemy => ({ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 20, attackCooldown: 0, stunRemaining: 0, ...over });
 
 describe("enemy defs", () => {
   it("defines rusher (fast/fragile) and tank (slow/beefy) with wave gating", () => {
-    expect(ENEMY_KINDS).toEqual(["rusher", "tank", "swarmling"]); // append-only (wire index)
+    expect(ENEMY_KINDS).toEqual(["rusher", "tank", "swarmling", "spitter"]); // append-only (wire index)
     expect(ENEMIES.rusher).toMatchObject({ radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 });
     expect(ENEMIES.tank).toMatchObject({ radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
     expect(ENEMIES.swarmling).toMatchObject({ speed: 6, health: 6, cost: 0.5, minWave: 1 });
+    expect(ENEMIES.spitter).toMatchObject({ radius: 0.5, speed: 3, health: 45, cost: 2.5, scoreValue: 25 });
     expect(ENEMIES.rusher.stagger).toBe(true);
     expect(ENEMIES.tank.stagger).toBe(false);
+  });
+});
+
+describe("stepSpitter (ranged kiter)", () => {
+  const spitter = (over: Partial<Enemy> = {}): Enemy => ({ id: "s0", kind: "spitter", pos: { x: 5, y: 5 }, health: 45, attackCooldown: 0, stunRemaining: 0, special: "none", specialRemaining: SPIT_COOLDOWN_S, rushTo: null, ...over });
+
+  it("backs away when the target is closer than its preferred range", () => {
+    const target = { x: 5 + SPITTER_RANGE_M / 2, y: 5 }; // half the range → too close
+    const { enemy, spit } = stepSpitter(spitter(), target, 0.1, 1, { x: 0, y: 0 });
+    expect(enemy.pos.x).toBeLessThan(5); // retreats along -x, away from the target
+    expect(spit).toBe(null);
+  });
+
+  it("closes in when the target is farther than its preferred range", () => {
+    const target = { x: 5 + SPITTER_RANGE_M * 2, y: 5 }; // double the range → too far
+    const { enemy } = stepSpitter(spitter(), target, 0.1, 1, { x: 0, y: 0 });
+    expect(enemy.pos.x).toBeGreaterThan(5); // advances toward the target
+  });
+
+  it("telegraphs a spit (freezes + locks the target) when the cooldown elapses", () => {
+    const target = { x: 13, y: 5 }; // within band of range 8
+    const { enemy, spit } = stepSpitter(spitter({ specialRemaining: 0 }), target, 0.1, 1, { x: 0, y: 0 });
+    expect(enemy.special).toBe("spitCharge");
+    expect(enemy.pos).toEqual({ x: 5, y: 5 }); // frozen while charging
+    expect(enemy.rushTo).toEqual(target); // locked ground position
+    expect(spit).toBe(null); // not fired yet — still telegraphing
+  });
+
+  it("fires the spit at the locked position when the charge ends, then resets to cooldown", () => {
+    const locked = { x: 13, y: 5 };
+    const charging = spitter({ special: "spitCharge", specialRemaining: 0, rushTo: locked });
+    const { enemy, spit } = stepSpitter(charging, { x: 20, y: 20 }, 0.1, 1, { x: 0, y: 0 });
+    expect(spit).toEqual(locked); // emitted at the locked point, NOT the target's new position
+    expect(enemy.special).toBe("none");
+    expect(enemy.specialRemaining).toBeCloseTo(SPIT_COOLDOWN_S, 5);
+    expect(enemy.rushTo).toBe(null);
+  });
+
+  it("stays frozen and only ticks its charge timer mid-telegraph", () => {
+    const charging = spitter({ special: "spitCharge", specialRemaining: SPIT_CHARGE_S, rushTo: { x: 13, y: 5 } });
+    const { enemy, spit } = stepSpitter(charging, { x: 20, y: 20 }, 0.1, 1, { x: 0, y: 0 });
+    expect(enemy.pos).toEqual({ x: 5, y: 5 });
+    expect(enemy.specialRemaining).toBeCloseTo(SPIT_CHARGE_S - 0.1, 5);
+    expect(spit).toBe(null);
   });
 });
 

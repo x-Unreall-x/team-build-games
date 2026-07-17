@@ -86,6 +86,15 @@ describe("composeWave — campaign stage pools", () => {
     }
   });
 
+  it("spitters join from stage 4, and never appear in stages 1-3", () => {
+    // Stage 4 wave 1 = global wave 16 (stages 1-3 = 3+5+7 = 15 waves before it).
+    const s4 = new Set([1, 2, 3, 4, 5].flatMap((seed) => composeWave(seed, 16, 8, { campaign: true })));
+    expect(s4.has("spitter")).toBe(true);
+    for (let w = 1; w <= 15; w++) {
+      expect(composeWave(7, w, 8, { campaign: true })).not.toContain("spitter");
+    }
+  });
+
   it("survival is unchanged by the campaign flag (tanks gated by minWave, no swarmlings)", () => {
     expect(composeWave(7, 1, 8).every((k) => k === "rusher")).toBe(true); // wave 1 < tank.minWave
     expect(composeWave(7, 5, 8).every((k) => k === "rusher" || k === "tank")).toBe(true);

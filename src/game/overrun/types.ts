@@ -11,7 +11,7 @@ export interface InputState { up: boolean; down: boolean; left: boolean; right: 
 export type PlayerId = string;
 
 export type GunId = "pistol" | "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower";
-export type EnemyKind = "rusher" | "tank" | "swarmling";
+export type EnemyKind = "rusher" | "tank" | "swarmling" | "spitter";
 export type PickupKind = "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "medkit";
 /** Pickup kinds that are weapons (everything a kill can drop except the medkit). */
 export type DroppableGun = Exclude<PickupKind, "medkit">;
@@ -66,8 +66,34 @@ export interface ShooterPlayer {
   swapGuard: number;
 }
 
-/** Tank Rush ability state: chase (`none`) → `rushCharge` (telegraph) → `rushRun` (charge) → `rushRecover`. */
-export type EnemySpecial = "none" | "rushCharge" | "rushRun" | "rushRecover";
+/**
+ * Enemy ability state machine (append-only — the wire encodes this by index).
+ * Tank Rush: chase (`none`) → `rushCharge` (telegraph) → `rushRun` (charge) → `rushRecover`.
+ * Spitter: kite (`none`) → `spitCharge` (telegraph + lock, then emits a spit hazard back to `none`).
+ */
+export type EnemySpecial = "none" | "rushCharge" | "rushRun" | "rushRecover" | "spitCharge";
+
+/** A "kind" of ground hazard (append-only — wire index). Spit = spitter's lingering acid pool. */
+export type HazardKind = "spit";
+
+/**
+ * A ground-area threat that lives in the world independent of any enemy: it warns (`telegraph`),
+ * then deals `dps` to players within `radius` for `duration` seconds, then despawns. The spitter's
+ * acid pool is the first user; the stage-5 boss reuses the same lifecycle for its tentacle strikes.
+ */
+export interface Hazard {
+  /** Deterministic `hz:${enemyId}:${tick}` of the spit that created it. */
+  id: string;
+  kind: HazardKind;
+  pos: Vec2;
+  radius: number;
+  /** Seconds of warning before it deals damage (counts down first; 0 = active). */
+  telegraph: number;
+  /** Seconds of active damage remaining once the telegraph elapses; despawns at 0. */
+  duration: number;
+  /** Damage per second dealt to players within `radius` while active. */
+  dps: number;
+}
 
 export interface Enemy {
   /** Deterministic `e${spawnSeq}`. */
@@ -164,6 +190,11 @@ export interface ShooterWorld {
   players: Record<PlayerId, ShooterPlayer>;
   enemies: Enemy[];
   pickups: Pickup[];
+  /**
+   * Active ground hazards (spitter acid pools; later boss strikes). Optional so old snapshots and
+   * hazard-free worlds need not carry it — treated as `[]` everywhere it's read.
+   */
+  hazards?: Hazard[];
   events: ShooterEvent[];
   /** Party score: Σ enemy scoreValue × wave at kill time. */
   score: number;
