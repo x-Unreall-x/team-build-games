@@ -105,6 +105,16 @@ describe("composeWave — campaign stage pools", () => {
     for (let w = 1; w <= 23; w++) expect(composeWave(7, w, 8, { campaign: true })).not.toContain("hive");
   });
 
+  it("the stage-5 finale is a solo Kraken boss wave; its earlier waves are not", () => {
+    // Stage 5 = waves 21,22,23 (global); wave 23 is the finale → only the Kraken.
+    expect(composeWave(7, 23, 4, { campaign: true })).toEqual(["kraken"]);
+    expect(composeWave(9, 23, 8, { campaign: true })).toEqual(["kraken"]); // party size doesn't add adds
+    expect(composeWave(7, 21, 8, { campaign: true })).not.toContain("kraken");
+    expect(composeWave(7, 22, 8, { campaign: true })).not.toContain("kraken");
+    // The stage-6 finale (global wave 33) is the 10-wave onslaught, NOT another Kraken.
+    expect(composeWave(7, 33, 8, { campaign: true })).not.toContain("kraken");
+  });
+
   it("survival is unchanged by the campaign flag (tanks gated by minWave, no swarmlings)", () => {
     expect(composeWave(7, 1, 8).every((k) => k === "rusher")).toBe(true); // wave 1 < tank.minWave
     expect(composeWave(7, 5, 8).every((k) => k === "rusher" || k === "tank")).toBe(true);

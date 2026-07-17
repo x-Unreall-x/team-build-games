@@ -8,8 +8,11 @@ import {
   RUSH_CHARGE_S, RUSH_COOLDOWN_S, RUSH_RECOVER_S, RUSH_RUN_MAX_S, RUSH_SPEED_MS,
   SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_KITE_BAND_M, SPITTER_RANGE_M,
   HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S, STAGE_HEALTH_SCALAR,
+  KRAKEN_BASE_HP, KRAKEN_HP_PER_PLAYER, KRAKEN_ATTACK_INTERVAL_S, KRAKEN_STRIKE_TELEGRAPH_S,
+  KRAKEN_STRIKE_RADIUS_M, KRAKEN_STRIKE_DAMAGE, KRAKEN_MAX_STRIKES, KRAKEN_SWEEP_LENGTH_M, KRAKEN_SWEEP_DAMAGE,
 } from "./constants";
-import type { Enemy, EnemyKind, ShooterPlayer, Vec2 } from "./types";
+import { hash01 } from "./rng";
+import type { Enemy, EnemyKind, Hazard, ShooterPlayer, Vec2 } from "./types";
 
 export interface EnemyDef {
   kind: EnemyKind;
@@ -48,10 +51,13 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   // Beefy, near-stationary spawner: periodically births swarmling broods (see stepHive). Priority-kill
   // target — no stagger so it can't be perma-locked, and its threat is the endless brood, not contact.
   hive: { kind: "hive", radius: 0.8, hitRadius: 10 / 7, speed: 1, health: 160, damage: 5, attackInterval: 1, xp: 12, cost: 5, scoreValue: 60, minWave: 1, stagger: false },
+  // Stage-5 mega-boss. Spawns solo (composed, not from the points pool → cost 0), HP is party-scaled at
+  // spawn (see krakenHp). Its threat is telegraphed tentacle slams (stepKraken), not contact.
+  kraken: { kind: "kraken", radius: 2.5, hitRadius: 2.5, speed: 1.2, health: KRAKEN_BASE_HP, damage: 25, attackInterval: 0.8, xp: 0, cost: 0, scoreValue: 500, minWave: 1, stagger: false },
 };
 
 /** Stable order — this index IS the wire encoding of a kind. Append only. */
-export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling", "spitter", "exploder", "hive"];
+export const ENEMY_KINDS: EnemyKind[] = ["rusher", "tank", "swarmling", "spitter", "exploder", "hive", "kraken"];
 
 /** Per-enemy stat multipliers when a spawn rolls elite (campaign only). */
 export interface EliteMods { healthMult: number; speedMult: number; damageMult: number; }
@@ -284,3 +290,60 @@ export function stepHive(
   }
   return { enemy: { ...moved, special: "none", specialRemaining: Math.max(0, remaining) }, spawn: 0 };
 }
+
+/** Kraken max HP for a given party — the boss scales to the number of players it faces. */
+export function krakenHp(partySize: number): number {
+  return KRAKEN_BASE_HP + KRAKEN_HP_PER_PLAYER * Math.max(1, partySize);
+}
+
+/**
+ * Kraken movement + tentacle-attack state machine (deterministic; draws are coordinate-hashes off
+ * (seed, tick), so every peer reproduces the same volley). The boss crawls slowly toward the nearest
+ * player while `specialRemaining` counts down its attack interval. When it elapses it unleashes ONE of:
+ *  - POINT-STRIKES: K = clamp(1+⌊party/2⌋, 1, KRAKEN_MAX_STRIKES) slams locked onto the nearest players'
+ *    ground positions (cycling if there are fewer players than K), or
+ *  - SWEEP: a rotating radial line of slam nodes out to KRAKEN_SWEEP_LENGTH_M at a hashed angle.
+ * Every slam is a telegraphed one-shot `strike` burst hazard. Returns the strikes for the sim to spawn.
+ */
+export function stepKraken(
+  e: Enemy,
+  players: ShooterPlayer[],
+  dt: number,
+  seed: number,
+  tick: number,
+): { enemy: Enemy; strikes: Hazard[] } {
+  const sorted = [...players].sort((a, b) => (a.id < b.id ? -1 : 1));
+  const target = nearestAlive(e.pos, sorted);
+  const moved = stepEnemy(e, target ? target.pos : null, dt, 1, { x: 0, y: 0 });
+  const remaining = (e.specialRemaining ?? KRAKEN_ATTACK_INTERVAL_S) - dt;
+
+  if (e.stunRemaining > 0 || remaining > 0 || sorted.length === 0) {
+    return { enemy: { ...moved, special: "none", specialRemaining: Math.max(0, remaining) }, strikes: [] };
+  }
+
+  const slam = (pos: Vec2, idx: number, burst: number): Hazard => ({
+    id: `hz:${e.id}:${tick}:${idx}`, kind: "strike",
+    pos: { x: clamp(pos.x, 0, OVERRUN_FIELD_M), y: clamp(pos.y, 0, OVERRUN_FIELD_M) },
+    radius: KRAKEN_STRIKE_RADIUS_M, telegraph: KRAKEN_STRIKE_TELEGRAPH_S, duration: 0, dps: 0, burst,
+  });
+
+  const strikes: Hazard[] = [];
+  if (hash01(seed, "kraken-atk", tick) < 0.5) {
+    // Point-strikes: lock onto the nearest players (cycle when the party is smaller than the volley).
+    const byNear = [...sorted].sort((a, b) => dist(e.pos, a.pos) - dist(e.pos, b.pos) || (a.id < b.id ? -1 : 1));
+    const k = Math.min(KRAKEN_MAX_STRIKES, Math.max(1, 1 + Math.floor(sorted.length / 2)));
+    for (let i = 0; i < k; i++) strikes.push(slam(byNear[i % byNear.length]!.pos, i, KRAKEN_STRIKE_DAMAGE));
+  } else {
+    // Sweep: a rotating radial line of slam nodes out from the boss at a hashed angle.
+    const angle = hash01(seed, "kraken-sweep", tick) * Math.PI * 2;
+    const step = KRAKEN_STRIKE_RADIUS_M * 2 * 0.85; // overlap slightly so there's no gap between nodes
+    const nodes = Math.max(1, Math.round(KRAKEN_SWEEP_LENGTH_M / step));
+    for (let i = 0; i < nodes; i++) {
+      const d = (i + 1) * step;
+      strikes.push(slam({ x: moved.pos.x + Math.cos(angle) * d, y: moved.pos.y + Math.sin(angle) * d }, i, KRAKEN_SWEEP_DAMAGE));
+    }
+  }
+  return { enemy: { ...moved, special: "none", specialRemaining: KRAKEN_ATTACK_INTERVAL_S }, strikes };
+}
+
+const dist = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.y);

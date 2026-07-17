@@ -11,7 +11,7 @@ export interface InputState { up: boolean; down: boolean; left: boolean; right: 
 export type PlayerId = string;
 
 export type GunId = "pistol" | "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower";
-export type EnemyKind = "rusher" | "tank" | "swarmling" | "spitter" | "exploder" | "hive";
+export type EnemyKind = "rusher" | "tank" | "swarmling" | "spitter" | "exploder" | "hive" | "kraken";
 export type PickupKind = "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "medkit";
 /** Pickup kinds that are weapons (everything a kill can drop except the medkit). */
 export type DroppableGun = Exclude<PickupKind, "medkit">;
@@ -75,9 +75,10 @@ export type EnemySpecial = "none" | "rushCharge" | "rushRun" | "rushRecover" | "
 
 /**
  * A "kind" of ground hazard (append-only — wire index). `spit` = spitter's lingering acid pool
- * (continuous dps); `blast` = exploder's death detonation (one-shot burst on the fuse elapsing).
+ * (continuous dps); `blast` = exploder's death detonation (one-shot burst); `strike` = a Kraken
+ * tentacle slam (one-shot burst, used for both its point-strikes and sweep nodes).
  */
-export type HazardKind = "spit" | "blast";
+export type HazardKind = "spit" | "blast" | "strike";
 
 /**
  * A ground-area threat that lives in the world independent of any enemy. It warns for `telegraph`

@@ -6,7 +6,7 @@
 
 import { OVERRUN_FIELD_M } from "./constants";
 import { ENEMIES } from "./enemies";
-import { stageForWave } from "./stages";
+import { stageForWave, wavesForStage } from "./stages";
 import { hash01 } from "./rng";
 import type { EnemyKind, Vec2 } from "./types";
 
@@ -85,6 +85,8 @@ export function composeWave(
   const queue: EnemyKind[] = [];
   if (opts.campaign) {
     const { stage, waveInStage } = stageForWave(wave);
+    // Stage-5 finale is the mega-boss beat: a lone Kraken (HP is party-scaled at spawn, not here).
+    if (stage === 5 && waveInStage === wavesForStage(5)) return ["kraken"];
     const pool = stagePool(stage, waveInStage);
     let points = campaignBudget(stage, waveInStage, partySize);
     for (let i = 0; queue.length < MAX_PENDING; i++) {

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ENEMIES, ENEMY_KINDS, eliteMods, nearestAlive, stageHealthMult, stepEnemy, stepHive, stepSpitter } from "./enemies";
+import { ENEMIES, ENEMY_KINDS, eliteMods, krakenHp, nearestAlive, stageHealthMult, stepEnemy, stepHive, stepKraken, stepSpitter } from "./enemies";
 import { createShooterWorld, alivePlayers } from "./match";
-import { HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S, SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_RANGE_M } from "./constants";
+import { HIVE_BROOD_SIZE, HIVE_SPAWN_INTERVAL_S, KRAKEN_ATTACK_INTERVAL_S, SPIT_CHARGE_S, SPIT_COOLDOWN_S, SPITTER_RANGE_M } from "./constants";
 import type { Enemy } from "./types";
 
 const enemy = (over: Partial<Enemy> = {}): Enemy => ({ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 20, attackCooldown: 0, stunRemaining: 0, ...over });
 
 describe("enemy defs", () => {
   it("defines rusher (fast/fragile) and tank (slow/beefy) with wave gating", () => {
-    expect(ENEMY_KINDS).toEqual(["rusher", "tank", "swarmling", "spitter", "exploder", "hive"]); // append-only (wire index)
+    expect(ENEMY_KINDS).toEqual(["rusher", "tank", "swarmling", "spitter", "exploder", "hive", "kraken"]); // append-only (wire index)
     expect(ENEMIES.rusher).toMatchObject({ radius: 0.4, hitRadius: 8 / 7, speed: 4.5, health: 20, damage: 5, attackInterval: 0.5, xp: 2, cost: 1, scoreValue: 10, minWave: 1 });
     expect(ENEMIES.tank).toMatchObject({ radius: 0.7, hitRadius: 9 / 7, speed: 1.8, health: 120, damage: 20, attackInterval: 0.8, xp: 8, cost: 4, scoreValue: 40, minWave: 3 });
     expect(ENEMIES.swarmling).toMatchObject({ speed: 6, health: 6, cost: 0.5, minWave: 1 });
@@ -18,6 +18,42 @@ describe("enemy defs", () => {
     expect(ENEMIES.rusher.stagger).toBe(true);
     expect(ENEMIES.tank.stagger).toBe(false);
     expect(ENEMIES.hive.stagger).toBe(false); // beefy priority target — shrugs off bullet stagger
+    expect(ENEMIES.kraken).toMatchObject({ stagger: false }); // boss is stun/knockback-immune
+  });
+});
+
+describe("Kraken mega-boss", () => {
+  const boss = (over: Partial<Enemy> = {}): Enemy => ({ id: "K", kind: "kraken", pos: { x: 15, y: 15 }, health: 2000, attackCooldown: 0, stunRemaining: 0, special: "none", specialRemaining: KRAKEN_ATTACK_INTERVAL_S, ...over });
+  const party = (n: number) => alivePlayers({ ...createShooterWorld(Array.from({ length: n }, (_, i) => `p${i}`), 1) });
+
+  it("scales its HP with the party size", () => {
+    expect(krakenHp(4)).toBeGreaterThan(krakenHp(1));
+    expect(krakenHp(1)).toBeGreaterThan(1000);
+  });
+
+  it("crawls slowly toward the target and does not strike mid-cooldown", () => {
+    const players = party(1).map((p) => ({ ...p, pos: { x: 25, y: 15 } }));
+    const { enemy, strikes } = stepKraken(boss({ specialRemaining: 2 }), players, 0.1, 7, 5);
+    expect(enemy.pos.x).toBeGreaterThan(15); // advancing toward +x
+    expect(enemy.pos.x).toBeLessThan(15.2); // ...but slowly (speed 1.2 m/s)
+    expect(strikes).toHaveLength(0);
+    expect(enemy.specialRemaining).toBeCloseTo(1.9, 5);
+  });
+
+  it("unleashes a telegraphed tentacle volley when the timer elapses, then resets", () => {
+    const players = party(2).map((p, i) => ({ ...p, pos: { x: 20 + i * 3, y: 15 } }));
+    const { enemy, strikes } = stepKraken(boss({ specialRemaining: 0.05 }), players, 0.1, 7, 42);
+    expect(strikes.length).toBeGreaterThanOrEqual(1);
+    expect(strikes.every((h) => h.kind === "strike")).toBe(true);
+    expect(strikes.every((h) => h.telegraph > 0 && (h.burst ?? 0) > 0)).toBe(true); // all still warning, all one-shot
+    expect(enemy.specialRemaining).toBeCloseTo(KRAKEN_ATTACK_INTERVAL_S, 5);
+  });
+
+  it("produces both point-strike and sweep volleys across successive attacks", () => {
+    const players = party(3).map((p, i) => ({ ...p, pos: { x: 20, y: 8 + i * 2 } }));
+    const counts = new Set<number>();
+    for (let t = 0; t < 60; t++) counts.add(stepKraken(boss({ specialRemaining: 0 }), players, 0.1, 7, t).strikes.length);
+    expect(counts.size).toBeGreaterThan(1); // volley size varies → not just one attack shape
   });
 });
 
