@@ -1,6 +1,14 @@
 import type { GunId } from "../../../../game/overrun/types";
 
-const GUN_LABEL: Record<GunId, string> = { pistol: "PISTOL", shotgun: "SHOTGUN", rifle: "RIFLE" };
+const GUN_LABEL: Record<GunId, string> = {
+  pistol: "PISTOL",
+  shotgun: "SHOTGUN",
+  rifle: "RIFLE",
+  autorifle: "AUTO RIFLE",
+  smg: "SMG",
+  dmr: "DMR",
+  flamethrower: "FLAMETHROWER",
+};
 
 /** Bottom-left HUD: current gun, mag/reserve counts, and a reload progress bar. */
 export default function AmmoBox({

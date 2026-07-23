@@ -9,7 +9,7 @@
 
 import { hash01 } from "./rng";
 import { ENEMIES } from "./enemies";
-import { ENEMY_HIT_KNOCKBACK_M, ENEMY_HIT_STUN_S, OVERRUN_FIELD_M } from "./constants";
+import { ENEMY_HIT_KNOCKBACK_M, ENEMY_HIT_STUN_S, FLAME_BURN_S, FLAME_CONE_RAD, OVERRUN_FIELD_M } from "./constants";
 import type { EffectiveStats } from "./perks";
 import { freshAmmo, GUNS, hasReserve } from "./weapons";
 import type { Enemy, ShooterEvent, ShooterPlayer } from "./types";
@@ -67,6 +67,30 @@ export function fireTick(
   // enemy back once (0.5m), not once per pellet that lands on it (up to 8×0.5m).
   const knockedBack = new Set<string>();
 
+  // Flamethrower: a continuous CONE — every enemy within range and ±FLAME_CONE_RAD of the aim takes
+  // the per-tick direct hit and is set alight (burn-over-time ticks in the sim). No pellets/pierce.
+  if (p.gun === "flamethrower") {
+    const aimX = Math.cos(p.aim);
+    const aimY = Math.sin(p.aim);
+    const cosHalf = Math.cos(FLAME_CONE_RAD);
+    for (const e of out) {
+      if (e.health <= 0) continue;
+      const rx = e.pos.x - p.pos.x;
+      const ry = e.pos.y - p.pos.y;
+      const dist = Math.hypot(rx, ry);
+      if (dist < 1e-6 || dist > def.range + ENEMIES[e.kind].hitRadius) continue;
+      if ((rx * aimX + ry * aimY) / dist < cosHalf) continue; // outside the cone half-angle
+      e.health -= def.damage * eff.damageMult;
+      e.burning = FLAME_BURN_S; // ignite / refresh the burn timer
+      landed = true;
+      events.push({ tick, kind: "hit", pos: { x: e.pos.x, y: e.pos.y } });
+    }
+    events.push({
+      tick, kind: "shot", gun: p.gun,
+      from: { x: p.pos.x, y: p.pos.y },
+      to: { x: p.pos.x + aimX * def.range, y: p.pos.y + aimY * def.range },
+    });
+  } else
   for (let pellet = 0; pellet < def.pellets; pellet++) {
     const a = p.aim + (hash01(seed, tick, p.id, "spread", pellet) * 2 - 1) * spreadRad;
     const dir = { x: Math.cos(a), y: Math.sin(a) };

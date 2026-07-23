@@ -19,6 +19,73 @@ describe("digit-string wire encoding guard", () => {
 const IDLE: ShooterIntent = { move: { up: false, down: false, left: false, right: false }, fire: false, reload: false, perkPick: null };
 const idle = (w: ShooterWorld) => Object.fromEntries(Object.keys(w.players).map((id) => [id, IDLE]));
 
+describe("elite flag sync", () => {
+  it("round-trips an enemy's elite flag through the keyframe codec (and omits it for normals)", () => {
+    const elite: ShooterWorld = {
+      ...createShooterWorld(["a"], 1),
+      enemies: [{ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 26, attackCooldown: 0, stunRemaining: 0, elite: true }],
+    };
+    expect(unqWorld(qWorld(elite)).enemies[0]!.elite).toBe(true);
+
+    const normal: ShooterWorld = {
+      ...createShooterWorld(["a"], 1),
+      enemies: [{ id: "e0", kind: "rusher", pos: { x: 5, y: 5 }, health: 20, attackCooldown: 0, stunRemaining: 0 }],
+    };
+    expect(unqWorld(qWorld(normal)).enemies[0]!.elite).toBeUndefined();
+  });
+});
+
+describe("hazard sync", () => {
+  const withHazards = (): ShooterWorld => ({
+    ...createShooterWorld(["a"], 1),
+    hazards: [
+      { id: "hz:sp:5", kind: "spit", pos: { x: 12.34, y: 5.67 }, radius: 2, telegraph: 0.8, duration: 2.5, dps: 22 },
+      { id: "hz:sp:9", kind: "spit", pos: { x: 20, y: 20 }, radius: 2, telegraph: 0, duration: 1.2, dps: 22 },
+    ],
+  });
+
+  it("round-trips hazards through the keyframe codec (within quantization)", () => {
+    const r = unqWorld(qWorld(withHazards()));
+    expect(r.hazards).toHaveLength(2);
+    expect(r.hazards![0]!).toMatchObject({ id: "hz:sp:5", kind: "spit", radius: 2, dps: 22 });
+    expect(r.hazards![0]!.pos.x).toBeCloseTo(12.34, 2);
+    expect(r.hazards![0]!.telegraph).toBeCloseTo(0.8, 2);
+    expect(r.hazards![1]!.telegraph).toBe(0);
+    expect(r.hazards![1]!.duration).toBeCloseTo(1.2, 2);
+    expect(r.hazards![0]!.burst).toBeUndefined(); // pools carry no burst
+  });
+
+  it("round-trips a Kraken strike hazard (kind + burst)", () => {
+    const w: ShooterWorld = {
+      ...createShooterWorld(["a"], 1),
+      hazards: [{ id: "hz:K:9:0", kind: "strike", pos: { x: 8, y: 8 }, radius: 2.2, telegraph: 0.8, duration: 0, dps: 0, burst: 40 }],
+    };
+    const r = unqWorld(qWorld(w));
+    expect(r.hazards![0]!).toMatchObject({ kind: "strike", burst: 40 });
+  });
+
+  it("round-trips a blast's one-shot burst field", () => {
+    const w: ShooterWorld = {
+      ...createShooterWorld(["a"], 1),
+      hazards: [{ id: "hz:x:1", kind: "blast", pos: { x: 10, y: 10 }, radius: 3, telegraph: 0.5, duration: 0, dps: 0, burst: 35 }],
+    };
+    const r = unqWorld(qWorld(w));
+    expect(r.hazards![0]!).toMatchObject({ kind: "blast", burst: 35 });
+  });
+
+  it("a world with no hazards decodes to an empty list", () => {
+    expect(unqWorld(qWorld(createShooterWorld(["a"], 1))).hazards).toEqual([]);
+  });
+
+  it("ships hazards through a delta (full list, like pickups)", () => {
+    const prev = createShooterWorld(["a"], 1);
+    const cur = withHazards();
+    const applied = applyDelta(prev, diffWorld(qWorld(prev), qWorld({ ...cur, tick: prev.tick + 1 })));
+    expect(applied.hazards).toHaveLength(2);
+    expect(applied.hazards![1]!.pos.x).toBeCloseTo(20, 2);
+  });
+});
+
 describe("campaign mode + victory phase round-trip", () => {
   it("preserves mode and the victory phase through the quantized codec", () => {
     const w: ShooterWorld = { ...createShooterWorld(["a", "b"], 7, "campaign"), phase: "victory" };
@@ -90,6 +157,14 @@ describe("quantized round-trip", () => {
     const cur: ShooterWorld = { ...prev, tick: prev.tick + 1, enemies: [stunnedEnemy, ...prev.enemies.slice(1)] };
     const rebuilt = applyDelta(prev, diffWorld(qWorld(prev), qWorld(cur)));
     expect(rebuilt.enemies[0]!.stunRemaining).toBeCloseTo(0.2, 2);
+  });
+
+  it("preserves an enemy's flamethrower burn timer through a round-trip and a delta update", () => {
+    const prev = unqWorld(qWorld(fatWorld()));
+    const litEnemy = { ...prev.enemies[0]!, burning: 0.9 };
+    const cur: ShooterWorld = { ...prev, tick: prev.tick + 1, enemies: [litEnemy, ...prev.enemies.slice(1)] };
+    const rebuilt = applyDelta(prev, diffWorld(qWorld(prev), qWorld(cur)));
+    expect(rebuilt.enemies[0]!.burning).toBeCloseTo(0.9, 2);
   });
 
   it("preserves perks/offers/stats/ammo exactly (migration needs them)", () => {

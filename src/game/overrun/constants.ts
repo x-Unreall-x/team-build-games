@@ -53,6 +53,79 @@ export const RUSH_HIT_RADIUS_M = 1.8;
 /** Rush hit damage as a fraction of the victim's max health. */
 export const RUSH_HIT_FRACTION = 0.5;
 
+// --- flamethrower (continuous cone + burn-over-time) ---
+/** Half-angle of the flame cone (radians): enemies within ±this of the aim are torched. */
+export const FLAME_CONE_RAD = 0.52; // ~30°
+/** Burn seconds (re)applied to every enemy the cone touches — refreshed while the stream holds. */
+export const FLAME_BURN_S = 1.6;
+/** Damage per second an enemy takes while burning (independent of the direct cone hit). */
+export const BURN_DPS = 14;
+
+// --- spitter (ranged kiter) + spit acid pool ---
+/** Distance the spitter tries to hold from its target (kites in/out toward this). */
+export const SPITTER_RANGE_M = 8;
+/** Hysteresis band around SPITTER_RANGE_M — inside it the spitter holds instead of jittering. */
+export const SPITTER_KITE_BAND_M = 1.5;
+/** Seconds the spitter kites between spits (counts down; then it telegraphs a spit). */
+export const SPIT_COOLDOWN_S = 3;
+/** Telegraph: the spitter freezes and locks the target's ground position before firing. */
+export const SPIT_CHARGE_S = 0.6;
+/** Warning seconds on the spawned pool before it turns dangerous (the glob's arc/land tell). */
+export const SPIT_HAZARD_TELEGRAPH_S = 0.8;
+/** Seconds the acid pool lingers dealing damage after its telegraph elapses. */
+export const SPIT_HAZARD_DURATION_S = 2.5;
+/** Radius of the acid pool (m). */
+export const SPIT_HAZARD_RADIUS_M = 2;
+/** Damage per second a player takes while standing in an active acid pool. */
+export const SPIT_DPS = 22;
+
+// --- exploder (death blast) ---
+/** Fuse: seconds the blast telegraphs after the exploder dies, before it detonates (dodge window). */
+export const EXPLODER_FUSE_S = 0.5;
+/** Radius of the death blast (m). */
+export const EXPLODER_BLAST_RADIUS_M = 3;
+/** One-shot damage to every player caught in the blast when it detonates. */
+export const EXPLODER_BLAST_DAMAGE = 35;
+
+// --- hive (spawner) ---
+/** Seconds between the hive's swarmling broods (counts down; then it births a brood). */
+export const HIVE_SPAWN_INTERVAL_S = 4;
+/** Swarmlings birthed per brood. */
+export const HIVE_BROOD_SIZE = 3;
+/** Ring radius (m) the brood spawns on around the hive. */
+export const HIVE_BROOD_RING_M = 1.5;
+
+// --- elites + per-stage scaling (campaign only; survival keeps its flat model) ---
+/** Elites (frenzied rushers / armored tanks) start appearing from this campaign stage. */
+export const ELITE_MIN_STAGE = 3;
+/** Per-spawn chance an eligible rusher/tank rolls elite (deterministic hash draw). */
+export const ELITE_CHANCE = 0.15;
+/** Enemy max-HP gains this fraction per campaign stage past the first (stage 6 ≈ +60%). */
+export const STAGE_HEALTH_SCALAR = 0.12;
+
+// --- Kraken mega-boss (stage-5 finale) ---
+/** Base HP, plus KRAKEN_HP_PER_PLAYER × partySize — the boss scales to the party it faces. */
+export const KRAKEN_BASE_HP = 1800;
+export const KRAKEN_HP_PER_PLAYER = 900;
+/** Slow, deliberate menace — it corners you into its tentacle strikes rather than chasing you down. */
+export const KRAKEN_SPEED_MS = 1.2;
+/** Heavy contact damage — do not hug the Kraken. */
+export const KRAKEN_CONTACT_DAMAGE = 25;
+/** Seconds between tentacle volleys (point-strikes or a sweep). */
+export const KRAKEN_ATTACK_INTERVAL_S = 3;
+/** Telegraph (fuse) on every tentacle strike — the warning window to clear the slam zone. */
+export const KRAKEN_STRIKE_TELEGRAPH_S = 0.8;
+/** Radius of one tentacle-slam circle (m). */
+export const KRAKEN_STRIKE_RADIUS_M = 2.2;
+/** One-shot damage of a point-strike slam (targets a player's locked position). */
+export const KRAKEN_STRIKE_DAMAGE = 40;
+/** Max simultaneous point-strikes; the actual count scales with party (see stepKraken). */
+export const KRAKEN_MAX_STRIKES = 4;
+/** Sweep: a rotating radial line of slam circles this long (m), out from the boss. */
+export const KRAKEN_SWEEP_LENGTH_M = 12;
+/** One-shot damage of a single sweep node. */
+export const KRAKEN_SWEEP_DAMAGE = 35;
+
 // --- bullet-hit feedback ---
 /** Seconds an enemy can't move after taking a hit. */
 export const ENEMY_HIT_STUN_S = 0.3;

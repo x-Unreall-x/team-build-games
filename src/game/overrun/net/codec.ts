@@ -15,7 +15,7 @@ import { ENEMY_KINDS } from "../enemies";
 import { GUN_IDS } from "../weapons";
 import { PERK_IDS } from "../perks";
 import type {
-  Enemy, EnemyKind, EnemySpecial, PerkId, PerkOffer, Pickup, PickupKind, ShooterEvent,
+  Enemy, EnemyKind, EnemySpecial, Hazard, HazardKind, PerkId, PerkOffer, Pickup, PickupKind, ShooterEvent,
   ShooterPhase, ShooterPlayer, ShooterStatus, ShooterWorld,
 } from "../types";
 
@@ -30,7 +30,8 @@ const STATUS = ["alive", "downed", "dead"] as const satisfies readonly ShooterSt
 type AssertAllStatus = ShooterStatus extends (typeof STATUS)[number] ? true : never;
 const _assertAllStatus: AssertAllStatus = true;
 
-const PICKUP_KINDS = ["shotgun", "rifle", "medkit"] as const satisfies readonly PickupKind[];
+// Append-only — index is the wire encoding; never renumber existing entries.
+const PICKUP_KINDS = ["shotgun", "rifle", "medkit", "autorifle", "smg", "dmr", "flamethrower"] as const satisfies readonly PickupKind[];
 type AssertAllPickupKind = PickupKind extends (typeof PICKUP_KINDS)[number] ? true : never;
 const _assertAllPickupKind: AssertAllPickupKind = true;
 
@@ -39,9 +40,14 @@ type AssertAllEventKind = ShooterEvent["kind"] extends (typeof EVENT_KINDS)[numb
 const _assertAllEventKind: AssertAllEventKind = true;
 
 // Tank Rush state ↔ int (append-only). Index 0 = "none" so untagged enemies decode to normal chase.
-const SPECIALS = ["none", "rushCharge", "rushRun", "rushRecover"] as const satisfies readonly EnemySpecial[];
+const SPECIALS = ["none", "rushCharge", "rushRun", "rushRecover", "spitCharge"] as const satisfies readonly EnemySpecial[];
 type AssertAllSpecial = EnemySpecial extends (typeof SPECIALS)[number] ? true : never;
 const _assertAllSpecial: AssertAllSpecial = true;
+
+// Hazard kind ↔ int (append-only — wire index).
+const HAZARD_KINDS = ["spit", "blast", "strike"] as const satisfies readonly HazardKind[];
+type AssertAllHazardKind = HazardKind extends (typeof HAZARD_KINDS)[number] ? true : never;
+const _assertAllHazardKind: AssertAllHazardKind = true;
 
 // players: short-key object (readable, only 8 of them)
 interface QPlayer {
@@ -50,9 +56,13 @@ interface QPlayer {
   xp: number; lv: number; pk: string; of: number[][]; sh: [number, number, number]; // shots,hits,kills
   rv: number; gd: number;
 }
-// id, kind, xcm, ycm, health, cdCs, stunCs, special, spRemCs, rushToXcm, rushToYcm (rushTo -1,-1 = null)
-type QEnemy = [string, number, number, number, number, number, number, number, number, number, number];
+// id, kind, xcm, ycm, health, cdCs, stunCs, special, spRemCs, rushToXcm, rushToYcm (rushTo -1,-1 = null), burnCs, elite(0/1)
+// `elite` is immutable after spawn, so it rides only the full tuple (adds/keyframes); delta UPDATES omit
+// it — applyDelta's `{...e, …}` spread preserves the flag already on the client.
+type QEnemy = [string, number, number, number, number, number, number, number, number, number, number, number, number];
 type QPickup = [string, number, number, number, number]; // id, kind, xcm, ycm, ttlCs
+// id, kind, xcm, ycm, radiusCm, telegraphCs, durationCs, dps, burst (0 = pool/no burst)
+type QHazard = [string, number, number, number, number, number, number, number, number];
 type QEvent = (number | string)[]; // [tick, kindIdx, ...payload]
 
 export interface QWorld {
@@ -61,6 +71,8 @@ export interface QWorld {
   sc: number; sq: number; py: number;
   /** stageIntroRemaining in cs (between-stage comic hold; 0/absent = none). */
   sir?: number;
+  /** Active ground hazards (spit pools; boss strikes). Absent/omitted = none. */
+  hz?: QHazard[];
 }
 
 // phase ↔ int: 0 playing, 1 ended, 2 victory
@@ -73,9 +85,10 @@ export interface ODelta {
   t: number;
   ph: number;
   pl: QPlayer[]; // players always ship in full (≤8)
-  // add / update(id,x,y,h,cd,stun,sp,spRemCs,rtx,rty) / delete
-  en: { a: QEnemy[]; u: [string, number, number, number, number, number, number, number, number, number][]; d: string[] };
+  // add / update(id,x,y,h,cd,stun,sp,spRemCs,rtx,rty,burnCs) / delete
+  en: { a: QEnemy[]; u: [string, number, number, number, number, number, number, number, number, number, number][]; d: string[] };
   pk: QPickup[]; // full pickup list (≤24 small tuples — ttls tick every step, diffing buys nothing)
+  hz?: QHazard[]; // full hazard list (timers tick every step, like pickups — diffing buys nothing)
   ev: QEvent[]; // events newer than the base tick
   s: [number, number, number, number, number, number]; // wave, partySize, intermissionCs, score, pity, stageIntroCs
   sq: number;
@@ -114,14 +127,24 @@ function unqPlayer(q: QPlayer): ShooterPlayer {
 const qEnemy = (e: Enemy): QEnemy => [
   e.id, ENEMY_KINDS.indexOf(e.kind), cm(e.pos.x), cm(e.pos.y), Math.round(e.health), cs(e.attackCooldown), cs(e.stunRemaining),
   SPECIALS.indexOf(e.special ?? "none"), cs(e.specialRemaining ?? 0),
-  e.rushTo ? cm(e.rushTo.x) : -1, e.rushTo ? cm(e.rushTo.y) : -1,
+  e.rushTo ? cm(e.rushTo.x) : -1, e.rushTo ? cm(e.rushTo.y) : -1, cs(e.burning ?? 0), e.elite ? 1 : 0,
 ];
-const unqEnemy = (q: QEnemy): Enemy => ({
-  id: q[0], kind: ENEMY_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, health: q[4], attackCooldown: s(q[5]), stunRemaining: s(q[6]),
-  special: SPECIALS[q[7]] ?? "none", specialRemaining: s(q[8]), rushTo: q[9] < 0 ? null : { x: m(q[9]), y: m(q[10]) },
-});
+const unqEnemy = (q: QEnemy): Enemy => {
+  const e: Enemy = {
+    id: q[0], kind: ENEMY_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, health: q[4], attackCooldown: s(q[5]), stunRemaining: s(q[6]),
+    special: SPECIALS[q[7]] ?? "none", specialRemaining: s(q[8]), rushTo: q[9] < 0 ? null : { x: m(q[9]), y: m(q[10]) }, burning: s(q[11]),
+  };
+  if (q[12] === 1) e.elite = true;
+  return e;
+};
 const qPickup = (k: Pickup): QPickup => [k.id, PICKUP_KINDS.indexOf(k.kind), cm(k.pos.x), cm(k.pos.y), cs(k.ttl)];
 const unqPickup = (q: QPickup): Pickup => ({ id: q[0], kind: PICKUP_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, ttl: s(q[4]) });
+const qHazard = (h: Hazard): QHazard => [h.id, HAZARD_KINDS.indexOf(h.kind), cm(h.pos.x), cm(h.pos.y), cm(h.radius), cs(h.telegraph), cs(h.duration), Math.round(h.dps), Math.round(h.burst ?? 0)];
+const unqHazard = (q: QHazard): Hazard => {
+  const h: Hazard = { id: q[0], kind: HAZARD_KINDS[q[1]]!, pos: { x: m(q[2]), y: m(q[3]) }, radius: m(q[4]), telegraph: s(q[5]), duration: s(q[6]), dps: q[7] };
+  if (q[8] > 0) h.burst = q[8];
+  return h;
+};
 
 function qEvent(e: ShooterEvent): QEvent {
   const k = EVENT_KINDS.indexOf(e.kind);
@@ -152,6 +175,7 @@ export function qWorld(w: ShooterWorld): QWorld {
     pl: Object.keys(w.players).sort().map((id) => qPlayer(w.players[id]!)),
     en: w.enemies.map(qEnemy), pk: w.pickups.map(qPickup), ev: w.events.map(qEvent),
     sc: w.score, sq: w.spawnSeq, py: w.pity, sir: cs(w.stageIntroRemaining ?? 0),
+    hz: (w.hazards ?? []).map(qHazard),
   };
 }
 
@@ -163,6 +187,7 @@ export function unqWorld(q: QWorld): ShooterWorld {
     wave: q.wv, partySize: q.ps, pending: unqPending(q.pd), intermission: s(q.im),
     players, enemies: q.en.map(unqEnemy), pickups: q.pk.map(unqPickup), events: q.ev.map(unqEvent),
     score: q.sc, spawnSeq: q.sq, pity: q.py, stageIntroRemaining: s(q.sir ?? 0),
+    hazards: (q.hz ?? []).map(unqHazard),
   };
 }
 
@@ -175,12 +200,13 @@ export function diffWorld(prevQ: QWorld, curQ: QWorld): ODelta {
     const p = prevEn.get(e[0]);
     if (!p) en.a.push(e);
     else if (p.slice(2).some((v, k) => v !== e[k + 2]))
-      en.u.push([e[0], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9], e[10]]);
+      en.u.push([e[0], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9], e[10], e[11]]);
   }
   for (const e of prevQ.en) if (!curEnIds.has(e[0])) en.d.push(e[0]);
 
   const d: ODelta = {
     b: prevQ.t, t: curQ.t, ph: curQ.ph, pl: curQ.pl, en, pk: curQ.pk,
+    hz: curQ.hz ?? [],
     ev: curQ.ev.filter((e) => (e[0] as number) > prevQ.t),
     s: [curQ.wv, curQ.ps, curQ.im, curQ.sc, curQ.py, curQ.sir ?? 0], sq: curQ.sq,
   };
@@ -216,7 +242,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
         ? {
             ...e,
             pos: { x: m(u[1]), y: m(u[2]) }, health: u[3], attackCooldown: s(u[4]), stunRemaining: s(u[5]),
-            special: SPECIALS[u[6]] ?? "none", specialRemaining: s(u[7]), rushTo: u[8] < 0 ? null : { x: m(u[8]), y: m(u[9]) },
+            special: SPECIALS[u[6]] ?? "none", specialRemaining: s(u[7]), rushTo: u[8] < 0 ? null : { x: m(u[8]), y: m(u[9]) }, burning: s(u[10]),
           }
         : e,
     );
@@ -224,6 +250,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
   enemies.push(...d.en.a.map(unqEnemy));
 
   const pickups = d.pk.map(unqPickup);
+  const hazards = (d.hz ?? []).map(unqHazard);
 
   // Rebuild events exactly as the sim would hold them: kept-window ∪ new, capped to newest.
   const kept = prev.events.filter((e) => e.tick > d.t - EVENT_TTL_TICKS);
@@ -235,7 +262,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
     wave: d.s[0], partySize: d.s[1], intermission: s(d.s[2]),
     pending:
       d.pdo !== undefined ? prev.pending.slice(d.pdo) : d.pd !== undefined ? unqPending(d.pd) : prev.pending,
-    players, enemies, pickups, events: capped, score: d.s[3], spawnSeq: d.sq, pity: d.s[4],
+    players, enemies, pickups, hazards, events: capped, score: d.s[3], spawnSeq: d.sq, pity: d.s[4],
     stageIntroRemaining: s(d.s[5]),
   };
 }

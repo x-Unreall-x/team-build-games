@@ -50,6 +50,18 @@ describe("fireTick", () => {
     expect(r.enemies.find((e) => e.id === "e3")!.health).toBe(20);
   });
 
+  it("flamethrower torches enemies in the cone (setting them alight) but spares those behind", () => {
+    const p = player({ gun: "flamethrower", ammo: freshAmmo("flamethrower") }); // (5,15) aiming +x
+    const r = fireTick(p, [enemy("front", 8), enemy("behind", 2)], true, 1, 0, EFF);
+    const front = r.enemies.find((e) => e.id === "front")!;
+    const behind = r.enemies.find((e) => e.id === "behind")!;
+    expect(front.health).toBeLessThan(20); // direct cone hit
+    expect(front.burning ?? 0).toBeGreaterThan(0); // and set on fire
+    expect(behind.health).toBe(20); // outside the cone
+    expect(behind.burning ?? 0).toBe(0);
+    expect(r.events.some((e) => e.kind === "shot" && e.gun === "flamethrower")).toBe(true);
+  });
+
   it("shotgun fires 8 pellets with deterministic spread; counts ONE shot", () => {
     const p = player({ gun: "shotgun", ammo: freshAmmo("shotgun") });
     const a = fireTick(p, [enemy("e1", 5.8, { health: 1000 })], true, 42, 7, EFF);

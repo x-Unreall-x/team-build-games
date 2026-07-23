@@ -6,25 +6,32 @@
 
 import { DROP_MEDKIT_P, DROP_WEAPON_P, MAX_PICKUPS, PICKUP_TTL_S, PITY_LIMIT } from "./constants";
 import { hash01 } from "./rng";
-import type { Enemy, Pickup, PickupKind } from "./types";
+import type { DroppableGun, Enemy, Pickup, PickupKind } from "./types";
 
+/**
+ * `gunPool` is the set of currently-unlocked weapons (see weaponTiers); a weapon drop picks one
+ * uniformly from it (deterministic hash draw). An empty pool means no weapon can drop this kill.
+ */
 export function rollDrop(
   seed: number,
   tick: number,
   enemy: Enemy,
   pickupsLive: number,
   pity: number,
+  gunPool: DroppableGun[],
 ): { pickup: Pickup | null; pity: number } {
   if (pickupsLive >= MAX_PICKUPS) return { pickup: null, pity: pity + 1 };
+  const pickGun = (): DroppableGun | null =>
+    gunPool.length === 0 ? null : gunPool[Math.floor(hash01(seed, tick, enemy.id, "gun") * gunPool.length)]!;
   const r = hash01(seed, tick, enemy.id, "drop");
   const forced = pity + 1 >= PITY_LIMIT;
   let kind: PickupKind | null = null;
   if (r < DROP_WEAPON_P) {
-    kind = hash01(seed, tick, enemy.id, "gun") < 0.5 ? "shotgun" : "rifle";
+    kind = pickGun();
   } else if (r < DROP_WEAPON_P + DROP_MEDKIT_P) {
     kind = "medkit";
   } else if (forced) {
-    kind = hash01(seed, tick, enemy.id, "pity") < 0.5 ? "medkit" : hash01(seed, tick, enemy.id, "gun") < 0.5 ? "shotgun" : "rifle";
+    kind = hash01(seed, tick, enemy.id, "pity") < 0.5 ? "medkit" : pickGun() ?? "medkit";
   }
   if (!kind) return { pickup: null, pity: pity + 1 };
   return {

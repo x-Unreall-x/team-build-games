@@ -67,6 +67,22 @@ export default defineConfig({
           include: ["src/game/road-madness/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "rtlab",
+          environment: "node",
+          exclude,
+          include: ["src/lib/rtlab/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "signal",
+          environment: "node",
+          exclude,
+          include: ["src/lib/signal/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

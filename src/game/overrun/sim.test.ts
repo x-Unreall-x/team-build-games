@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { stepShooter } from "./sim";
 import { createShooterWorld } from "./match";
-import { ENEMIES } from "./enemies";
-import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT, WAVE1_SPEED_MULT } from "./constants";
+import { ENEMIES, krakenHp, stageHealthMult } from "./enemies";
+import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT, WAVE1_SPEED_MULT, SPIT_DPS, SPIT_HAZARD_RADIUS_M, EXPLODER_BLAST_DAMAGE, EXPLODER_BLAST_RADIUS_M, EXPLODER_FUSE_S, HIVE_BROOD_SIZE } from "./constants";
 import { waveBudget } from "./waves";
 import { CAMPAIGN_WAVES } from "./stages";
 import { xpToNext } from "./perks";
@@ -29,6 +29,177 @@ describe("determinism", () => {
     }
     expect(w2).toEqual(w1);
     expect(w1.wave).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("flamethrower burn-over-time", () => {
+  it("burning enemies lose health each tick and award party score when the burn kills them", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, enemies: [enemyAt("e", 25, 25, { health: 8, burning: 1.5 })] };
+    const before = w.score;
+    for (let i = 0; i < 40 && w.enemies.some((x) => x.id === "e"); i++) w = step(w);
+    expect(w.enemies.some((x) => x.id === "e")).toBe(false); // burned to death (wave spawns may add others)
+    expect(w.score).toBeGreaterThan(before);
+  });
+
+  it("the burn timer expires and stops dealing damage", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, enemies: [enemyAt("e", 25, 25, { health: 200, burning: 0.1 })] };
+    for (let i = 0; i < 10; i++) w = step(w); // 0.1s burn (~3 ticks) is long gone
+    const e = w.enemies.find((x) => x.id === "e")!;
+    expect(e.burning ?? 0).toBe(0);
+    const health = e.health;
+    for (let i = 0; i < 10; i++) w = step(w);
+    expect(w.enemies.find((x) => x.id === "e")!.health).toBe(health); // no further burn damage
+  });
+});
+
+describe("spit hazards", () => {
+  const pool = (x: number, y: number, over = {}) =>
+    ({ id: "hz0", kind: "spit" as const, pos: { x, y }, radius: SPIT_HAZARD_RADIUS_M, telegraph: 0, duration: 2.5, dps: SPIT_DPS, ...over });
+
+  it("an active pool drains the health of a player standing in it", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, players: { a: { ...w.players.a!, pos: { x: 15, y: 15 } } }, hazards: [pool(15, 15)] };
+    w = step(w);
+    expect(w.players.a!.health).toBeCloseTo(100 - SPIT_DPS * SHOOTER_DT, 3);
+  });
+
+  it("a telegraphing pool deals no damage yet (the warning window is safe)", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, players: { a: { ...w.players.a!, pos: { x: 15, y: 15 } } }, hazards: [pool(15, 15, { telegraph: 0.8 })] };
+    w = step(w);
+    expect(w.players.a!.health).toBe(100);
+  });
+
+  it("does not touch a player standing outside the pool radius", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, players: { a: { ...w.players.a!, pos: { x: 15, y: 15 } } }, hazards: [pool(15 + SPIT_HAZARD_RADIUS_M + 1, 15)] };
+    w = step(w);
+    expect(w.players.a!.health).toBe(100);
+  });
+
+  it("despawns the pool once its active duration is spent", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = { ...w, players: { a: { ...w.players.a!, pos: { x: 1, y: 1 } } }, hazards: [pool(28, 28, { duration: 0.2 })] };
+    for (let i = 0; i < 10; i++) w = step(w);
+    expect(w.hazards ?? []).toHaveLength(0);
+  });
+
+  it("a spitter emits an acid pool at its locked position when its charge lands", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 25, y: 25 } } },
+      enemies: [enemyAt("sp", 5, 5, { kind: "spitter", health: 45, special: "spitCharge", specialRemaining: SHOOTER_DT / 2, rushTo: { x: 25, y: 25 } })],
+    };
+    w = step(w);
+    const hazards = w.hazards ?? [];
+    expect(hazards).toHaveLength(1);
+    expect(hazards[0]!.kind).toBe("spit");
+    expect(hazards[0]!.pos).toEqual({ x: 25, y: 25 });
+  });
+});
+
+describe("exploder death blast", () => {
+  it("leaves a telegraphed blast on death that detonates on players in radius after the fuse", () => {
+    let w = createShooterWorld(["a"], 1);
+    // Player next to a near-dead exploder; a rifle shot finishes it → blast spawns, fuses, then detonates.
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 15, y: 15 }, gun: "rifle", aim: 0 } },
+      enemies: [enemyAt("x", 16.2, 15, { kind: "exploder", health: 1 })],
+    };
+    w = step(w, { a: { fire: true } }); // kill it → blast (burst) now telegraphing
+    expect((w.hazards ?? []).some((h) => h.kind === "blast")).toBe(true);
+    expect(w.players.a!.health).toBe(100); // fuse still warning — no damage yet
+    for (let i = 0; i < Math.ceil(EXPLODER_FUSE_S / SHOOTER_DT) + 1; i++) w = step(w);
+    expect(w.players.a!.health).toBeCloseTo(100 - EXPLODER_BLAST_DAMAGE, 3); // one-shot burst landed
+    expect((w.hazards ?? []).some((h) => h.kind === "blast")).toBe(false); // spent after detonating
+  });
+
+  it("the blast spares a player who leaves its radius before the fuse ends", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 15, y: 15 } } },
+      enemies: [],
+      hazards: [{ id: "hz:x:1", kind: "blast", pos: { x: 15 + EXPLODER_BLAST_RADIUS_M + 2, y: 15 }, radius: EXPLODER_BLAST_RADIUS_M, telegraph: EXPLODER_FUSE_S, duration: 0, dps: 0, burst: EXPLODER_BLAST_DAMAGE }],
+    };
+    for (let i = 0; i < Math.ceil(EXPLODER_FUSE_S / SHOOTER_DT) + 1; i++) w = step(w);
+    expect(w.players.a!.health).toBe(100); // out of range at detonation → untouched
+  });
+});
+
+describe("hive spawner", () => {
+  it("births a swarmling brood when its interval elapses", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 25, y: 25 } } },
+      enemies: [enemyAt("hv", 5, 5, { kind: "hive", health: 160, special: "none", specialRemaining: SHOOTER_DT / 2, rushTo: null })],
+    };
+    const before = w.enemies.filter((e) => e.kind === "swarmling").length;
+    w = step(w);
+    const after = w.enemies.filter((e) => e.kind === "swarmling").length;
+    expect(after - before).toBe(HIVE_BROOD_SIZE);
+  });
+});
+
+describe("elites + per-stage scaling", () => {
+  it("a frenzied (elite) rusher advances farther per tick than a normal one", () => {
+    const run = (elite: boolean) => {
+      let w = createShooterWorld(["a"], 1);
+      w = { ...w, wave: 2, players: { a: { ...w.players.a!, pos: { x: 25, y: 5 } } }, enemies: [enemyAt("r", 5, 5, { elite })] };
+      return step(w).enemies.find((e) => e.id === "r")!;
+    };
+    expect(run(true).pos.x).toBeGreaterThan(run(false).pos.x);
+  });
+
+  it("an armored/elite enemy deals more contact damage than a normal one", () => {
+    const run = (elite: boolean) => {
+      let w = createShooterWorld(["a"], 1);
+      w = { ...w, wave: 2, players: { a: { ...w.players.a!, pos: { x: 15, y: 15 } } }, enemies: [enemyAt("r", 15.5, 15, { elite })] };
+      return 100 - step(w).players.a!.health;
+    };
+    expect(run(true)).toBeGreaterThan(run(false));
+  });
+
+  it("campaign spawns scale enemy HP by stage; survival stays at base HP", () => {
+    // Campaign stage 6 (global wave 24): a spawned rusher is beefier than its 20-HP base.
+    let camp: ShooterWorld = { ...createShooterWorld(["a"], 1, "campaign"), wave: 24, partySize: 1, pending: ["rusher", "rusher"], enemies: [] };
+    camp = step(camp);
+    const spawned = camp.enemies.filter((e) => e.kind === "rusher");
+    expect(spawned.length).toBeGreaterThan(0);
+    for (const e of spawned) expect(e.health).toBeGreaterThanOrEqual(Math.round(20 * stageHealthMult(6)));
+
+    // Survival: no stage scaling — rushers spawn at exactly their base HP.
+    let surv: ShooterWorld = { ...createShooterWorld(["a"], 1), wave: 5, partySize: 1, pending: ["rusher"], enemies: [] };
+    surv = step(surv);
+    for (const e of surv.enemies.filter((x) => x.kind === "rusher")) expect(e.health).toBe(20);
+  });
+});
+
+describe("Kraken boss", () => {
+  it("spawns the boss wave with party-scaled HP (not per-stage/elite scaled)", () => {
+    let w: ShooterWorld = { ...createShooterWorld(["a", "b", "c"], 1, "campaign"), wave: 23, partySize: 3, pending: ["kraken"], enemies: [] };
+    w = step(w);
+    const boss = w.enemies.find((e) => e.kind === "kraken");
+    expect(boss).toBeTruthy();
+    expect(boss!.health).toBe(krakenHp(3));
+  });
+
+  it("emits telegraphed strike hazards when its attack timer fires", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 18, y: 15 } } },
+      enemies: [enemyAt("K", 15, 15, { kind: "kraken", health: 2000, special: "none", specialRemaining: SHOOTER_DT / 2, rushTo: null })],
+    };
+    w = step(w);
+    const strikes = (w.hazards ?? []).filter((h) => h.kind === "strike");
+    expect(strikes.length).toBeGreaterThanOrEqual(1);
+    expect(strikes.every((h) => h.telegraph > 0)).toBe(true); // still warning on the tick they appear
   });
 });
 
