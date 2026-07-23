@@ -5,6 +5,7 @@ import type { OverrunConfig } from "../../../game/overrun/render/contract";
 import { parseOverrunSandboxConfig } from "../../../game/overrun/sandbox";
 import { OverrunSandboxDriver } from "../../../game/overrun/sandboxDriver";
 import { ENEMY_KINDS } from "../../../game/overrun/enemies";
+import { TOTAL_STAGES } from "../../../game/overrun/stages";
 import { GUN_IDS } from "../../../game/overrun/weapons";
 import type { EnemyKind, GunId } from "../../../game/overrun/types";
 
@@ -73,18 +74,37 @@ export default function OverrunSandbox() {
       {d && cfg && (
         <div style={PANEL}>
           <div style={{ color: "#fcd34d", letterSpacing: "0.08em", marginBottom: 4 }}>OVERRUN SANDBOX</div>
-          <div style={{ color: "#94a3b8" }}>
-            {cfg.kinds.join(",")} ×{cfg.count}
-            {cfg.hp != null ? ` · hp ${cfg.hp}` : ""} · AI {d.isAiOn() ? "ON" : "OFF"}
-          </div>
 
-          <div style={ROW}>
-            <button style={BTN} onClick={act(() => d.cycleKind(-1))}>◀</button>
-            <span style={{ minWidth: 64, textAlign: "center", color: "#e2e8f0" }}>{cfg.kinds[0]}</span>
-            <button style={BTN} onClick={act(() => d.cycleKind(1))}>▶</button>
-            <button style={BTN} onClick={act(() => d.toggleAi())}>AI {d.isAiOn() ? "⏸" : "▶"}</button>
-            <button style={BTN} onClick={act(() => d.respawn())}>Respawn</button>
-          </div>
+          {d.isCampaign() ? (
+            <>
+              <div style={{ color: "#94a3b8" }}>
+                Campaign — STAGE {cfg.stage}/{TOTAL_STAGES} · AI {d.isAiOn() ? "ON" : "OFF"} · real waves &amp; boss
+              </div>
+              <div style={ROW}>
+                <button style={BTN} onClick={act(() => d.setStage((cfg.stage ?? 1) - 1))}>◀ stage</button>
+                <span style={{ minWidth: 44, textAlign: "center", color: "#e2e8f0" }}>{cfg.stage}</span>
+                <button style={BTN} onClick={act(() => d.setStage((cfg.stage ?? 1) + 1))}>stage ▶</button>
+                <button style={BTN} onClick={act(() => d.respawn())}>Restart</button>
+                <button style={BTN} onClick={act(() => d.toggleAi())}>AI {d.isAiOn() ? "⏸" : "▶"}</button>
+                <button style={BTN} onClick={act(() => d.setEnemyMode())}>→ enemy inspect</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ color: "#94a3b8" }}>
+                {cfg.kinds.join(",")} ×{cfg.count}
+                {cfg.hp != null ? ` · hp ${cfg.hp}` : ""} · AI {d.isAiOn() ? "ON" : "OFF"}
+              </div>
+              <div style={ROW}>
+                <button style={BTN} onClick={act(() => d.cycleKind(-1))}>◀</button>
+                <span style={{ minWidth: 64, textAlign: "center", color: "#e2e8f0" }}>{cfg.kinds[0]}</span>
+                <button style={BTN} onClick={act(() => d.cycleKind(1))}>▶</button>
+                <button style={BTN} onClick={act(() => d.toggleAi())}>AI {d.isAiOn() ? "⏸" : "▶"}</button>
+                <button style={BTN} onClick={act(() => d.respawn())}>Respawn</button>
+                <button style={BTN} onClick={act(() => d.setStage(1))}>→ campaign stage</button>
+              </div>
+            </>
+          )}
 
           <div style={{ ...ROW, flexWrap: "wrap" }}>
             {GUN_IDS.map((g: GunId) => (
@@ -95,7 +115,7 @@ export default function OverrunSandbox() {
           </div>
 
           <div style={{ color: "#64748b", marginTop: 4 }}>
-            keys: [ ] cycle · \ toggle AI — kinds: {(ENEMY_KINDS as EnemyKind[]).join(", ")}
+            keys: [ ] cycle kind · \ toggle AI — kinds: {(ENEMY_KINDS as EnemyKind[]).join(", ")}
           </div>
         </div>
       )}

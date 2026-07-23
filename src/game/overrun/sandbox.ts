@@ -11,11 +11,19 @@ import {
 } from "./constants";
 import { ENEMIES, ENEMY_KINDS, krakenHp } from "./enemies";
 import { createShooterWorld } from "./match";
+import { composeWave } from "./waves";
+import { TOTAL_STAGES, wavesForStage } from "./stages";
 import { freshAmmo, GUN_IDS, DEFAULT_GUN } from "./weapons";
 import type { Enemy, EnemyKind, GunId, ShooterWorld, Vec2 } from "./types";
 
 export interface OverrunSandboxConfig {
-  /** Enemy kinds to spawn, cycled round-robin over `count`. */
+  /**
+   * Campaign stage to launch (1..TOTAL_STAGES), or null for enemy-inspection mode. When set, the
+   * harness drops into a REAL campaign run at that stage's first wave (waves/transitions/boss all
+   * live) and the enemy-inspection params below are ignored.
+   */
+  stage: number | null;
+  /** Enemy kinds to spawn, cycled round-robin over `count` (enemy-inspection mode only). */
   kinds: EnemyKind[];
   count: number;
   /** Enemies act (chase / attack) when true; frozen in place (still killable) when false. */
@@ -24,6 +32,13 @@ export interface OverrunSandboxConfig {
   gun: GunId;
   /** Per-enemy health override, or null for each kind's default (Kraken → party-scaled). */
   hp: number | null;
+}
+
+/** First global (1-based) wave number of a campaign stage. */
+export function firstWaveOfStage(stage: number): number {
+  let wave = 1;
+  for (let s = 1; s < stage; s++) wave += wavesForStage(s);
+  return wave;
 }
 
 const LOCAL = "you";
@@ -52,7 +67,12 @@ export function parseOverrunSandboxConfig(params: URLSearchParams): OverrunSandb
   const hpN = Math.floor(Number(params.get("hp")));
   const hp = Number.isFinite(hpN) && hpN > 0 ? hpN : null;
 
+  const stageRaw = params.get("stage");
+  const stageN = stageRaw == null ? NaN : Math.floor(Number(stageRaw));
+  const stage = Number.isFinite(stageN) ? Math.max(1, Math.min(TOTAL_STAGES, stageN)) : null;
+
   return {
+    stage,
     kinds,
     count: clampInt(params.get("count"), 1, MAX_COUNT, 3),
     ai: params.get("ai") !== "off",
@@ -71,12 +91,32 @@ export function makeSandboxEnemy(kind: EnemyKind, id: string, pos: Vec2, health:
   return base;
 }
 
-/** Build the ready-to-step sandbox world: one player at centre, `count` enemies ringed around it. */
+/**
+ * Build the ready-to-step sandbox world. In STAGE mode: a real campaign world at the chosen stage's
+ * first wave, with that wave composed into `pending` — the sim then runs it for real (spawns, wave
+ * advances, stage transitions + comic beat, the stage-5 boss, victory). In ENEMY mode: one player at
+ * centre with `count` hand-placed enemies ringed around it (the driver keeps the wave machinery inert).
+ */
 export function createOverrunSandboxWorld(config: OverrunSandboxConfig): ShooterWorld {
   const c = OVERRUN_FIELD_M / 2;
-  const base = createShooterWorld([LOCAL], 1, "survival");
+  const mode = config.stage != null ? "campaign" : "survival";
+  const base = createShooterWorld([LOCAL], 1, mode);
   const you = base.players[LOCAL]!;
   base.players[LOCAL] = { ...you, pos: { x: c, y: c }, aim: 0, gun: config.gun, ammo: freshAmmo(config.gun) };
+
+  if (config.stage != null) {
+    const wave = firstWaveOfStage(config.stage);
+    return {
+      ...base,
+      mode: "campaign",
+      wave,
+      partySize: 1,
+      pending: composeWave(base.seed, wave, 1, { campaign: true }),
+      intermission: 0,
+      stageIntroRemaining: 0,
+      enemies: [],
+    };
+  }
 
   const ring = Math.min(c - 3, 8); // just inside the field edge
   const enemies: Enemy[] = [];

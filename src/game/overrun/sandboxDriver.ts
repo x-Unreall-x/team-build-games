@@ -10,6 +10,7 @@
 
 import { PLAYER_HEALTH } from "./constants";
 import { ENEMY_KINDS } from "./enemies";
+import { TOTAL_STAGES } from "./stages";
 import { stepShooter } from "./sim";
 import { inputToShooterIntent, initialShooterMemory } from "./intent";
 import { freshAmmo } from "./weapons";
@@ -46,8 +47,9 @@ export class OverrunSandboxDriver implements OverrunDriver {
     this.mem = memory;
     this.world = stepShooter(this.world, { [LOCAL]: intent }, dt);
 
-    // Keep the wave machinery inert (no composed waves / intermissions / stage beats).
-    if (this.world.pending.length || this.world.intermission || (this.world.stageIntroRemaining ?? 0) || this.world.wave !== 1) {
+    // Enemy-inspection mode keeps the wave machinery inert (no composed waves / intermissions / stage
+    // beats). Stage mode lets it all run for real, so this is skipped.
+    if (this.config.stage == null && (this.world.pending.length || this.world.intermission || (this.world.stageIntroRemaining ?? 0) || this.world.wave !== 1)) {
       this.world = { ...this.world, wave: 1, pending: [], intermission: 0, stageIntroRemaining: 0 };
     }
     // Keep the harness running: revive the local player in place rather than ever ending the run.
@@ -96,6 +98,22 @@ export class OverrunSandboxDriver implements OverrunDriver {
     const i = Math.max(0, ENEMY_KINDS.indexOf(current));
     const next: EnemyKind = ENEMY_KINDS[(i + dir + ENEMY_KINDS.length) % ENEMY_KINDS.length]!;
     this.config = { ...this.config, kinds: [next] };
+    this.respawn();
+  }
+
+  isCampaign(): boolean {
+    return this.config.stage != null;
+  }
+
+  /** Launch (or relaunch) a real campaign run at the given stage. */
+  setStage(stage: number): void {
+    this.config = { ...this.config, stage: Math.max(1, Math.min(TOTAL_STAGES, Math.floor(stage))) };
+    this.respawn();
+  }
+
+  /** Leave campaign mode, back to hand-placed enemy inspection. */
+  setEnemyMode(): void {
+    this.config = { ...this.config, stage: null };
     this.respawn();
   }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseOverrunSandboxConfig, createOverrunSandboxWorld } from "./sandbox";
 import { krakenHp, ENEMIES } from "./enemies";
+import { TOTAL_STAGES, stageForWave } from "./stages";
 
 const parse = (q: string) => parseOverrunSandboxConfig(new URLSearchParams(q));
 
@@ -59,5 +60,32 @@ describe("createOverrunSandboxWorld", () => {
     const w = createOverrunSandboxWorld(parse("enemy=exploder&count=2&hp=15"));
     expect(w.enemies.every((e) => e.health === 15)).toBe(true);
     expect(ENEMIES.exploder.health).not.toBe(15); // proving the override, not the default
+  });
+});
+
+describe("campaign stage launcher", () => {
+  it("parses ?stage into a clamped 1..TOTAL_STAGES value (null when absent/invalid)", () => {
+    expect(parse("").stage).toBe(null);
+    expect(parse("stage=3").stage).toBe(3);
+    expect(parse("stage=99").stage).toBe(TOTAL_STAGES);
+    expect(parse("stage=0").stage).toBe(1);
+    expect(parse("stage=abc").stage).toBe(null);
+  });
+
+  it("launches EVERY stage as a real campaign world at that stage's first wave, with a composed wave", () => {
+    for (let s = 1; s <= TOTAL_STAGES; s++) {
+      const w = createOverrunSandboxWorld(parse(`stage=${s}`));
+      expect(w.mode).toBe("campaign");
+      expect(stageForWave(w.wave)).toMatchObject({ stage: s, waveInStage: 1 });
+      expect(w.pending.length).toBeGreaterThan(0); // the first wave is queued to spawn
+      expect(Object.keys(w.players)).toEqual(["you"]);
+      expect(w.enemies).toEqual([]); // nothing placed by hand — the sim spawns from `pending`
+    }
+  });
+
+  it("a stage launch overrides the enemy-inspection params (real waves, not hand-placed)", () => {
+    const w = createOverrunSandboxWorld(parse("stage=2&enemy=kraken&count=9"));
+    expect(w.mode).toBe("campaign");
+    expect(w.enemies).toEqual([]); // enemy/count ignored in stage mode
   });
 });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { OverrunSandboxDriver } from "./sandboxDriver";
-import { parseOverrunSandboxConfig } from "./sandbox";
+import { parseOverrunSandboxConfig, firstWaveOfStage } from "./sandbox";
 import { SHOOTER_DT } from "./constants";
+import { stageForWave } from "./stages";
 import type { RawShooterInput } from "./types";
 
 const cfg = (q: string) => parseOverrunSandboxConfig(new URLSearchParams(q));
@@ -49,6 +50,26 @@ describe("OverrunSandboxDriver", () => {
     expect(d.getConfig().kinds[0]).not.toBe("rusher");
     d.setGun("shotgun");
     expect(d.frame(SHOOTER_DT, IDLE).world.players.you!.gun).toBe("shotgun");
+  });
+
+  it("runs the REAL campaign machinery when launched at a stage (spawns; the wave is not pinned)", () => {
+    const d = new OverrunSandboxDriver(cfg("stage=3"));
+    const startWave = firstWaveOfStage(3);
+    const w = run(d, 30, IDLE);
+    expect(w.mode).toBe("campaign");
+    expect(w.wave).toBe(startWave); // still on stage 3's first wave — NOT reset to 1 like enemy mode
+    expect(stageForWave(w.wave).stage).toBe(3);
+    expect(w.enemies.length).toBeGreaterThan(0); // the composed wave spawned in for real
+  });
+
+  it("setStage relaunches a campaign stage; setEnemyMode returns to kind inspection", () => {
+    const d = new OverrunSandboxDriver(cfg("enemy=rusher"));
+    d.setStage(5);
+    const camp = d.frame(0, IDLE).world;
+    expect(camp.mode).toBe("campaign");
+    expect(stageForWave(camp.wave).stage).toBe(5);
+    d.setEnemyMode();
+    expect(d.frame(0, IDLE).world.mode).toBe("survival");
   });
 });
 
