@@ -13,7 +13,9 @@ const BANNED = [/Math\.random/, /Date\.now/, /new Date\(/, /performance\.now/];
 
 describe("overrun sim core purity", () => {
   it("contains no clocks or ambient RNG in top-level core files", () => {
-    const files = readdirSync(CORE_DIR).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+    // sandbox*.ts is a dev-only test harness (a stateful driver that implements the render contract),
+    // not sim core — exempt like net/ and render/.
+    const files = readdirSync(CORE_DIR).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.startsWith("sandbox"));
     expect(files.length).toBeGreaterThan(8);
     for (const f of files) {
       const src = readFileSync(join(CORE_DIR, f), "utf8");
@@ -24,7 +26,9 @@ describe("overrun sim core purity", () => {
   });
 
   it("core files import nothing from net/ or render/ or engines", () => {
-    const files = readdirSync(CORE_DIR).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+    // sandbox*.ts is a dev-only test harness (a stateful driver that implements the render contract),
+    // not sim core — exempt like net/ and render/.
+    const files = readdirSync(CORE_DIR).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.startsWith("sandbox"));
     for (const f of files) {
       const src = readFileSync(join(CORE_DIR, f), "utf8");
       expect(src, `${f} must stay engine/transport-free`).not.toMatch(/from ["']\.\/(net|render)\//);
