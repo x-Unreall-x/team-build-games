@@ -167,6 +167,29 @@ describe("quantized round-trip", () => {
     expect(rebuilt.enemies[0]!.burning).toBeCloseTo(0.9, 2);
   });
 
+  it("round-trips a rocket projectile (pos, heading, range, owner) and a delta update", () => {
+    const base = unqWorld(qWorld(fatWorld()));
+    const pj = { id: "pj:a:3", pos: { x: 12.5, y: 8.25 }, dir: { x: 1, y: 0 }, speed: 20, remaining: 22.5, ownerId: "a" };
+    const prev: ShooterWorld = { ...base, projectiles: [pj] };
+    const r = unqWorld(qWorld(prev));
+    expect(r.projectiles).toHaveLength(1);
+    expect(r.projectiles![0]!.pos.x).toBeCloseTo(12.5, 2);
+    expect(r.projectiles![0]!.dir.x).toBeCloseTo(1, 2);
+    expect(r.projectiles![0]!.remaining).toBeCloseTo(22.5, 2);
+    expect(r.projectiles![0]!.ownerId).toBe("a");
+    // delta path: projectile advanced, still round-trips
+    const cur: ShooterWorld = { ...prev, tick: prev.tick + 1, projectiles: [{ ...pj, pos: { x: 13.1, y: 8.25 }, remaining: 21.9 }] };
+    const rebuilt = applyDelta(prev, diffWorld(qWorld(prev), qWorld(cur)));
+    expect(rebuilt.projectiles![0]!.pos.x).toBeCloseTo(13.1, 2);
+  });
+
+  it("round-trips a blast (rocket airburst) event", () => {
+    const base = unqWorld(qWorld(fatWorld()));
+    const w: ShooterWorld = { ...base, events: [{ tick: base.tick, kind: "blast", pos: { x: 3, y: 4 }, radius: 3.2 }] };
+    const b = unqWorld(qWorld(w)).events.find((e) => e.kind === "blast");
+    expect(b && b.kind === "blast" && b.radius).toBeCloseTo(3.2, 2);
+  });
+
   it("preserves perks/offers/stats/ammo exactly (migration needs them)", () => {
     const w = fatWorld();
     w.players.p1 = {

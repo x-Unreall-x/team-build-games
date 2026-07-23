@@ -10,9 +10,9 @@ export interface Vec2 { x: number; y: number; }
 export interface InputState { up: boolean; down: boolean; left: boolean; right: boolean; }
 export type PlayerId = string;
 
-export type GunId = "pistol" | "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower";
+export type GunId = "pistol" | "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "rocket";
 export type EnemyKind = "rusher" | "tank" | "swarmling" | "spitter" | "exploder" | "hive" | "kraken";
-export type PickupKind = "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "medkit";
+export type PickupKind = "shotgun" | "rifle" | "autorifle" | "smg" | "dmr" | "flamethrower" | "rocket" | "medkit";
 /** Pickup kinds that are weapons (everything a kill can drop except the medkit). */
 export type DroppableGun = Exclude<PickupKind, "medkit">;
 export type ShooterStatus = "alive" | "downed" | "dead";
@@ -105,6 +105,25 @@ export interface Hazard {
   burst?: number;
 }
 
+/**
+ * A rocket in flight. Travels straight at `speed` along `dir` until it strikes an enemy, runs out of
+ * `remaining` range, or leaves the field — then it detonates for an AoE burst (see the sim's
+ * projectile step). `ownerId` attributes the explosion's kills for XP.
+ */
+export interface Projectile {
+  /** Deterministic `pj:${ownerId}:${spawnTick}`. */
+  id: string;
+  pos: Vec2;
+  /** Unit heading. */
+  dir: Vec2;
+  /** Travel speed (m/s). */
+  speed: number;
+  /** Meters of range left before it detonates at range end. */
+  remaining: number;
+  /** Player who fired it — the explosion's kills award them XP. */
+  ownerId: PlayerId;
+}
+
 export interface Enemy {
   /** Deterministic `e${spawnSeq}`. */
   id: string;
@@ -149,7 +168,8 @@ export type ShooterEvent =
   | { tick: number; kind: "downed"; playerId: PlayerId }
   | { tick: number; kind: "revived"; playerId: PlayerId }
   | { tick: number; kind: "hit"; pos: Vec2 }
-  | { tick: number; kind: "playerHit"; playerId: PlayerId };
+  | { tick: number; kind: "playerHit"; playerId: PlayerId }
+  | { tick: number; kind: "blast"; pos: Vec2; radius: number };
 
 /** What a client sends per tick — never positions/health/enemies. */
 export interface ShooterIntent {
@@ -211,6 +231,8 @@ export interface ShooterWorld {
    * hazard-free worlds need not carry it — treated as `[]` everywhere it's read.
    */
   hazards?: Hazard[];
+  /** Rockets in flight. Optional so old snapshots and rocket-free worlds need not carry it. */
+  projectiles?: Projectile[];
   events: ShooterEvent[];
   /** Party score: Σ enemy scoreValue × wave at kill time. */
   score: number;

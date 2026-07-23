@@ -62,6 +62,17 @@ describe("fireTick", () => {
     expect(r.events.some((e) => e.kind === "shot" && e.gun === "flamethrower")).toBe(true);
   });
 
+  it("rocket launches a travelling projectile (no immediate hit) and emits a launch shot event", () => {
+    const p = player({ gun: "rocket", ammo: freshAmmo("rocket") }); // (5,15) aiming +x
+    const r = fireTick(p, [enemy("e1", 20)], true, 1, 0, EFF);
+    expect(r.spawned).toHaveLength(1);
+    const pj = r.spawned![0]!;
+    expect(pj.ownerId).toBe("p1");
+    expect(pj.dir.x).toBeCloseTo(1, 3);
+    expect(r.enemies.find((e) => e.id === "e1")!.health).toBe(20); // launch does not damage
+    expect(r.events.some((e) => e.kind === "shot" && e.gun === "rocket")).toBe(true);
+  });
+
   it("shotgun fires 8 pellets with deterministic spread; counts ONE shot", () => {
     const p = player({ gun: "shotgun", ammo: freshAmmo("shotgun") });
     const a = fireTick(p, [enemy("e1", 5.8, { health: 1000 })], true, 42, 7, EFF);

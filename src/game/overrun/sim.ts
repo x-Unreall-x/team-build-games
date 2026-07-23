@@ -19,6 +19,7 @@ import {
   SPIT_COOLDOWN_S, SPIT_HAZARD_TELEGRAPH_S, SPIT_HAZARD_DURATION_S, SPIT_HAZARD_RADIUS_M, SPIT_DPS,
   EXPLODER_FUSE_S, EXPLODER_BLAST_RADIUS_M, EXPLODER_BLAST_DAMAGE,
   HIVE_SPAWN_INTERVAL_S, HIVE_BROOD_RING_M, ELITE_MIN_STAGE, ELITE_CHANCE, KRAKEN_ATTACK_INTERVAL_S,
+  ROCKET_BLAST_RADIUS_M, ROCKET_BLAST_DAMAGE, MAX_PROJECTILES,
 } from "./constants";
 import { ENEMIES, eliteMods, krakenHp, nearestAlive, stageHealthMult, stepEnemy, stepHive, stepKraken, stepSpitter, stepTank } from "./enemies";
 import { hazardActive, stepHazard } from "./hazards";
@@ -31,7 +32,7 @@ import { composeWave, spawnPos } from "./waves";
 import { CAMPAIGN_WAVES, stageForWave } from "./stages";
 import { resetPartyForStage } from "./match";
 import { freshAmmo, GUNS } from "./weapons";
-import type { Enemy, Hazard, Pickup, PlayerId, ShooterEvent, ShooterIntent, ShooterPhase, ShooterPlayer, ShooterWorld } from "./types";
+import type { Enemy, Hazard, Pickup, PlayerId, Projectile, ShooterEvent, ShooterIntent, ShooterPhase, ShooterPlayer, ShooterWorld } from "./types";
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -63,6 +64,35 @@ export function stepShooter(
   let { score, pity, spawnSeq, wave, partySize, intermission } = world;
   let pending = world.pending;
   let stageIntroRemaining = world.stageIntroRemaining ?? 0;
+  // Rockets launched this tick (from block 5's fireTick), advanced in block 5c.
+  const newProjectiles: Projectile[] = [];
+
+  /**
+   * Resolve one enemy's death: XP + kill-stat to `killerId` (when attributable), always party score,
+   * a kill event, an exploder's death blast, and a drop roll. Shared by the rocket explosion (5c).
+   */
+  const awardKill = (e: Enemy, killerId: PlayerId | null): void => {
+    const def = ENEMIES[e.kind];
+    if (killerId && players[killerId]) {
+      const kp = players[killerId]!;
+      let xp = kp.xp + def.xp;
+      let level = kp.level;
+      let offers = kp.offers;
+      while (xp >= xpToNext(level)) {
+        xp -= xpToNext(level);
+        level += 1;
+        offers = [...offers, rollOffer(seed, tick, kp.id, level)];
+        events.push({ tick, kind: "levelup", playerId: kp.id });
+      }
+      players[killerId] = { ...kp, xp, level, offers, stats: { ...kp.stats, kills: kp.stats.kills + 1 } };
+    }
+    score += def.scoreValue * wave;
+    events.push({ tick, kind: "kill", pos: { x: e.pos.x, y: e.pos.y }, enemy: e.kind });
+    if (e.kind === "exploder") deathBlasts.push(deathBlast(e, tick));
+    const drop = rollDrop(seed, tick, e, pickups.length, pity, droppableGuns(mode, wave));
+    pity = drop.pity;
+    if (drop.pickup) pickups.push(drop.pickup);
+  };
 
   // 3. perk picks
   for (const id of ids) {
@@ -109,6 +139,7 @@ export function stepShooter(
     const res = fireTick(p, enemies, intent?.fire ?? false, seed, tick, eff);
     p = res.player;
     events.push(...res.events);
+    if (res.spawned) newProjectiles.push(...res.spawned);
     const survivors: Enemy[] = [];
     for (const e of res.enemies) {
       if (e.health > 0) {
@@ -162,6 +193,40 @@ export function stepShooter(
       if (drop.pickup) pickups.push(drop.pickup);
     }
     enemies = survivors;
+  }
+
+  // 5c. rockets: advance each in-flight projectile; it detonates on the first enemy struck, at range
+  // end, or at the field edge — an AoE burst hitting every enemy within ROCKET_BLAST_RADIUS_M (kills go
+  // to the owner). Rockets launched this tick join here; the whole set is capped for wire/CPU safety.
+  let projectiles = [...(world.projectiles ?? []), ...newProjectiles].slice(0, MAX_PROJECTILES);
+  if (projectiles.length > 0) {
+    const flying: Projectile[] = [];
+    for (const pj of projectiles) {
+      const stepM = Math.min(pj.speed * dt, pj.remaining);
+      const nx = clamp(pj.pos.x + pj.dir.x * stepM, 0, OVERRUN_FIELD_M);
+      const ny = clamp(pj.pos.y + pj.dir.y * stepM, 0, OVERRUN_FIELD_M);
+      const remaining = pj.remaining - stepM;
+      const struck = enemies.some((e) => e.health > 0 && Math.hypot(e.pos.x - nx, e.pos.y - ny) <= ENEMIES[e.kind].hitRadius);
+      const edge = nx <= 0 || nx >= OVERRUN_FIELD_M || ny <= 0 || ny >= OVERRUN_FIELD_M;
+      if (!struck && remaining > 0 && !edge) {
+        flying.push({ ...pj, pos: { x: nx, y: ny }, remaining });
+        continue;
+      }
+      // Airburst at (nx, ny): one hit to every enemy in the blast radius; kills credit the owner.
+      events.push({ tick, kind: "blast", pos: { x: nx, y: ny }, radius: ROCKET_BLAST_RADIUS_M });
+      const survivors: Enemy[] = [];
+      for (const e of enemies) {
+        if (Math.hypot(e.pos.x - nx, e.pos.y - ny) > ROCKET_BLAST_RADIUS_M) {
+          survivors.push(e);
+          continue;
+        }
+        const health = e.health - ROCKET_BLAST_DAMAGE;
+        if (health > 0) survivors.push({ ...e, health });
+        else awardKill(e, pj.ownerId);
+      }
+      enemies = survivors;
+    }
+    projectiles = flying;
   }
 
   // 6. enemies: chase (with separation + intercept lead) + contact damage
@@ -480,6 +545,6 @@ export function stepShooter(
 
   return {
     tick, phase, mode, seed, wave, partySize, pending, intermission, stageIntroRemaining,
-    players, enemies, pickups, hazards, events: cappedEvents, score, spawnSeq, pity,
+    players, enemies, pickups, hazards, projectiles, events: cappedEvents, score, spawnSeq, pity,
   };
 }

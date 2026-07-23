@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { stepShooter } from "./sim";
 import { createShooterWorld } from "./match";
 import { ENEMIES, krakenHp, stageHealthMult } from "./enemies";
-import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT, WAVE1_SPEED_MULT, SPIT_DPS, SPIT_HAZARD_RADIUS_M, EXPLODER_BLAST_DAMAGE, EXPLODER_BLAST_RADIUS_M, EXPLODER_FUSE_S, HIVE_BROOD_SIZE } from "./constants";
+import { INTERMISSION_S, REVIVE_HEALTH, REVIVE_S, SHOOTER_DT, WAVE1_SPEED_MULT, SPIT_DPS, SPIT_HAZARD_RADIUS_M, EXPLODER_BLAST_DAMAGE, EXPLODER_BLAST_RADIUS_M, EXPLODER_FUSE_S, HIVE_BROOD_SIZE, ROCKET_SPEED_MS } from "./constants";
 import { waveBudget } from "./waves";
 import { CAMPAIGN_WAVES } from "./stages";
 import { xpToNext } from "./perks";
@@ -200,6 +200,37 @@ describe("Kraken boss", () => {
     const strikes = (w.hazards ?? []).filter((h) => h.kind === "strike");
     expect(strikes.length).toBeGreaterThanOrEqual(1);
     expect(strikes.every((h) => h.telegraph > 0)).toBe(true); // still warning on the tick they appear
+  });
+});
+
+describe("rocket projectiles", () => {
+  it("a rocket flies, detonates on an enemy, and its AoE burst clears the cluster (crediting the owner)", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 10, y: 15 } } },
+      enemies: [enemyAt("t1", 18, 15, { health: 20 }), enemyAt("t2", 18.8, 15, { health: 20 })],
+      projectiles: [{ id: "pj:a:0", pos: { x: 16, y: 15 }, dir: { x: 1, y: 0 }, speed: ROCKET_SPEED_MS, remaining: 40, ownerId: "a" }],
+    };
+    const beforeKills = w.players.a!.stats.kills;
+    for (let i = 0; i < 20 && (w.projectiles ?? []).length > 0; i++) w = step(w);
+    expect(w.projectiles ?? []).toHaveLength(0); // detonated
+    expect(w.enemies.some((e) => e.id === "t1")).toBe(false); // both in the blast
+    expect(w.enemies.some((e) => e.id === "t2")).toBe(false);
+    expect(w.players.a!.stats.kills).toBeGreaterThan(beforeKills); // owner credited
+  });
+
+  it("a rocket that hits nothing detonates at the end of its range", () => {
+    let w = createShooterWorld(["a"], 1);
+    w = {
+      ...w,
+      players: { a: { ...w.players.a!, pos: { x: 15, y: 28 } } },
+      enemies: [],
+      projectiles: [{ id: "pj:a:0", pos: { x: 15, y: 15 }, dir: { x: 0, y: -1 }, speed: ROCKET_SPEED_MS, remaining: 1, ownerId: "a" }],
+    };
+    w = step(w); // remaining 1m < one 0.67m step ×2 → detonates within a tick or two
+    for (let i = 0; i < 5 && (w.projectiles ?? []).length > 0; i++) w = step(w);
+    expect(w.projectiles ?? []).toHaveLength(0);
   });
 });
 

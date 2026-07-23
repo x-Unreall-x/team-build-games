@@ -45,8 +45,8 @@ const screenAngle = (aim: number) => Math.atan2(Math.sin(aim) * Y_SCALE, Math.co
 const CAMO_BODY = 0x3f6212;
 /** 8 distinct squad ring colors, indexed by colorIndex. */
 const RING_COLORS = [0xf8fafc, 0xfbbf24, 0x38bdf8, 0xf472b6, 0xa3e635, 0xc084fc, 0xfb923c, 0x2dd4bf];
-const GUN_TINT: Record<GunId, number> = { pistol: 0xd4d4d8, shotgun: 0xf59e0b, rifle: 0x38bdf8, autorifle: 0x22c55e, smg: 0xa78bfa, dmr: 0xf97316, flamethrower: 0xea580c };
-const TRACER_COLOR: Record<GunId, number> = { pistol: 0xfef9c3, shotgun: 0xfbbf24, rifle: 0x7dd3fc, autorifle: 0x86efac, smg: 0xc4b5fd, dmr: 0xfdba74, flamethrower: 0xfb923c };
+const GUN_TINT: Record<GunId, number> = { pistol: 0xd4d4d8, shotgun: 0xf59e0b, rifle: 0x38bdf8, autorifle: 0x22c55e, smg: 0xa78bfa, dmr: 0xf97316, flamethrower: 0xea580c, rocket: 0x4d7c0f };
+const TRACER_COLOR: Record<GunId, number> = { pistol: 0xfef9c3, shotgun: 0xfbbf24, rifle: 0x7dd3fc, autorifle: 0x86efac, smg: 0xc4b5fd, dmr: 0xfdba74, flamethrower: 0xfb923c, rocket: 0xfca5a5 };
 
 /** Procedural body/head colors per enemy kind (real art, when present, wins in preload). */
 const ENEMY_VIS: Record<EnemyKind, { body: number; head: number }> = {
@@ -83,6 +83,7 @@ const gunTexture = (gun: GunId) => `overrun-weapon-${gun}`;
 const enemyTexture = (kind: EnemyKind, state: "alive" | "dead", variant: number) =>
   `overrun-enemy-${kind}-${state}-${variant}`;
 const MEDKIT_TEXTURE = "overrun-medkit";
+const ROCKET_TEXTURE = "overrun-rocket";
 
 const GUN_VIEW: Record<GunId, { width: number; height: number; originX: number }> = {
   pistol: { width: 34, height: 17, originX: 0.25 },
@@ -92,11 +93,12 @@ const GUN_VIEW: Record<GunId, { width: number; height: number; originX: number }
   smg: { width: 44, height: 22, originX: 0.28 },
   dmr: { width: 72, height: 30, originX: 0.34 },
   flamethrower: { width: 56, height: 26, originX: 0.3 },
+  rocket: { width: 70, height: 30, originX: 0.34 },
 };
 
 // Recoil kick (screen px) the weapon + hands snap back on each shot — small, but heftier per gun.
 // The flamethrower streams continuously → no per-shot kick.
-const GUN_RECOIL: Record<GunId, number> = { pistol: 3, rifle: 5, shotgun: 8, autorifle: 5, smg: 3, dmr: 9, flamethrower: 0 };
+const GUN_RECOIL: Record<GunId, number> = { pistol: 3, rifle: 5, shotgun: 8, autorifle: 5, smg: 3, dmr: 9, flamethrower: 0, rocket: 12 };
 /** Exponential recovery rate (1/s): kick decays to ~e⁻ᵏᵈᵗ each frame — snappy return to rest. */
 const RECOIL_RECOVER = 18;
 /** Fraction of the gun's kick the body/hands flinch back with it. */
@@ -138,6 +140,7 @@ export class OverrunScene extends Phaser.Scene {
   private views: Record<PlayerId, PlayerView> = {};
   private enemyViews: Record<string, EnemyView> = {};
   private pickupViews: Record<string, PickupView> = {};
+  private projectileViews: Record<string, Phaser.GameObjects.Image> = {};
   private terrain: Phaser.GameObjects.Image | null = null;
   private target: Phaser.GameObjects.Graphics | null = null;
   private terrainKey = "";
@@ -215,6 +218,7 @@ export class OverrunScene extends Phaser.Scene {
     this.renderHazards(world);
     this.renderPlayers(world);
     this.renderEnemies(world);
+    this.renderProjectiles(world);
     this.renderPickups(world);
     this.renderBossBar(world);
     this.emitHud(world, countdown);
@@ -311,6 +315,7 @@ export class OverrunScene extends Phaser.Scene {
         const shooterView = shooterId ? this.views[shooterId] : undefined;
         const start = shooterView?.muzzle ?? { x: sx(ev.from.x), y: sy(ev.from.y) };
         if (ev.gun === "flamethrower") this.drawFlameCone(start, ev.to);
+        else if (ev.gun === "rocket") this.drawMuzzleFlash(start); // the rocket itself is rendered in flight
         else this.drawTracer(start, ev.to, ev.gun);
         // Kick the shooter's weapon back (per-gun magnitude; a shotgun blast's 8 pellets don't stack).
         if (shooterId) this.recoil[shooterId] = Math.max(this.recoil[shooterId] ?? 0, GUN_RECOIL[ev.gun]);
@@ -342,6 +347,10 @@ export class OverrunScene extends Phaser.Scene {
         break;
       case "playerHit":
         this.cfg.onEvent({ type: "playerHit", local: ev.playerId === localId });
+        break;
+      case "blast":
+        this.drawExplosion(ev.pos, ev.radius);
+        this.cfg.onEvent({ type: "enemyHit" }); // reuse the impact thump for the airburst
         break;
     }
   }
@@ -412,6 +421,31 @@ export class OverrunScene extends Phaser.Scene {
       g.fillPath();
     }
     this.tweens.add({ targets: g, alpha: 0, duration: 95, onComplete: () => g.destroy() });
+  }
+
+  /** Brief bright puff at the muzzle (rocket launch — the rocket body is rendered in flight). */
+  private drawMuzzleFlash(at: { x: number; y: number }): void {
+    const g = this.add.graphics().setDepth(20_000);
+    g.fillStyle(0xfff1c2, 0.9);
+    g.fillCircle(at.x, at.y, 6);
+    g.fillStyle(0xf59e0b, 0.5);
+    g.fillCircle(at.x, at.y, 10);
+    this.tweens.add({ targets: g, alpha: 0, duration: 110, onComplete: () => g.destroy() });
+  }
+
+  /** Expanding airburst ring + flash at a world point (rocket explosion), foreshortened to the ground. */
+  private drawExplosion(pos: Vec2, radius: number): void {
+    const rx = radius * PX_PER_M;
+    const ry = rx * Y_SCALE;
+    // Draw centered at local (0,0) and position the object, so setScale grows from the blast center.
+    const g = this.add.graphics().setDepth(pos.y + 0.05).setPosition(sx(pos.x), sy(pos.y));
+    g.fillStyle(0xfff1c2, 0.85);
+    g.fillEllipse(0, 0, rx * 0.9, ry * 0.9);
+    g.lineStyle(3, 0xf97316, 0.9);
+    g.strokeEllipse(0, 0, rx * 2, ry * 2);
+    g.setScale(0.4);
+    // Grow from the center and fade — a quick concussive pop.
+    this.tweens.add({ targets: g, scaleX: 1, scaleY: 1, alpha: 0, duration: 260, ease: "Cubic.Out", onComplete: () => g.destroy() });
   }
 
   // ---- rendering ------------------------------------------------------------------
@@ -800,6 +834,34 @@ export class OverrunScene extends Phaser.Scene {
     mg.fillRect(3, s / 2 - 2, s - 6, 4);
     mg.generateTexture(MEDKIT_TEXTURE, s, s);
     mg.destroy();
+
+    if (!this.textures.exists(ROCKET_TEXTURE)) {
+      const rg = this.add.graphics(); // small rocket: dark body + orange flame tail, pointing +x
+      rg.fillStyle(0xfb923c, 1);
+      rg.fillTriangle(0, 3, 0, 11, -8, 7); // exhaust flame
+      rg.fillStyle(0x3f3f46, 1);
+      rg.fillRect(0, 3, 16, 8); // body
+      rg.fillStyle(0xef4444, 1);
+      rg.fillTriangle(16, 3, 16, 11, 22, 7); // nose cone
+      rg.generateTexture(ROCKET_TEXTURE, 24, 14);
+      rg.destroy();
+    }
+  }
+
+  private renderProjectiles(world: ShooterWorld): void {
+    const live = new Set<string>();
+    for (const pj of world.projectiles ?? []) {
+      live.add(pj.id);
+      const img = this.projectileViews[pj.id] ?? (this.projectileViews[pj.id] = this.add.image(0, 0, ROCKET_TEXTURE).setOrigin(0.5).setDisplaySize(24, 14));
+      img.setPosition(sx(pj.pos.x), sy(pj.pos.y));
+      img.setRotation(screenAngle(Math.atan2(pj.dir.y, pj.dir.x)));
+      img.setDepth(pj.pos.y + 0.03);
+    }
+    for (const id of Object.keys(this.projectileViews)) {
+      if (live.has(id)) continue;
+      this.projectileViews[id]!.destroy();
+      delete this.projectileViews[id];
+    }
   }
 
   private drawField(): void {

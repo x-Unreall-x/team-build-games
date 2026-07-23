@@ -3,7 +3,7 @@ import { coerceGun, DEFAULT_GUN, freshAmmo, GUN_IDS, GUNS, hasReserve } from "./
 
 describe("gun table", () => {
   it("defines exactly the slice guns", () => {
-    expect(GUN_IDS).toEqual(["pistol", "shotgun", "rifle", "autorifle", "smg", "dmr", "flamethrower"]);
+    expect(GUN_IDS).toEqual(["pistol", "shotgun", "rifle", "autorifle", "smg", "dmr", "flamethrower", "rocket"]);
     expect(DEFAULT_GUN).toBe("pistol");
   });
 

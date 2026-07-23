@@ -61,6 +61,18 @@ export const FLAME_BURN_S = 1.6;
 /** Damage per second an enemy takes while burning (independent of the direct cone hit). */
 export const BURN_DPS = 14;
 
+// --- rocket launcher (travelling projectile + AoE airburst) ---
+/** Rocket flight speed (m/s). */
+export const ROCKET_SPEED_MS = 20;
+/** Explosion radius (m): every enemy within takes the full burst. */
+export const ROCKET_BLAST_RADIUS_M = 3.2;
+/** Explosion damage dealt once to each enemy in radius (big — clears rusher packs, dents tanks). */
+export const ROCKET_BLAST_DAMAGE = 120;
+/** Muzzle offset (m) the rocket spawns ahead of the shooter so it doesn't detonate on itself. */
+export const ROCKET_MUZZLE_M = 0.9;
+/** Hard cap on rockets in flight (anti-flood / snapshot-size guard). */
+export const MAX_PROJECTILES = 12;
+
 // --- spitter (ranged kiter) + spit acid pool ---
 /** Distance the spitter tries to hold from its target (kites in/out toward this). */
 export const SPITTER_RANGE_M = 8;

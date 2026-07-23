@@ -19,6 +19,12 @@ describe("weapon tiers", () => {
     expect(droppableGuns("campaign", 9)).not.toContain("flamethrower"); // stage 3, not yet
   });
 
+  it("stage 5 unlocks the rocket launcher", () => {
+    // stage 5 starts at wave 21 (3+5+7+5 = 20 waves before it)
+    expect(droppableGuns("campaign", 21)).toContain("rocket");
+    expect(droppableGuns("campaign", 16)).not.toContain("rocket"); // stage 4, not yet
+  });
+
   it("survival starts at tier 1 and opens one tier every two waves", () => {
     expect(unlockedTier("survival", 1)).toBe(1);
     expect(unlockedTier("survival", 2)).toBe(1);

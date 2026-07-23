@@ -38,9 +38,13 @@ export const GUNS: Record<GunId, GunDef> = {
   // are unused for it) that sets enemies alight for burn-over-time. `damage` is the per-tick direct
   // hit; `rpm` gates the fuel burn cadence; `range` is the cone length. Melts stacks up close.
   flamethrower: { id: "flamethrower", name: "Flamethrower", damage: 5, rpm: 600, magSize: 100, reserveMax: 200, reloadS: 2.2, spreadDeg: 0, pellets: 1, range: 7, pierce: 0 },
+  // Rocket launcher: fires a TRAVELLING projectile (see firing's rocket branch + the sim's projectile
+  // step) that detonates for a big AoE — `damage`/`pellets`/`spread` are unused; `range` is the flight
+  // distance before it airbursts. Slow, tiny mag: the top-tier crowd-clearer.
+  rocket: { id: "rocket", name: "Rocket Launcher", damage: 0, rpm: 45, magSize: 4, reserveMax: 12, reloadS: 2.6, spreadDeg: 0, pellets: 1, range: 40, pierce: 0 },
 };
 
-export const GUN_IDS: GunId[] = ["pistol", "shotgun", "rifle", "autorifle", "smg", "dmr", "flamethrower"];
+export const GUN_IDS: GunId[] = ["pistol", "shotgun", "rifle", "autorifle", "smg", "dmr", "flamethrower", "rocket"];
 export const DEFAULT_GUN: GunId = "pistol";
 
 /** Narrow an untrusted value to a known gun id. */

@@ -15,7 +15,7 @@ import { ENEMY_KINDS } from "../enemies";
 import { GUN_IDS } from "../weapons";
 import { PERK_IDS } from "../perks";
 import type {
-  Enemy, EnemyKind, EnemySpecial, Hazard, HazardKind, PerkId, PerkOffer, Pickup, PickupKind, ShooterEvent,
+  Enemy, EnemyKind, EnemySpecial, Hazard, HazardKind, PerkId, PerkOffer, Pickup, PickupKind, Projectile, ShooterEvent,
   ShooterPhase, ShooterPlayer, ShooterStatus, ShooterWorld,
 } from "../types";
 
@@ -31,11 +31,11 @@ type AssertAllStatus = ShooterStatus extends (typeof STATUS)[number] ? true : ne
 const _assertAllStatus: AssertAllStatus = true;
 
 // Append-only — index is the wire encoding; never renumber existing entries.
-const PICKUP_KINDS = ["shotgun", "rifle", "medkit", "autorifle", "smg", "dmr", "flamethrower"] as const satisfies readonly PickupKind[];
+const PICKUP_KINDS = ["shotgun", "rifle", "medkit", "autorifle", "smg", "dmr", "flamethrower", "rocket"] as const satisfies readonly PickupKind[];
 type AssertAllPickupKind = PickupKind extends (typeof PICKUP_KINDS)[number] ? true : never;
 const _assertAllPickupKind: AssertAllPickupKind = true;
 
-const EVENT_KINDS = ["shot", "kill", "pickup", "levelup", "downed", "revived", "hit", "playerHit"] as const satisfies readonly ShooterEvent["kind"][];
+const EVENT_KINDS = ["shot", "kill", "pickup", "levelup", "downed", "revived", "hit", "playerHit", "blast"] as const satisfies readonly ShooterEvent["kind"][];
 type AssertAllEventKind = ShooterEvent["kind"] extends (typeof EVENT_KINDS)[number] ? true : never;
 const _assertAllEventKind: AssertAllEventKind = true;
 
@@ -63,6 +63,8 @@ type QEnemy = [string, number, number, number, number, number, number, number, n
 type QPickup = [string, number, number, number, number]; // id, kind, xcm, ycm, ttlCs
 // id, kind, xcm, ycm, radiusCm, telegraphCs, durationCs, dps, burst (0 = pool/no burst)
 type QHazard = [string, number, number, number, number, number, number, number, number];
+// id, xcm, ycm, dirAngleMrad, speedCmS, remainingCm, ownerId
+type QProjectile = [string, number, number, number, number, number, string];
 type QEvent = (number | string)[]; // [tick, kindIdx, ...payload]
 
 export interface QWorld {
@@ -73,6 +75,8 @@ export interface QWorld {
   sir?: number;
   /** Active ground hazards (spit pools; boss strikes). Absent/omitted = none. */
   hz?: QHazard[];
+  /** Rockets in flight. Absent/omitted = none. */
+  pr?: QProjectile[];
 }
 
 // phase ↔ int: 0 playing, 1 ended, 2 victory
@@ -89,6 +93,7 @@ export interface ODelta {
   en: { a: QEnemy[]; u: [string, number, number, number, number, number, number, number, number, number, number][]; d: string[] };
   pk: QPickup[]; // full pickup list (≤24 small tuples — ttls tick every step, diffing buys nothing)
   hz?: QHazard[]; // full hazard list (timers tick every step, like pickups — diffing buys nothing)
+  pr?: QProjectile[]; // full projectile list (moves every step — diffing buys nothing)
   ev: QEvent[]; // events newer than the base tick
   s: [number, number, number, number, number, number]; // wave, partySize, intermissionCs, score, pity, stageIntroCs
   sq: number;
@@ -145,6 +150,11 @@ const unqHazard = (q: QHazard): Hazard => {
   if (q[8] > 0) h.burst = q[8];
   return h;
 };
+const qProjectile = (p: Projectile): QProjectile => [p.id, cm(p.pos.x), cm(p.pos.y), mrad(Math.atan2(p.dir.y, p.dir.x)), Math.round(p.speed * 100), cm(p.remaining), p.ownerId];
+const unqProjectile = (q: QProjectile): Projectile => {
+  const a = rad(q[3]);
+  return { id: q[0], pos: { x: m(q[1]), y: m(q[2]) }, dir: { x: Math.cos(a), y: Math.sin(a) }, speed: q[4] / 100, remaining: m(q[5]), ownerId: q[6] };
+};
 
 function qEvent(e: ShooterEvent): QEvent {
   const k = EVENT_KINDS.indexOf(e.kind);
@@ -152,6 +162,7 @@ function qEvent(e: ShooterEvent): QEvent {
   if (e.kind === "kill") return [e.tick, k, ENEMY_KINDS.indexOf(e.enemy), ...qVec(e.pos)];
   if (e.kind === "pickup") return [e.tick, k, PICKUP_KINDS.indexOf(e.item), ...qVec(e.pos)];
   if (e.kind === "hit") return [e.tick, k, ...qVec(e.pos)];
+  if (e.kind === "blast") return [e.tick, k, ...qVec(e.pos), cm(e.radius)];
   return [e.tick, k, e.playerId];
 }
 
@@ -162,6 +173,7 @@ function unqEvent(q: QEvent): ShooterEvent {
   if (kind === "kill") return { tick, kind, enemy: ENEMY_KINDS[q[2] as number]!, pos: { x: m(q[3] as number), y: m(q[4] as number) } };
   if (kind === "pickup") return { tick, kind, item: PICKUP_KINDS[q[2] as number]!, pos: { x: m(q[3] as number), y: m(q[4] as number) } };
   if (kind === "hit") return { tick, kind, pos: { x: m(q[2] as number), y: m(q[3] as number) } };
+  if (kind === "blast") return { tick, kind, pos: { x: m(q[2] as number), y: m(q[3] as number) }, radius: m(q[4] as number) };
   return { tick, kind, playerId: q[2] as string };
 }
 
@@ -176,6 +188,7 @@ export function qWorld(w: ShooterWorld): QWorld {
     en: w.enemies.map(qEnemy), pk: w.pickups.map(qPickup), ev: w.events.map(qEvent),
     sc: w.score, sq: w.spawnSeq, py: w.pity, sir: cs(w.stageIntroRemaining ?? 0),
     hz: (w.hazards ?? []).map(qHazard),
+    pr: (w.projectiles ?? []).map(qProjectile),
   };
 }
 
@@ -188,6 +201,7 @@ export function unqWorld(q: QWorld): ShooterWorld {
     players, enemies: q.en.map(unqEnemy), pickups: q.pk.map(unqPickup), events: q.ev.map(unqEvent),
     score: q.sc, spawnSeq: q.sq, pity: q.py, stageIntroRemaining: s(q.sir ?? 0),
     hazards: (q.hz ?? []).map(unqHazard),
+    projectiles: (q.pr ?? []).map(unqProjectile),
   };
 }
 
@@ -207,6 +221,7 @@ export function diffWorld(prevQ: QWorld, curQ: QWorld): ODelta {
   const d: ODelta = {
     b: prevQ.t, t: curQ.t, ph: curQ.ph, pl: curQ.pl, en, pk: curQ.pk,
     hz: curQ.hz ?? [],
+    pr: curQ.pr ?? [],
     ev: curQ.ev.filter((e) => (e[0] as number) > prevQ.t),
     s: [curQ.wv, curQ.ps, curQ.im, curQ.sc, curQ.py, curQ.sir ?? 0], sq: curQ.sq,
   };
@@ -251,6 +266,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
 
   const pickups = d.pk.map(unqPickup);
   const hazards = (d.hz ?? []).map(unqHazard);
+  const projectiles = (d.pr ?? []).map(unqProjectile);
 
   // Rebuild events exactly as the sim would hold them: kept-window ∪ new, capped to newest.
   const kept = prev.events.filter((e) => e.tick > d.t - EVENT_TTL_TICKS);
@@ -262,7 +278,7 @@ export function applyDelta(prev: ShooterWorld, d: ODelta): ShooterWorld {
     wave: d.s[0], partySize: d.s[1], intermission: s(d.s[2]),
     pending:
       d.pdo !== undefined ? prev.pending.slice(d.pdo) : d.pd !== undefined ? unqPending(d.pd) : prev.pending,
-    players, enemies, pickups, hazards, events: capped, score: d.s[3], spawnSeq: d.sq, pity: d.s[4],
+    players, enemies, pickups, hazards, projectiles, events: capped, score: d.s[3], spawnSeq: d.sq, pity: d.s[4],
     stageIntroRemaining: s(d.s[5]),
   };
 }

@@ -8,6 +8,7 @@ const GUN_LABEL: Record<GunId, string> = {
   smg: "SMG",
   dmr: "DMR",
   flamethrower: "FLAMETHROWER",
+  rocket: "ROCKET",
 };
 
 /** Bottom-left HUD: current gun, mag/reserve counts, and a reload progress bar. */

@@ -4,8 +4,7 @@
  *   - Campaign: reaching stage N unlocks tiers 1..N.
  *   - Survival: tier 1 from the start, then one more tier every 2 waves.
  *
- * Tier 5 (rocket launcher) lands with its own increment — the table grows append-only, so the
- * gating rules here don't change when it arrives.
+ * The table grows append-only, so the gating rules here never change when a tier is added.
  */
 
 import { stageForWave } from "./stages";
@@ -17,6 +16,7 @@ export const WEAPON_TIERS: DroppableGun[][] = [
   ["autorifle", "rifle"], // tier 2
   ["smg", "dmr"], // tier 3
   ["flamethrower"], // tier 4
+  ["rocket"], // tier 5
 ];
 
 export const MAX_WEAPON_TIER = WEAPON_TIERS.length;

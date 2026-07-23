@@ -9,10 +9,10 @@
 
 import { hash01 } from "./rng";
 import { ENEMIES } from "./enemies";
-import { ENEMY_HIT_KNOCKBACK_M, ENEMY_HIT_STUN_S, FLAME_BURN_S, FLAME_CONE_RAD, OVERRUN_FIELD_M } from "./constants";
+import { ENEMY_HIT_KNOCKBACK_M, ENEMY_HIT_STUN_S, FLAME_BURN_S, FLAME_CONE_RAD, OVERRUN_FIELD_M, ROCKET_MUZZLE_M, ROCKET_SPEED_MS } from "./constants";
 import type { EffectiveStats } from "./perks";
 import { freshAmmo, GUNS, hasReserve } from "./weapons";
-import type { Enemy, ShooterEvent, ShooterPlayer } from "./types";
+import type { Enemy, Projectile, ShooterEvent, ShooterPlayer } from "./types";
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -48,7 +48,7 @@ export function fireTick(
   seed: number,
   tick: number,
   eff: EffectiveStats,
-): { player: ShooterPlayer; enemies: Enemy[]; events: ShooterEvent[] } {
+): { player: ShooterPlayer; enemies: Enemy[]; events: ShooterEvent[]; spawned?: Projectile[] } {
   if (!fire || p.status !== "alive" || p.ammo.reloadRemaining > 0 || p.ammo.fireCooldown > 0) {
     return { player: p, enemies, events: [] };
   }
@@ -62,11 +62,20 @@ export function fireTick(
   const out = enemies.map((e) => ({ ...e }));
   const events: ShooterEvent[] = [];
   let landed = false;
+  let spawned: Projectile[] | undefined;
   const spreadRad = (def.spreadDeg * Math.PI) / 180;
   // Dedupe knockback per enemy per fireTick call: a shotgun blast must knock an
   // enemy back once (0.5m), not once per pellet that lands on it (up to 8×0.5m).
   const knockedBack = new Set<string>();
 
+  // Rocket: launches a TRAVELLING projectile (the sim advances it + detonates the AoE). The "shot"
+  // event with to == muzzle drives the launch flash + recoil; no immediate hit resolves here.
+  if (p.gun === "rocket") {
+    const dir = { x: Math.cos(p.aim), y: Math.sin(p.aim) };
+    const from = { x: p.pos.x + dir.x * ROCKET_MUZZLE_M, y: p.pos.y + dir.y * ROCKET_MUZZLE_M };
+    spawned = [{ id: `pj:${p.id}:${tick}`, pos: from, dir, speed: ROCKET_SPEED_MS, remaining: def.range, ownerId: p.id }];
+    events.push({ tick, kind: "shot", gun: p.gun, from: { x: p.pos.x, y: p.pos.y }, to: from });
+  } else
   // Flamethrower: a continuous CONE — every enemy within range and ±FLAME_CONE_RAD of the aim takes
   // the per-tick direct hit and is set alight (burn-over-time ticks in the sim). No pellets/pierce.
   if (p.gun === "flamethrower") {
@@ -139,5 +148,5 @@ export function fireTick(
     ammo: { ...p.ammo, mag: p.ammo.mag - 1, fireCooldown: 60 / (def.rpm * eff.fireRateMult) },
     stats: { ...p.stats, shots: p.stats.shots + 1, hits: p.stats.hits + (landed ? 1 : 0) },
   };
-  return { player, enemies: out, events };
+  return { player, enemies: out, events, spawned };
 }
